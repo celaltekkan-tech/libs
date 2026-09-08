@@ -1,0 +1,37 @@
+{
+    "name": "lise-idari-backend",
+    "version": "1.0.0",
+    "main": "src/server.js",
+    "scripts": {
+        "start": "node src/server.js",
+        "dev": "nodemon src/server.js",
+        "migrate": "npx sequelize db:migrate",
+        "migrate:undo": "npx sequelize db:migrate:undo:all",
+        "seed": "npx sequelize db:seed:all",
+        "seed:undo": "npx sequelize db:seed:undo:all",
+        "smoke:auth": "node scripts/auth-smoke-test.js",
+        "smoke:cors": "node scripts/cors-check.js",
+        "dev:frontend": "npm run dev --prefix frontend",
+        "dev:all": "concurrently -n be,fe -c cyan,magenta \"npm run dev\" \"npm run dev:frontend\"",
+        "build:frontend": "npm run build --prefix frontend"
+    },
+    "dependencies": {
+        "bcrypt": "^5.1.0",
+        "cors": "^2.8.6",
+        "dotenv": "^16.0.3",
+        "express": "^4.18.2",
+        "express-rate-limit": "^8.7.0",
+        "helmet": "^8.3.0",
+        "joi": "^17.9.2",
+        "jsonwebtoken": "^9.0.0",
+        "pg": "^8.11.0",
+        "pg-hstore": "^2.3.4",
+        "sequelize": "^6.32.0"
+    },
+    "devDependencies": {
+        "concurrently": "^10.0.5",
+        "docx": "^9.7.1",
+        "nodemon": "^3.1.11",
+        "sequelize-cli": "^6.6.0"
+    }
+}
