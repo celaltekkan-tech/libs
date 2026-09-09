@@ -1,4 +1,5 @@
 const { School, Tenant } = require('../models');
+const audit = require('../services/auditService');
 
 module.exports = {
   async list(req, res, next) {
@@ -51,7 +52,10 @@ module.exports = {
   async create(req, res, next) {
     try {
       const payload = req.validatedBody || req.body;
-      
+      // tenant_id her zaman oturumdaki kullanıcının tenant'ı olarak sabitlenir;
+      // client'tan gelen değer güvenilmez (cross-tenant yazmayı engeller).
+      if (req.user && req.user.tenant_id) payload.tenant_id = req.user.tenant_id;
+
       // Tenant kontrolü
       const tenant = await Tenant.findByPk(payload.tenant_id);
       if (!tenant) {
@@ -66,7 +70,12 @@ module.exports = {
 
       // Okul oluştur
       const school = await School.create(payload);
-
+      await audit.log(req, {
+        action: 'create',
+        entityType: 'school',
+        entityId: school.id,
+        summary: `Okul oluşturuldu: ${school.name}`,
+      });
       res.status(201).json({ success: true, data: school });
     } catch (err) {
       next(err);
@@ -88,14 +97,8 @@ module.exports = {
       }
 
       const payload = req.validatedBody || req.body;
-
-      // Tenant kontrolü (eğer güncelleniyorsa)
-      if (payload.tenant_id) {
-        const tenant = await Tenant.findByPk(payload.tenant_id);
-        if (!tenant) {
-          return res.status(404).json({ success: false, message: 'Tenant bulunamadı' });
-        }
-      }
+      // Kendi tenant'ı dışına taşınamaz.
+      if (req.user && req.user.tenant_id) payload.tenant_id = req.user.tenant_id;
 
       // Code kontrolü (eğer güncelleniyorsa)
       if (payload.code && payload.code !== school.code) {
@@ -106,7 +109,12 @@ module.exports = {
       }
 
       await school.update(payload);
-
+      await audit.log(req, {
+        action: 'update',
+        entityType: 'school',
+        entityId: school.id,
+        summary: `Okul güncellendi: ${school.name}`,
+      });
       res.json({ success: true, data: school });
     } catch (err) {
       next(err);
@@ -127,7 +135,14 @@ module.exports = {
         return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
       }
 
+      const label = school.name;
       await school.destroy();
+      await audit.log(req, {
+        action: 'delete',
+        entityType: 'school',
+        entityId: id,
+        summary: `Okul silindi: ${label}`,
+      });
       res.json({ success: true, message: 'Okul silindi' });
     } catch (err) {
       next(err);

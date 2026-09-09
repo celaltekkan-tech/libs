@@ -2,6 +2,7 @@ const bcrypt = require('bcrypt');
 const { User, Tenant, School } = require('../models');
 const jwtUtil = require('../utils/jwt');
 const accessService = require('../services/accessService');
+const audit = require('../services/auditService');
 
 const BCRYPT_ROUNDS = 10;
 
@@ -133,6 +134,20 @@ module.exports = {
 
       await user.update({ last_login_at: new Date() });
 
+      const fakeReq = {
+        user: { user_id: user.id, tenant_id: user.tenant_id, email: user.email },
+        access: { user },
+        headers: req.headers,
+        ip: req.ip,
+        socket: req.socket,
+      };
+      await audit.log(fakeReq, {
+        action: 'login',
+        entityType: 'auth',
+        entityId: user.id,
+        summary: `Giriş yapıldı: ${user.full_name}`,
+      });
+
       return respondWithSession(res, user);
     } catch (err) {
       next(err);
@@ -165,6 +180,32 @@ module.exports = {
     }
   },
 
+  async updateProfile(req, res, next) {
+    try {
+      const { full_name } = req.validatedBody || req.body;
+      const user = await User.findByPk(req.user.user_id);
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı' });
+      }
+
+      await user.update({ full_name: String(full_name).trim() });
+      const access = await accessService.getUserAccess(user.id);
+      await audit.log(req, {
+        action: 'update',
+        entityType: 'profile',
+        entityId: user.id,
+        summary: `Profil güncellendi: ${user.full_name}`,
+      });
+      return res.json({
+        success: true,
+        message: 'Profil güncellendi',
+        data: accessService.buildSessionPayload(access),
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async changePassword(req, res, next) {
     try {
       const { current_password, new_password } = req.validatedBody || req.body;
@@ -185,6 +226,13 @@ module.exports = {
 
       const password_hash = await bcrypt.hash(new_password, BCRYPT_ROUNDS);
       await user.update({ password_hash });
+
+      await audit.log(req, {
+        action: 'update',
+        entityType: 'auth',
+        entityId: user.id,
+        summary: 'Şifre değiştirildi',
+      });
 
       // Şifre değiştiğinde istemcinin yeni token ile devam etmesi sağlanır.
       const { token, expires_at } = createSessionToken(user);

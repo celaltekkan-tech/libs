@@ -5,17 +5,18 @@ import {
   Button,
   Card,
   Descriptions,
-  Layout,
   Space,
   Switch,
   Table,
   Tag,
 } from 'antd'
-import { ArrowLeftOutlined } from '@ant-design/icons'
-import { AppHeader } from '../../components/AppHeader'
+import { ArrowLeftOutlined, IdcardOutlined } from '@ant-design/icons'
+import { AppLayout } from '../../components/AppLayout'
 import { getTenant, listTenantSchools, listTenantUsers, updateTenant } from '../../api/tenants'
+import { listLicenses } from '../../api/licenses'
 import { getErrorMessage } from '../../api/client'
 import type { Tenant, TenantSchool, TenantUser } from '../../types/tenant'
+import type { License } from '../../types/license'
 
 export function TenantDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -25,26 +26,31 @@ export function TenantDetailPage() {
   const [tenant, setTenant] = useState<Tenant | null>(null)
   const [schools, setSchools] = useState<TenantSchool[]>([])
   const [users, setUsers] = useState<TenantUser[]>([])
+  const [licenses, setLicenses] = useState<License[]>([])
   const [loading, setLoading] = useState(true)
   const [togglingStatus, setTogglingStatus] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [tenantData, schoolData, userData] = await Promise.all([
+      const [tenantData, schoolData, userData, licenseData] = await Promise.all([
         getTenant(tenantId),
         listTenantSchools(tenantId),
         listTenantUsers(tenantId),
+        listLicenses({ tenant_id: tenantId }),
       ])
       setTenant(tenantData)
       setSchools(schoolData)
       setUsers(userData)
+      setLicenses(licenseData)
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
   }, [tenantId, message])
+
+  const activeLicense = licenses.find((license) => license.status === 'active')
 
   useEffect(() => {
     if (Number.isFinite(tenantId)) void load()
@@ -64,10 +70,8 @@ export function TenantDetailPage() {
   }
 
   return (
-    <Layout className="app-shell">
-      <AppHeader title="Hesap Yönetimi" />
-
-      <Layout.Content className="app-content" style={{ maxWidth: 1100 }}>
+    <AppLayout title="Hesap Yönetimi">
+      <div style={{ maxWidth: 1100 }}>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Link to="/platform/tenants">
             <Button icon={<ArrowLeftOutlined />} type="text">
@@ -93,6 +97,35 @@ export function TenantDetailPage() {
                   {new Date(tenant.created_at).toLocaleString('tr-TR')}
                 </Descriptions.Item>
               </Descriptions>
+            )}
+          </Card>
+
+          <Card
+            loading={loading}
+            title="Lisans"
+            extra={
+              <Link to="/platform/licenses">
+                <Button size="small" icon={<IdcardOutlined />}>
+                  Lisans Yönetimine git
+                </Button>
+              </Link>
+            }
+          >
+            {activeLicense ? (
+              <Descriptions column={1} size="small">
+                <Descriptions.Item label="Plan">{activeLicense.plan}</Descriptions.Item>
+                <Descriptions.Item label="Durum">
+                  <Tag color="green">Aktif</Tag>
+                </Descriptions.Item>
+                <Descriptions.Item label="Başlangıç">
+                  {new Date(activeLicense.starts_at).toLocaleDateString('tr-TR')}
+                </Descriptions.Item>
+                <Descriptions.Item label="Bitiş">
+                  {activeLicense.ends_at ? new Date(activeLicense.ends_at).toLocaleDateString('tr-TR') : 'Süresiz'}
+                </Descriptions.Item>
+              </Descriptions>
+            ) : (
+              <Tag color="red">Aktif lisans yok</Tag>
             )}
           </Card>
 
@@ -129,7 +162,7 @@ export function TenantDetailPage() {
             />
           </Card>
         </Space>
-      </Layout.Content>
-    </Layout>
+      </div>
+    </AppLayout>
   )
 }

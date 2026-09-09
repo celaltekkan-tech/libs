@@ -1,4 +1,6 @@
 const { User, UserSchool, Role, Permission, School } = require('../models');
+const licenseService = require('./licenseService');
+const { getModulesForPlan } = require('../config/licensePlans');
 
 // Bu roller User tablosundaki global rol alanında tutulur ve okul bazlı
 // atamalardan bağımsız olarak tüm izinleri kapsar.
@@ -49,6 +51,14 @@ async function getUserAccess(userId) {
     allPermissions.forEach((permission) => permissions.add(permission.permission_key));
   }
 
+  // Platform admin lisans kontrolünden muaftır; diğer kullanıcılar için
+  // tenant'ın aktif (süresi dolmamış) lisansı varsa 'active', yoksa 'expired'.
+  const activeLicense = user.is_platform_admin ? null : await licenseService.getActiveLicense(user.tenant_id);
+  const licenseStatus = user.is_platform_admin ? 'exempt' : activeLicense ? 'active' : 'expired';
+  // Tenant'ın planına göre hangi modüllerin (menü/API) açık olduğu — platform
+  // admin kendi tenant modüllerini kullanmaz, bu yüzden boş kalır.
+  const modules = user.is_platform_admin || !activeLicense ? [] : getModulesForPlan(activeLicense.plan);
+
   return {
     user,
     is_global_admin: isGlobalAdmin,
@@ -56,6 +66,9 @@ async function getUserAccess(userId) {
     roles: Array.from(roles),
     permissions: Array.from(permissions).sort(),
     schools: Array.from(schools.values()),
+    license_status: licenseStatus,
+    license: activeLicense,
+    modules,
   };
 }
 
@@ -83,6 +96,9 @@ function buildSessionPayload(access) {
     schools: access.schools,
     is_global_admin: access.is_global_admin,
     is_platform_admin: access.is_platform_admin,
+    license_status: access.license_status,
+    license: access.license,
+    modules: access.modules,
   };
 }
 

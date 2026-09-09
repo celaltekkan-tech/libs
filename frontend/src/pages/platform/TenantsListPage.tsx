@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { App, Button, Layout, Space, Table, Tag, Typography } from 'antd'
+import { App, Button, Space, Table, Tag, Typography } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
-import { AppHeader } from '../../components/AppHeader'
+import { AppLayout } from '../../components/AppLayout'
 import { listTenants } from '../../api/tenants'
 import { getErrorMessage } from '../../api/client'
 import type { TenantListItem } from '../../types/tenant'
@@ -53,10 +53,8 @@ export function TenantsListPage() {
   ]
 
   return (
-    <Layout className="app-shell">
-      <AppHeader title="Hesap Yönetimi" />
-
-      <Layout.Content className="app-content" style={{ maxWidth: 1100 }}>
+    <AppLayout title="Hesap Yönetimi">
+      <div style={{ maxWidth: 1100 }}>
         <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
           <Typography.Title level={3} style={{ margin: 0 }}>
             Hesaplar
@@ -73,7 +71,7 @@ export function TenantsListPage() {
           dataSource={tenants}
           pagination={{ pageSize: 20 }}
         />
-      </Layout.Content>
+      </div>
 
       <CreateTenantWizardModal
         open={modalOpen}
@@ -83,6 +81,6 @@ export function TenantsListPage() {
           void load()
         }}
       />
-    </Layout>
+    </AppLayout>
   )
 }

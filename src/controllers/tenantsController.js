@@ -1,6 +1,7 @@
 const bcrypt = require('bcrypt');
 const db = require('../models');
 const { Tenant, School, User, Role, UserSchool } = db;
+const { seedDefaultHolidays } = require('../services/holidayService');
 
 const MANAGER_ROLE_NAME = 'Müdür';
 const BCRYPT_ROUNDS = 10;
@@ -139,6 +140,9 @@ module.exports = {
           { transaction }
         );
       }
+
+      // Sabit tarihli resmi tatiller her yeni hesap için varsayılan olarak tanımlanır.
+      await seedDefaultHolidays(tenant.id, { transaction });
 
       await transaction.commit();
 

@@ -4,6 +4,7 @@ import type { LoginFormValues, LoginResponse, SessionPayload } from '../types/au
 interface Envelope<T> {
   success: true
   data: T
+  message?: string
 }
 
 export async function login(values: LoginFormValues): Promise<LoginResponse> {
@@ -14,6 +15,28 @@ export async function login(values: LoginFormValues): Promise<LoginResponse> {
 
 export async function fetchMe(): Promise<SessionPayload> {
   const { data } = await client.get<Envelope<SessionPayload>>('/api/auth/me')
+  return data.data
+}
+
+export async function updateProfile(fullName: string): Promise<SessionPayload> {
+  const { data } = await client.put<Envelope<SessionPayload>>('/api/auth/profile', {
+    full_name: fullName,
+  })
+  return data.data
+}
+
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ token: string; expires_at: string }> {
+  const { data } = await client.post<Envelope<{ token: string; expires_at: string }>>(
+    '/api/auth/change-password',
+    {
+      current_password: currentPassword,
+      new_password: newPassword,
+    },
+  )
+  persistSession(data.data.token, data.data.expires_at)
   return data.data
 }
 

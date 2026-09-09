@@ -11,7 +11,9 @@ module.exports = (sequelize, DataTypes) => {
     }
     }, {
     tableName: 'Tenants',
-    underscored: true
+    underscored: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
     });
     
     
@@ -20,6 +22,7 @@ module.exports = (sequelize, DataTypes) => {
     Tenant.hasMany(models.User, { foreignKey: 'tenant_id' });
     Tenant.hasMany(models.Teacher, { foreignKey: 'tenant_id' });
     Tenant.hasMany(models.Feedback, { foreignKey: 'tenant_id' });
+    Tenant.hasMany(models.License, { foreignKey: 'tenant_id' });
     };
     
     

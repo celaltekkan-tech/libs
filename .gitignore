@@ -6,5 +6,6 @@ npm-debug.log*
 dist/
 build/
 coverage/
+uploads/
 .DS_Store
 Thumbs.db

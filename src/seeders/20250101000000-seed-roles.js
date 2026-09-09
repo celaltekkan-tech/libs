@@ -7,6 +7,14 @@ const PERMISSIONS = [
   { permission_key: 'teachers.create', description: 'Öğretmen oluşturma' },
   { permission_key: 'teachers.update', description: 'Öğretmen güncelleme' },
   { permission_key: 'teachers.delete', description: 'Öğretmen silme' },
+  { permission_key: 'students.read', description: 'Öğrenci listeleme' },
+  { permission_key: 'students.create', description: 'Öğrenci oluşturma' },
+  { permission_key: 'students.update', description: 'Öğrenci güncelleme' },
+  { permission_key: 'students.delete', description: 'Öğrenci silme' },
+  { permission_key: 'classrooms.read', description: 'Sınıf/şube listeleme' },
+  { permission_key: 'classrooms.create', description: 'Sınıf/şube oluşturma' },
+  { permission_key: 'classrooms.update', description: 'Sınıf/şube güncelleme' },
+  { permission_key: 'classrooms.delete', description: 'Sınıf/şube silme' },
   { permission_key: 'users.read', description: 'Kullanıcı listeleme' },
   { permission_key: 'users.create', description: 'Kullanıcı oluşturma' },
   { permission_key: 'users.update', description: 'Kullanıcı güncelleme' },
@@ -21,15 +29,19 @@ const ROLE_PERMISSIONS = {
   'Müdür': PERMISSIONS.map((p) => p.permission_key),
   'Müdür Yardımcısı': [
     'teachers.read', 'teachers.create', 'teachers.update', 'teachers.delete',
+    'students.read', 'students.create', 'students.update', 'students.delete',
+    'classrooms.read', 'classrooms.create', 'classrooms.update', 'classrooms.delete',
     'users.read', 'users.create', 'users.update',
     'schools.read',
   ],
   'Memur': [
     'teachers.read', 'teachers.create', 'teachers.update',
+    'students.read', 'students.create', 'students.update',
+    'classrooms.read', 'classrooms.create', 'classrooms.update',
     'users.read',
     'schools.read',
   ],
-  'Öğretmen': ['teachers.read', 'users.read', 'schools.read'],
+  'Öğretmen': ['teachers.read', 'students.read', 'classrooms.read', 'users.read', 'schools.read'],
 };
 
 async function selectAll(queryInterface, sql) {

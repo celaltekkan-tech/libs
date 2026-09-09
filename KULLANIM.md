@@ -140,16 +140,38 @@ Gerekli izinler: `teachers.create` vb.
 
 ## Öğrenci işlemleri
 
-Öğrenci modülü belgede tanımlıdır (e-Okul’dan veri alma, özel Excel çıktısı, nakil takibi). **Yazılımda henüz öğrenci API’si ve ekranı yoktur.**
+Panelde **Öğrenciler** menüsü (`/students`) ile öğrenci kayıtları yönetilir. Lisans planlarının
+tümünde `students` modülü açıktır; işlemler `students.*` izinlerine bağlıdır.
 
-Planlanan kullanım (geliştirme sonrası):
+### Manuel kayıt
 
-1. Yönetici öğrenci işleri menüsünü açar.
-2. e-Okul’dan alınan dosya içe aktarılır.
-3. Sınıf / şube / kayıt durumuna göre süzülür.
-4. İstenen sütun düzeninde Excel veya PDF alınır.
+1. **Yeni Öğrenci** ile ad, soyad ve isteğe bağlı okul / T.C. / sınıf / şube bilgilerini girin.
+2. Listeden düzenleyin veya silin.
+3. Üstteki filtrelerle sınıf, şube, cinsiyet ve kayıt durumuna göre süzün.
 
-Şimdilik öğrenci kaydı sisteme eklenemez. İhtiyaç duyulursa bir sonraki geliştirme adımı bu modüldür.
+Liste: `GET /api/students`  
+Detay: `GET /api/students/:id`  
+Oluşturma: `POST /api/students`  
+Güncelleme: `PUT /api/students/:id`  
+Silme: `DELETE /api/students/:id`
+
+### e-Okul Excel içe aktarma
+
+1. e-Okul’dan veya benzer kaynaktan `.xlsx` alın; ilk satırda Türkçe başlıklar olsun
+   (`Ad`, `Soyad`, `T.C. Kimlik No`, `Sınıf`, `Şube`, …).
+2. **e-Okul İçe Aktar** ile dosyayı yükleyin; isteğe bağlı okul seçin.
+3. Aynı hesapta aynı T.C. varsa kayıt güncellenir, yoksa yeni oluşturulur.
+
+API: `POST /api/students/import` (multipart alan: `file`)
+
+### Dışa aktarma
+
+1. **Dışa Aktar** ile Excel veya PDF seçin.
+2. İstediğiniz sütunları işaretleyin; mevcut tablo filtreleri çıktıya da uygulanır.
+
+API: `POST /api/students/export` — `{ "format": "xlsx"|"pdf", "columns": [...], "filters"? }`
+
+Gerekli izinler: `students.create` (içe aktarma dahil), `students.read` (dışa aktarma dahil) vb.
 
 ---
 

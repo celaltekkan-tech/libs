@@ -25,6 +25,8 @@ module.exports = (sequelize, DataTypes) => {
         tableName: "Schools",
         timestamps: true,
         underscored: true,
+        createdAt: "created_at",
+        updatedAt: "updated_at",
       }
     );
   
@@ -32,6 +34,12 @@ module.exports = (sequelize, DataTypes) => {
       School.belongsTo(models.Tenant, { foreignKey: "tenant_id" });
       School.hasMany(models.UserSchool, { foreignKey: "school_id" });
       School.hasMany(models.Teacher, { foreignKey: "school_id" });
+      School.hasMany(models.Classroom, { foreignKey: "school_id" });
+      School.hasMany(models.Student, { foreignKey: "school_id" });
+      School.hasMany(models.DutyLocation, { foreignKey: "school_id" });
+      School.hasMany(models.DykCourse, { foreignKey: "school_id" });
+      School.hasMany(models.ExamRoom, { foreignKey: "school_id" });
+      School.hasMany(models.ExamSession, { foreignKey: "school_id" });
     };
   
     return School;

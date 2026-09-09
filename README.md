@@ -39,6 +39,7 @@ Panel: http://localhost:5173
 - ✅ Kullanıcı yönetimi ve kimlik doğrulama (JWT)
 - ✅ Okul yönetimi
 - ✅ Öğretmen yönetimi
+- ✅ Öğrenci yönetimi (CRUD, e-Okul Excel içe aktarma, Excel/PDF dışa aktarma)
 - ✅ Rol ve izin sistemi (RBAC) — tüm kaynak uçlarında zorunlu
 - ✅ Hiyerarşik yapı: User -> Okul -> Müdür Yardımcısı, Memur
 - ✅ Frontend entegrasyonu için CORS, helmet ve istek sınırlama (rate limit)
@@ -130,6 +131,7 @@ PLATFORM_ADMIN_PASSWORD=SuperAdmin1234
 ### Users
 
 Her uç ilgili izni gerektirir: `users.read`, `users.create`, `users.update`, `users.delete`.
+Ayrıca tenant'ın planında `users` modülü açık olmalıdır (bkz. Lisans Modülleri).
 
 - `GET /api/users` - Kullanıcı listesi
 - `GET /api/users/:id` - Kullanıcı detayı
@@ -153,6 +155,7 @@ kullanıcılar erişebilir (tenant-scoped `permission`/rol sisteminden bağıms�
 ### Schools
 
 Gerekli izinler: `schools.read`, `schools.create`, `schools.update`, `schools.delete`.
+Ayrıca tenant'ın planında `schools` modülü açık olmalıdır (bkz. Lisans Modülleri).
 
 - `GET /api/schools` - Okul listesi
 - `GET /api/schools/:id` - Okul detayı
@@ -163,12 +166,28 @@ Gerekli izinler: `schools.read`, `schools.create`, `schools.update`, `schools.de
 ### Teachers
 
 Gerekli izinler: `teachers.read`, `teachers.create`, `teachers.update`, `teachers.delete`.
+Ayrıca tenant'ın planında `teachers` modülü açık olmalıdır (bkz. Lisans Modülleri).
 
 - `GET /api/teachers` - Öğretmen listesi
 - `GET /api/teachers/:id` - Öğretmen detayı
 - `POST /api/teachers` - Yeni öğretmen oluştur
 - `PUT /api/teachers/:id` - Öğretmen güncelle
 - `DELETE /api/teachers/:id` - Öğretmen sil
+
+### Students
+
+Gerekli izinler: `students.read`, `students.create`, `students.update`, `students.delete`.
+Ayrıca tenant'ın planında `students` modülü açık olmalıdır (bkz. Lisans Modülleri; tüm planlarda açıktır).
+
+- `GET /api/students` - Öğrenci listesi (`school_id`, `class_level`, `section`, `gender`, `registration_status` query filtreleri)
+- `GET /api/students/:id` - Öğrenci detayı
+- `POST /api/students` - Yeni öğrenci oluştur
+- `PUT /api/students/:id` - Öğrenci güncelle
+- `DELETE /api/students/:id` - Öğrenci sil
+- `POST /api/students/import` - e-Okul Excel (`.xlsx`) içe aktarma (`multipart` alan adı: `file`, isteğe bağlı `school_id`)
+- `POST /api/students/export` - Dışa aktarma — gövde: `{ "format": "xlsx"|"pdf", "columns": [...], "filters"? }`
+
+Frontend: `/students` sayfasından tenant kullanıcıları öğrencileri yönetebilir.
 
 ### Feedback (Geri Bildirim)
 
@@ -177,13 +196,66 @@ durum güncelleme ve silme sadece `is_platform_admin = true` olan kullanıcılar
 (Tenants uçlarıyla aynı `platformAdmin` middleware'i kullanılır).
 
 - `POST /api/feedback` - Geri bildirim gönder (Auth gerekli) — gövde: `{ "message": "..." }`
+- `GET /api/feedback/mine` - Kendi tenant'ının gönderdiği geri bildirimleri ve varsa admin cevabını listele (Auth gerekli, tenant ile sınırlı)
 - `GET /api/feedback` - Tüm hesaplara ait geri bildirimleri listele (Platform admin), `?status=` ve `?tenant_id=` ile filtrelenebilir
 - `GET /api/feedback/:id` - Geri bildirim detayı (Platform admin)
-- `PUT /api/feedback/:id` - Durum güncelle (Platform admin) — gövde: `{ "status": "new" | "read" | "resolved" }`
+- `PUT /api/feedback/:id` - Durum ve/veya cevap güncelle (Platform admin) — gövde: `{ "status"?: "new" | "read" | "resolved", "reply"?: "..." }`
 - `DELETE /api/feedback/:id` - Geri bildirimi sil (Platform admin)
 
-Frontend: `/feedback` sayfasından her kullanıcı gönderebilir, `/platform/feedback`
-sayfasından platform admin tüm geri bildirimleri görüntüleyip yönetebilir.
+Frontend: `/feedback` sayfasından her kullanıcı gönderebilir ve kendi tenant'ının
+gönderdiklerini + admin cevabını görebilir; `/platform/feedback` sayfasından
+platform admin tüm geri bildirimleri görüntüleyip yanıtlayabilir.
+
+### Licenses (Lisans Yönetimi)
+
+Tenant'lara lisans tanımlama/iptal etme sadece platform admin yetkisindedir. Bir tenant'a
+yeni lisans tanımlandığında, o tenant'ın varsa mevcut aktif lisansı otomatik olarak iptal edilir
+(bir tenant'ın aynı anda tek aktif lisansı olur, geçmiş kayıtları korunur).
+
+- `GET /api/licenses` - Tüm lisansları listele (Platform admin), `?tenant_id=` ve `?status=` ile filtrelenebilir
+- `GET /api/licenses/:id` - Lisans detayı (Platform admin)
+- `POST /api/licenses` - Tenant'a lisans tanımla (Platform admin) — gövde: `{ "tenant_id", "plan", "starts_at"?, "ends_at"?, "notes"? }`
+- `PUT /api/licenses/:id/cancel` - Lisansı iptal et (Platform admin)
+
+Frontend: `/platform/licenses` sayfasından platform admin lisansları görüntüleyip
+tanımlayabilir/iptal edebilir; ilgili hesabın aktif lisansı `/platform/tenants/:id`
+sayfasında da özet olarak gösterilir.
+
+#### Lisans zorunluluğu (Faz 1)
+
+`GET/POST/PUT/DELETE /api/teachers`, `/api/students`, `/api/schools`, `/api/users` uçları `licenseGuard`
+middleware'i ile korunur: tenant'ın aktif (süresi dolmamış) bir lisansı yoksa istek
+`402 LICENSE_EXPIRED` ile reddedilir. Platform admin bu kontrolden muaftır.
+
+`POST /api/auth/login` ve `GET /api/auth/me` yanıtlarına `license_status`
+(`'active' | 'expired' | 'exempt'`) ve `license` (aktif lisans, yoksa `null`) alanları
+eklendi. Frontend, `license_status: 'expired'` olan tenant kullanıcılarını `/` ve
+`/feedback` dahil tüm uygulamadan engelleyip "Lisans süresi doldu" ekranını gösterir
+(sadece çıkış yapabilirler). Platform admin (`exempt`) bu kısıtlamadan etkilenmez.
+
+**Faz 2 (henüz yapılmadı)**: Lisansı bitmiş kullanıcıların self-servis "yeni lisans
+alma/yenileme" arayüzüne yönlendirilmesi ve sadece o arayüze erişebilmesi.
+
+#### Lisans Modülleri (plana göre menü/API erişimi)
+
+Her planın hangi tenant modüllerini (menü + API) açtığı `src/config/licensePlans.js`
+içinde tanımlıdır (frontend karşılığı: `frontend/src/constants/licensePlans.ts`):
+
+| Plan | Modüller | Kullanıcı kotası |
+|---|---|---|
+| Free | Öğretmenler, Öğrenciler, Sınıflar | Yok |
+| Standart | Okullar, Öğretmenler, Öğrenciler, Sınıflar, Yetkilendirme | En fazla 2 kullanıcı |
+| Premium | Okullar, Öğretmenler, Kullanıcılar, Öğrenciler, Sınıflar | Sınırsız |
+| Kurumsal | Okullar, Öğretmenler, Kullanıcılar, Öğrenciler, Sınıflar | Sınırsız |
+
+`moduleGuard` middleware'i (`src/middlewares/moduleGuard.js`) `teachers`/`students`/`schools`/`users`
+uçlarını korur: aktif lisans yoksa `402 LICENSE_EXPIRED`, lisans var ama modül plana
+dahil değilse `403 MODULE_NOT_LICENSED` döner. Platform admin muaftır.
+
+`login`/`me` yanıtındaki `modules` alanı, frontend'in sol menüde hangi öğeleri
+göstereceğini belirler (`AppLayout.tsx`); `/schools`, `/teachers`, `/students`, `/users` rotaları
+`ModuleRoute` ile ayrıca korunur (URL ile doğrudan erişim denemesi ana sayfaya yönlendirilir).
+Sayfa içi Yeni/Düzenle/Sil butonları mevcut `permissions` dizisine göre ayrıca gizlenir.
 
 ## Kullanım Örnekleri
 
@@ -273,6 +345,7 @@ Tüm hatalar aynı biçimde döner ve frontend'in davranış belirleyebilmesi i�
 | `NOT_FOUND` | 404 | Uç veya kayıt bulunamadı |
 | `EMAIL_IN_USE` / `DUPLICATE_RECORD` | 409 | Kayıt zaten mevcut |
 | `RATE_LIMITED` | 429 | Çok fazla istek (giriş uçlarında 15 dakikada 10 başarısız deneme) |
+| `LICENSE_EXPIRED` | 402 | Tenant'ın aktif lisansı yok/süresi dolmuş (teachers/students/schools/users uçları) |
 | `INTERNAL_ERROR` | 500 | Beklenmeyen sunucu hatası |
 
 ## Frontend
@@ -318,13 +391,14 @@ Sistemde iki katmanlı rol yapısı vardır:
 ### Roller
 
 - **Müdür**: Tüm izinlere sahip
-- **Müdür Yardımcısı**: Öğretmen ve kullanıcı yönetimi, okul okuma
-- **Memur**: Öğretmen oluşturma/güncelleme, kullanıcı okuma, okul okuma
+- **Müdür Yardımcısı**: Öğretmen, öğrenci ve kullanıcı yönetimi, okul okuma
+- **Memur**: Öğretmen/öğrenci oluşturma/güncelleme, kullanıcı okuma, okul okuma
 - **Öğretmen**: Sadece okuma izinleri
 
 ### İzinler
 
 - `teachers.read`, `teachers.create`, `teachers.update`, `teachers.delete`
+- `students.read`, `students.create`, `students.update`, `students.delete`
 - `users.read`, `users.create`, `users.update`, `users.delete`
 - `schools.read`, `schools.create`, `schools.update`, `schools.delete`
 
@@ -363,6 +437,7 @@ Tenant (Kiracı)
 - `Schools` - Okullar
 - `Users` - Kullanıcılar
 - `Teachers` - Öğretmenler
+- `Students` - Öğrenciler
 - `roles` - Roller
 - `permissions` - İzinler
 - `role_permissions` - Rol-İzin ilişkileri

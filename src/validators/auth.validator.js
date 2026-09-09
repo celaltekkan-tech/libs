@@ -36,4 +36,11 @@ const changePasswordSchema = Joi.object({
   }),
 });
 
-module.exports = { registerSchema, loginSchema, changePasswordSchema };
+const updateProfileSchema = Joi.object({
+  full_name: Joi.string().required().min(2).max(100).messages({
+    'string.empty': 'Ad soyad zorunludur',
+    'string.min': 'Ad soyad en az 2 karakter olmalıdır',
+  }),
+});
+
+module.exports = { registerSchema, loginSchema, changePasswordSchema, updateProfileSchema };

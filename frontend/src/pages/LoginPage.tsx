@@ -20,11 +20,18 @@ export function LoginPage() {
     setError(null)
     setSubmitting(true)
     try {
-      await login({
+      const session = await login({
         email: values.email.trim(),
         password: values.password,
       })
-      navigate(from, { replace: true })
+      // Platform admin tenant rotalarına düşmesin; tenant kullanıcı platform deep-link'inden ana sayfaya gelsin.
+      let target = from || '/'
+      if (session.is_platform_admin) {
+        target = from.startsWith('/platform') || from === '/' ? from : '/'
+      } else if (from.startsWith('/platform')) {
+        target = '/'
+      }
+      navigate(target, { replace: true })
     } catch (err) {
       if (err instanceof ApiError && err.fields?.length) {
         setError(err.fields.map((field) => field.message).join(' '))
@@ -99,11 +106,7 @@ export function LoginPage() {
           </Button>
         </Form>
 
-        <p className="login-hint">
-          Hesabınız yoksa okul yöneticinizle iletişime geçin. Demo hesap:
-          <br />
-          <strong>admin@okul.local</strong> / <strong>Admin1234</strong>
-        </p>
+        <p className="login-hint">Hesabınız yoksa okul yöneticinizle iletişime geçin.</p>
       </div>
     </div>
   )

@@ -17,16 +17,37 @@ module.exports = (sequelize, DataTypes) => {
     rank: DataTypes.STRING,
     degree_rank_date: DataTypes.DATE,
     school_principal: DataTypes.STRING,
+    annual_leave_quota: DataTypes.INTEGER,
+    service_start_date: DataTypes.DATEONLY,
+    personnel_type: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: 'ogretmen',
+    },
+    contract_start_date: DataTypes.DATEONLY,
+    contract_end_date: DataTypes.DATEONLY,
     meta: DataTypes.JSONB
     }, {
     tableName: 'Teachers',
-    underscored: true
+    underscored: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
     });
     
     
     Teacher.associate = function(models) {
     Teacher.belongsTo(models.Tenant, { foreignKey: 'tenant_id' });
     Teacher.belongsTo(models.School, { foreignKey: 'school_id' });
+    Teacher.hasMany(models.Classroom, { foreignKey: 'teacher_id' });
+    Teacher.hasMany(models.ScheduleEntry, { foreignKey: 'teacher_id' });
+    Teacher.hasMany(models.LeaveRecord, { foreignKey: 'teacher_id' });
+    Teacher.hasMany(models.TrainingRecord, { foreignKey: 'teacher_id' });
+    Teacher.hasMany(models.DutyAssignment, { foreignKey: 'teacher_id' });
+    Teacher.hasMany(models.ExtraLessonEntry, { foreignKey: 'teacher_id' });
+    Teacher.hasMany(models.AttendanceRecord, { foreignKey: 'teacher_id' });
+    Teacher.hasMany(models.DykCourse, { foreignKey: 'teacher_id' });
+    Teacher.hasMany(models.ProctorAssignment, { foreignKey: 'teacher_id' });
+    Teacher.hasMany(models.TeacherDocument, { foreignKey: 'teacher_id' });
     };
     
     
