@@ -1,7 +1,8 @@
 'use strict';
 
-const { Announcement, Student } = require('../models');
+const { Announcement, AnnouncementRecipient, Student } = require('../models');
 const audit = require('../services/auditService');
+const smsEngine = require('../services/smsEngine');
 
 function assertTenantAccess(req, row) {
   if (req.user && req.user.tenant_id && row.tenant_id !== req.user.tenant_id) return false;
@@ -11,7 +12,7 @@ function assertTenantAccess(req, row) {
 // target_ids istemciden karışık tipte gelebilir (JSON number veya string);
 // hedef sütunun gerçek tipine göre burada zorunlu olarak dönüştürülür, aksi
 // halde Postgres "operator does not exist" hatası verir (varchar = integer vb.).
-async function resolveRecipientCount(tenantId, targetType, targetIds) {
+function buildRecipientWhere(tenantId, targetType, targetIds) {
   const where = { tenant_id: tenantId };
   const ids = Array.isArray(targetIds) ? targetIds : [targetIds];
   if (targetType === 'classroom') {
@@ -21,8 +22,14 @@ async function resolveRecipientCount(tenantId, targetType, targetIds) {
   } else if (targetType === 'student') {
     where.id = ids.map((v) => Number(v));
   } else if (targetType !== 'all') {
-    return 0;
+    return null;
   }
+  return where;
+}
+
+async function resolveRecipientCount(tenantId, targetType, targetIds) {
+  const where = buildRecipientWhere(tenantId, targetType, targetIds);
+  if (!where) return 0;
   return Student.count({ where });
 }
 
@@ -62,8 +69,10 @@ module.exports = {
     }
   },
 
-  // Gerçek bir SMS/e-posta sağlayıcı entegrasyonu yok; bu uç yalnızca kaydı
-  // "gönderildi" olarak işaretler (gönderim kuyruğu/denetim izi amaçlı).
+  // channel 'sms' veya 'both' ise hedeflenen her öğrencinin veli telefonuna
+  // gerçek bir SMS gönderimi denenir (smsEngine); her alıcı için sonuç
+  // AnnouncementRecipient satırına işlenir. channel yalnızca 'email' ise
+  // (e-posta gönderimi henüz uygulanmadığından) duyuru sadece işaretlenir.
   async markSent(req, res, next) {
     try {
       const row = await Announcement.findByPk(req.params.id);
@@ -72,15 +81,60 @@ module.exports = {
       if (row.status === 'gonderildi') {
         return res.status(409).json({ success: false, message: 'Bu duyuru zaten gönderildi olarak işaretli' });
       }
-      await row.update({ status: 'gonderildi', sent_at: new Date() });
+
+      let summary = { total: 0, basarili: 0, basarisiz: 0, iptal: 0 };
+
+      if (row.channel === 'sms' || row.channel === 'both') {
+        const where = buildRecipientWhere(row.tenant_id, row.target_type, row.target_ids);
+        const students = where ? await Student.findAll({ where }) : [];
+        summary.total = students.length;
+
+        for (const student of students) {
+          const phone = student.parent_phone && student.parent_phone.trim();
+          if (!phone) {
+            await AnnouncementRecipient.create({
+              announcement_id: row.id,
+              tenant_id: row.tenant_id,
+              student_id: student.id,
+              phone_number: '',
+              status: smsEngine.SMS_STATUS.CANCELLED,
+              error_message: 'Telefon numarası yok',
+            });
+            summary.iptal += 1;
+            continue;
+          }
+
+          const result = await smsEngine.sendSms({ phoneNumber: phone, message: row.body });
+          await AnnouncementRecipient.create({
+            announcement_id: row.id,
+            tenant_id: row.tenant_id,
+            student_id: student.id,
+            phone_number: phone,
+            status: result.status,
+            provider: result.providerName,
+            provider_message_id: result.providerMessageId,
+            error_message: result.error,
+            sent_at: result.status === smsEngine.SMS_STATUS.SUCCESS ? new Date() : null,
+          });
+          if (result.status === smsEngine.SMS_STATUS.SUCCESS) summary.basarili += 1;
+          else if (result.status === smsEngine.SMS_STATUS.CANCELLED) summary.iptal += 1;
+          else summary.basarisiz += 1;
+        }
+      }
+
+      const finalStatus = summary.total > 0 && summary.basarili === 0 ? 'basarisiz' : 'gonderildi';
+      await row.update({ status: finalStatus, sent_at: new Date() });
       await audit.log(req, {
         action: 'update',
         entityType: 'announcement',
         entityId: row.id,
-        summary: `Duyuru gönderildi olarak işaretlendi: ${row.title}`,
+        summary: `Duyuru gönderildi: ${row.title} (${summary.basarili} başarılı, ${summary.basarisiz} başarısız, ${summary.iptal} iptal)`,
       });
-      res.json({ success: true, data: row });
+      res.json({ success: true, data: row, summary });
     } catch (err) {
+      if (err instanceof smsEngine.SmsConfigError) {
+        return res.status(500).json({ success: false, message: `SMS motoru yapılandırma hatası: ${err.message}` });
+      }
       next(err);
     }
   },

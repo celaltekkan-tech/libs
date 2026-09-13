@@ -17,7 +17,7 @@ import {
 import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
-import { AppLayout } from '../components/AppLayout'
+import { Navigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import {
   createDykCourse,
@@ -38,7 +38,8 @@ import type { Student } from '../types/student'
 import type { Subject } from '../types/subject'
 import type { Teacher } from '../types/teacher'
 
-export function DykPage() {
+/** DYK kurs yoklaması — birleşik Devamsızlık sayfasında sekme olarak kullanılır. */
+export function DykAttendancePanel() {
   const { message, modal } = App.useApp()
   const { session, hasPermission } = useAuth()
 
@@ -171,8 +172,16 @@ export function DykPage() {
     if (!session || !selectedCourseId) return
     setSubmitting(true)
     try {
-      const entries = enrollments.map((e) => ({ student_id: e.student_id, present: presentSet.has(e.student_id) }))
-      await markDykAttendance(session.user.tenant_id, selectedCourseId, attendanceDate.format('YYYY-MM-DD'), entries)
+      const entries = enrollments.map((e) => ({
+        student_id: e.student_id,
+        present: presentSet.has(e.student_id),
+      }))
+      await markDykAttendance(
+        session.user.tenant_id,
+        selectedCourseId,
+        attendanceDate.format('YYYY-MM-DD'),
+        entries,
+      )
       message.success('Yoklama kaydedildi')
       void loadCourseDetail()
     } catch (err) {
@@ -206,7 +215,8 @@ export function DykPage() {
     },
     {
       title: 'Öğrenci',
-      render: (_: unknown, e: DykEnrollment) => (e.Student ? `${e.Student.first_name} ${e.Student.last_name}` : '—'),
+      render: (_: unknown, e: DykEnrollment) =>
+        e.Student ? `${e.Student.first_name} ${e.Student.last_name}` : '—',
     },
     { title: 'Öğrenci No', render: (_: unknown, e: DykEnrollment) => e.Student?.student_number || '—' },
     ...(canDelete
@@ -215,7 +225,12 @@ export function DykPage() {
             title: '',
             width: 60,
             render: (_: unknown, e: DykEnrollment) => (
-              <Button size="small" danger icon={<DeleteOutlined />} onClick={() => void onUnenroll(e.student_id)} />
+              <Button
+                size="small"
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => void onUnenroll(e.student_id)}
+              />
             ),
           },
         ]
@@ -237,11 +252,7 @@ export function DykPage() {
   const belowThresholdCount = summary.filter((s) => s.below_threshold).length
 
   return (
-    <AppLayout title="DYK Kursu Devam Takibi">
-      <Typography.Title level={3} style={{ margin: 0, marginBottom: 16 }}>
-        DYK Kursu Devam Takibi
-      </Typography.Title>
-
+    <>
       <Space wrap style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
         <Select
           value={selectedCourseId ?? undefined}
@@ -276,9 +287,18 @@ export function DykPage() {
 
           <Space wrap style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
             <Space>
-              <DatePicker value={attendanceDate} onChange={(v) => v && setAttendanceDate(v)} format="DD.MM.YYYY" />
+              <DatePicker
+                value={attendanceDate}
+                onChange={(v) => v && setAttendanceDate(v)}
+                format="DD.MM.YYYY"
+              />
               {canCreate && (
-                <Button type="primary" icon={<SaveOutlined />} loading={submitting} onClick={() => void onSaveAttendance()}>
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  loading={submitting}
+                  onClick={() => void onSaveAttendance()}
+                >
                   Yoklamayı Kaydet
                 </Button>
               )}
@@ -290,13 +310,31 @@ export function DykPage() {
             )}
           </Space>
 
-          <Table rowKey="id" columns={enrollmentColumns} dataSource={enrollments} pagination={false} />
+          <Table
+            rowKey="id"
+            columns={enrollmentColumns}
+            dataSource={enrollments}
+            pagination={false}
+            scroll={{ x: 'max-content' }}
+          />
 
           <Typography.Title level={4} style={{ marginTop: 32 }}>
             Devam Özeti
           </Typography.Title>
-          <Table rowKey="student_id" columns={summaryColumns} dataSource={summary} pagination={false} />
+          <Table
+            rowKey="student_id"
+            columns={summaryColumns}
+            dataSource={summary}
+            pagination={false}
+            scroll={{ x: 'max-content' }}
+          />
         </>
+      )}
+
+      {!loading && courses.length === 0 && (
+        <Typography.Paragraph type="secondary">
+          Henüz DYK kursu yok. Yeni kurs oluşturarak yoklama almaya başlayabilirsiniz.
+        </Typography.Paragraph>
       )}
 
       <Modal
@@ -309,7 +347,12 @@ export function DykPage() {
         cancelText="Vazgeç"
         destroyOnHidden
       >
-        <Form form={form} layout="vertical" onFinish={onCreateCourse} initialValues={{ min_attendance_rate: 80 }}>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={onCreateCourse}
+          initialValues={{ min_attendance_rate: 80 }}
+        >
           <Form.Item name="name" label="Kurs adı" rules={[{ required: true, message: 'Kurs adı zorunludur' }]}>
             <Input placeholder="Örn. Matematik DYK" />
           </Form.Item>
@@ -321,7 +364,10 @@ export function DykPage() {
               allowClear
               showSearch
               optionFilterProp="label"
-              options={teachers.map((t) => ({ value: t.id, label: `${t.first_name} ${t.last_name}` }))}
+              options={teachers.map((t) => ({
+                value: t.id,
+                label: `${t.first_name} ${t.last_name}`,
+              }))}
             />
           </Form.Item>
           <Form.Item name="academic_year" label="Eğitim öğretim yılı">
@@ -346,10 +392,18 @@ export function DykPage() {
           optionFilterProp="label"
           style={{ width: '100%' }}
           placeholder="Öğrenci seçin"
-          options={availableStudents.map((s) => ({ value: s.id, label: `${s.first_name} ${s.last_name} (${s.student_number || '—'})` }))}
+          options={availableStudents.map((s) => ({
+            value: s.id,
+            label: `${s.first_name} ${s.last_name} (${s.student_number || '—'})`,
+          }))}
           onChange={(ids: number[]) => void onEnroll(ids)}
         />
       </Modal>
-    </AppLayout>
+    </>
   )
+}
+
+/** Eski /dyk yolu → birleşik sayfaya yönlendirir. */
+export function DykPage() {
+  return <Navigate to="/absences?tab=dyk" replace />
 }

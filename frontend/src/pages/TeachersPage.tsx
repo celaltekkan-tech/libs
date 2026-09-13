@@ -22,16 +22,23 @@ import {
   DownloadOutlined,
   EditOutlined,
   FileTextOutlined,
+  ImportOutlined,
   PlusOutlined,
+  RiseOutlined,
   SearchOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { AppLayout } from '../components/AppLayout'
+import { MebbisImportModal } from '../components/MebbisImportModal'
 import { useAuth } from '../auth/AuthContext'
+import { useActiveSchool } from '../auth/ActiveSchoolContext'
 import {
+  applyPromotion,
   createTeacher,
   deleteTeacher,
+  downloadPromotionForm,
+  downloadSalaryChangeForm,
   downloadTeacherDocument,
   exportTeachers,
   fetchUpcomingPromotions,
@@ -39,11 +46,16 @@ import {
   updateTeacher,
 } from '../api/teachers'
 import type { TeacherDocumentType, UpcomingPromotion } from '../api/teachers'
-import { listSchools } from '../api/schools'
 import { getErrorMessage } from '../api/client'
-import type { Teacher, TeacherPayload } from '../types/teacher'
-import type { School } from '../types/school'
+import type { ApplyPromotionPayload, Teacher, TeacherPayload } from '../types/teacher'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+
+interface PromotionFormValues {
+  new_degree: string
+  new_rank: string
+  new_degree_rank_date: Dayjs
+  note?: string
+}
 
 interface TeacherFormValues {
   first_name: string
@@ -65,33 +77,40 @@ interface TeacherFormValues {
   service_start_date?: Dayjs | null
   annual_leave_quota?: number | null
   personnel_type?: string
+  union_name?: string
 }
 
 export function TeachersPage() {
   const { message, modal } = App.useApp()
   const { session, hasPermission } = useAuth()
+  const { schools, activeSchoolId, activeSchool } = useActiveSchool()
   const [teachers, setTeachers] = useState<Teacher[]>([])
-  const [schools, setSchools] = useState<School[]>([])
   const [promotions, setPromotions] = useState<UpcomingPromotion[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [editing, setEditing] = useState<Teacher | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [search, setSearch] = useState('')
   const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx')
   const [form] = Form.useForm<TeacherFormValues>()
+  const [promotionModalOpen, setPromotionModalOpen] = useState(false)
+  const [promotionTarget, setPromotionTarget] = useState<UpcomingPromotion | null>(null)
+  const [promotionSubmitting, setPromotionSubmitting] = useState(false)
+  const [promotionForm] = Form.useForm<PromotionFormValues>()
+  const [salaryFormOpen, setSalaryFormOpen] = useState(false)
+  const [salaryFormPeriod, setSalaryFormPeriod] = useState<Dayjs>(dayjs())
+  const [salaryFormSubmitting, setSalaryFormSubmitting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [teacherData, schoolData, promotionData] = await Promise.all([
+      const [teacherData, promotionData] = await Promise.all([
         listTeachers(),
-        listSchools(),
         fetchUpcomingPromotions(90).catch(() => []),
       ])
       setTeachers(teacherData)
-      setSchools(schoolData)
       setPromotions(promotionData)
     } catch (err) {
       message.error(getErrorMessage(err))
@@ -152,6 +171,7 @@ export function TeachersPage() {
       service_start_date: teacher.service_start_date ? dayjs(teacher.service_start_date) : null,
       annual_leave_quota: teacher.annual_leave_quota,
       personnel_type: teacher.personnel_type,
+      union_name: teacher.union_name || undefined,
     })
     setModalOpen(true)
   }
@@ -231,6 +251,60 @@ export function TeachersPage() {
     }
   }
 
+  const openApplyPromotion = (promotion: UpcomingPromotion) => {
+    setPromotionTarget(promotion)
+    promotionForm.setFieldsValue({
+      new_degree: promotion.degree || undefined,
+      new_rank: promotion.rank || undefined,
+      new_degree_rank_date: dayjs(promotion.next_promotion_date),
+      note: undefined,
+    })
+    setPromotionModalOpen(true)
+  }
+
+  const onApplyPromotion = async (values: PromotionFormValues) => {
+    if (!promotionTarget) return
+    setPromotionSubmitting(true)
+    try {
+      const payload: ApplyPromotionPayload = {
+        new_degree: values.new_degree,
+        new_rank: values.new_rank,
+        new_degree_rank_date: values.new_degree_rank_date.toISOString(),
+        note: values.note || null,
+      }
+      const { history } = await applyPromotion(promotionTarget.teacher_id, payload)
+      message.success('Terfi/kademe ilerlemesi uygulandı')
+      setPromotionModalOpen(false)
+      void load()
+      try {
+        const blob = await downloadPromotionForm(history.id)
+        downloadBlob(blob, `terfi-formu-${promotionTarget.personnel_no || promotionTarget.teacher_id}.xlsx`)
+      } catch (err) {
+        message.warning('Terfi kaydedildi ancak form indirilemedi: ' + getErrorMessage(err))
+      }
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setPromotionSubmitting(false)
+    }
+  }
+
+  const onDownloadSalaryForm = async () => {
+    setSalaryFormSubmitting(true)
+    try {
+      const month = salaryFormPeriod.month() + 1
+      const year = salaryFormPeriod.year()
+      const blob = await downloadSalaryChangeForm(month, year)
+      downloadBlob(blob, `maas-degisiklik-${year}-${String(month).padStart(2, '0')}.xlsx`)
+      message.success('Maaş değişikliği formu indirildi')
+      setSalaryFormOpen(false)
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSalaryFormSubmitting(false)
+    }
+  }
+
   const columns: ColumnsType<Teacher> = [
     {
       title: 'Ad soyad',
@@ -246,6 +320,7 @@ export function TeachersPage() {
     },
     { title: 'Okul', render: (_: unknown, record) => schoolName(record.school_id) },
     { title: 'Şehir', dataIndex: 'city', render: (v: string | null) => v || '—' },
+    { title: 'Sendika', dataIndex: 'union_name', render: (v: string | null) => v || '—' },
     {
       title: 'İşlemler',
       width: 160,
@@ -285,6 +360,16 @@ export function TeachersPage() {
             <Button icon={<DownloadOutlined />} onClick={() => setExportOpen(true)}>
               Dışa Aktar
             </Button>
+            {canUpdate && (
+              <Button icon={<RiseOutlined />} onClick={() => setSalaryFormOpen(true)}>
+                Maaş Değişikliği Formu
+              </Button>
+            )}
+            {canCreate && (
+              <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>
+                MEBBİS'ten İçe Aktar
+              </Button>
+            )}
             {canCreate && (
               <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
                 Yeni Öğretmen
@@ -308,6 +393,7 @@ export function TeachersPage() {
           columns={columns}
           dataSource={filteredTeachers}
           pagination={{ pageSize: 20 }}
+          scroll={{ x: 'max-content' }}
         />
 
         {promotions.length > 0 && (
@@ -328,6 +414,7 @@ export function TeachersPage() {
                     rowKey="teacher_id"
                     pagination={false}
                     dataSource={promotions}
+                    scroll={{ x: 'max-content' }}
                     columns={[
                       { title: 'Personel', dataIndex: 'teacher_name' },
                       { title: 'Mevcut Derece/Kademe', render: (_, r) => `${r.degree || '—'} / ${r.rank || '—'}` },
@@ -337,6 +424,18 @@ export function TeachersPage() {
                         dataIndex: 'days_remaining',
                         render: (v: number) => <Tag color={v <= 30 ? 'red' : 'blue'}>{v} gün</Tag>,
                       },
+                      ...(canUpdate
+                        ? [
+                            {
+                              title: 'İşlem',
+                              render: (_: unknown, record: UpcomingPromotion) => (
+                                <Button size="small" onClick={() => openApplyPromotion(record)}>
+                                  Terfiyi Uygula
+                                </Button>
+                              ),
+                            },
+                          ]
+                        : []),
                     ]}
                   />
                 ),
@@ -465,9 +564,18 @@ export function TeachersPage() {
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item name="school_principal" label="Okul Müdürü">
-            <Input />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="school_principal" label="Okul Müdürü">
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="union_name" label="Sendika">
+                <Input placeholder="Sendika adı (isteğe bağlı)" />
+              </Form.Item>
+            </Col>
+          </Row>
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
@@ -517,6 +625,81 @@ export function TeachersPage() {
             {search.trim()
               ? `Arama filtresi uygulanacak (${filteredTeachers.length} kayıt).`
               : 'Tüm öğretmenler dışa aktarılır.'}
+          </Typography.Text>
+        </Form>
+      </Modal>
+
+      <MebbisImportModal
+        open={importOpen}
+        schoolId={activeSchoolId}
+        schoolName={activeSchool?.name}
+        onCancel={() => setImportOpen(false)}
+        onImported={() => void load()}
+      />
+
+      <Modal
+        title={promotionTarget ? `Terfiyi Uygula — ${promotionTarget.teacher_name}` : 'Terfiyi Uygula'}
+        open={promotionModalOpen}
+        onCancel={() => setPromotionModalOpen(false)}
+        onOk={() => promotionForm.submit()}
+        confirmLoading={promotionSubmitting}
+        okText="Uygula ve Formu İndir"
+        cancelText="Vazgeç"
+        destroyOnHidden
+      >
+        <Form form={promotionForm} layout="vertical" onFinish={onApplyPromotion}>
+          <Typography.Text type="secondary">
+            Mevcut durum: {promotionTarget?.degree || '—'} / {promotionTarget?.rank || '—'}
+          </Typography.Text>
+          <Row gutter={16} style={{ marginTop: 12 }}>
+            <Col span={12}>
+              <Form.Item name="new_degree" label="Yeni Derece" rules={[{ required: true, message: 'Zorunlu' }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="new_rank" label="Yeni Kademe" rules={[{ required: true, message: 'Zorunlu' }]}>
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item
+            name="new_degree_rank_date"
+            label="Terfi Tarihi"
+            rules={[{ required: true, message: 'Zorunlu' }]}
+          >
+            <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
+          </Form.Item>
+          <Form.Item name="note" label="Açıklama (isteğe bağlı)">
+            <Input placeholder="Örn. 657 s. DMK 64-65. Md." />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title="Maaş Değişikliği Formu (Terfi Bölümü)"
+        open={salaryFormOpen}
+        onCancel={() => setSalaryFormOpen(false)}
+        onOk={() => void onDownloadSalaryForm()}
+        confirmLoading={salaryFormSubmitting}
+        okText="İndir"
+        cancelText="Vazgeç"
+        destroyOnHidden
+      >
+        <Form layout="vertical">
+          <Form.Item label="Ay / Yıl">
+            <DatePicker
+              picker="month"
+              value={salaryFormPeriod}
+              onChange={(v) => v && setSalaryFormPeriod(v)}
+              format="MMMM YYYY"
+              style={{ width: '100%' }}
+              allowClear={false}
+            />
+          </Form.Item>
+          <Typography.Text type="secondary">
+            Seçilen aya ait onaylanmış terfi kayıtları formun "D) Terfi Edecek Personelin" bölümüne işlenir; formun
+            diğer bölümleri (banka şubesi, personel sayıları vb.) elle doldurulmak üzere boş bırakılır.
           </Typography.Text>
         </Form>
       </Modal>

@@ -14,6 +14,7 @@ module.exports = (sequelize, DataTypes) => {
       exam_date: DataTypes.DATEONLY,
       start_time: DataTypes.STRING,
       duration_minutes: DataTypes.INTEGER,
+      teacher_id: DataTypes.INTEGER,
       notes: DataTypes.STRING,
     },
     {
@@ -29,6 +30,7 @@ module.exports = (sequelize, DataTypes) => {
     Exam.belongsTo(models.School, { foreignKey: 'school_id' });
     Exam.belongsTo(models.Classroom, { foreignKey: 'classroom_id' });
     Exam.belongsTo(models.Subject, { foreignKey: 'subject_id' });
+    Exam.belongsTo(models.Teacher, { foreignKey: 'teacher_id', as: 'Teacher' });
   };
 
   return Exam;

@@ -3,20 +3,30 @@ import {
   App,
   Button,
   Checkbox,
+  Drawer,
+  Empty,
   Form,
   Input,
-  InputNumber,
   Modal,
   Select,
   Space,
+  Switch,
   Table,
   Tabs,
   Tag,
   Typography,
 } from 'antd'
-import { DeleteOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
+import {
+  CopyOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
+  EditOutlined,
+  PlusOutlined,
+  TableOutlined,
+} from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { ExamRoomModal, SeatingLayoutBoard } from '../components/ExamRoomModal'
 import { useAuth } from '../auth/AuthContext'
 import {
   assignProctor,
@@ -32,14 +42,17 @@ import {
   listProctors,
   markSeatAttendance,
   removeProctor,
+  updateExamRoom,
 } from '../api/kelebek'
 import { listClassrooms } from '../api/classrooms'
 import { listTeachers } from '../api/teachers'
+import { listScheduleTeachers } from '../api/schedule'
 import { getErrorMessage } from '../api/client'
-import type { ExamRoom, ExamSession, ProctorAssignment, SeatAssignment } from '../types/kelebek'
+import type { ExamRoom, ExamRoomPayload, ExamSession, ProctorAssignment, SeatAssignment } from '../types/kelebek'
 import type { Classroom } from '../types/classroom'
 import { classroomLabel } from '../types/classroom'
 import type { Teacher } from '../types/teacher'
+import type { ScheduleTeacherOption } from '../api/schedule'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
 
 export function KelebekPage() {
@@ -50,18 +63,23 @@ export function KelebekPage() {
   const [sessions, setSessions] = useState<ExamSession[]>([])
   const [classrooms, setClassrooms] = useState<Classroom[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
+  const [scheduleTeachers, setScheduleTeachers] = useState<ScheduleTeacherOption[]>([])
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null)
   const [seating, setSeating] = useState<SeatAssignment[]>([])
   const [proctors, setProctors] = useState<ProctorAssignment[]>([])
   const [loading, setLoading] = useState(true)
-  const [roomModalOpen, setRoomModalOpen] = useState(false)
+  const [roomsDrawerOpen, setRoomsDrawerOpen] = useState(false)
+  const [roomEditorOpen, setRoomEditorOpen] = useState(false)
+  const [editingRoom, setEditingRoom] = useState<ExamRoom | null>(null)
+  const [duplicateRoom, setDuplicateRoom] = useState<ExamRoom | null>(null)
+  const [seatingPreviewRoom, setSeatingPreviewRoom] = useState<ExamRoom | null>(null)
+  const [roomSubmitting, setRoomSubmitting] = useState(false)
   const [sessionModalOpen, setSessionModalOpen] = useState(false)
   const [generateModalOpen, setGenerateModalOpen] = useState(false)
   const [proctorModalOpen, setProctorModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx')
 
-  const [roomForm] = Form.useForm<{ name: string; capacity: number }>()
   const [sessionForm] = Form.useForm<{ name: string; exam_date: string; notes?: string }>()
   const [generateForm] = Form.useForm<{ exam_room_ids: number[]; classroom_ids: number[] }>()
   const [proctorForm] = Form.useForm<{ exam_room_id: number; teacher_id: number }>()
@@ -72,16 +90,18 @@ export function KelebekPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [roomData, sessionData, classroomData, teacherData] = await Promise.all([
+      const [roomData, sessionData, classroomData, teacherData, scheduleTeacherData] = await Promise.all([
         listExamRooms(),
         listExamSessions(),
         listClassrooms({ is_active: true }),
         listTeachers(),
+        listScheduleTeachers().catch(() => []),
       ])
       setRooms(roomData)
       setSessions(sessionData)
       setClassrooms(classroomData)
       setTeachers(teacherData)
+      setScheduleTeachers(scheduleTeacherData)
       if (sessionData.length > 0 && !selectedSessionId) setSelectedSessionId(sessionData[0].id)
     } catch (err) {
       message.error(getErrorMessage(err))
@@ -117,30 +137,115 @@ export function KelebekPage() {
     void loadSessionDetail()
   }, [loadSessionDetail])
 
-  const onCreateRoom = async (values: { name: string; capacity: number }) => {
+  const openAddRoom = () => {
+    setEditingRoom(null)
+    setDuplicateRoom(null)
+    setRoomEditorOpen(true)
+  }
+
+  const openEditRoom = (room: ExamRoom) => {
+    setEditingRoom(room)
+    setDuplicateRoom(null)
+    setRoomEditorOpen(true)
+  }
+
+  const openDuplicateRoom = (room: ExamRoom) => {
+    setEditingRoom(null)
+    setDuplicateRoom(room)
+    setRoomEditorOpen(true)
+  }
+
+  const onSubmitRoom = async (payload: ExamRoomPayload, id?: number) => {
     if (!session) return
-    setSubmitting(true)
+    setRoomSubmitting(true)
     try {
-      await createExamRoom(session.user.tenant_id, values)
-      message.success('Salon oluşturuldu')
-      roomForm.resetFields()
+      if (id) {
+        await updateExamRoom(id, payload)
+        message.success('Salon güncellendi')
+      } else {
+        await createExamRoom(session.user.tenant_id, payload)
+        message.success('Salon oluşturuldu')
+      }
+      setRoomEditorOpen(false)
       void load()
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
-      setSubmitting(false)
+      setRoomSubmitting(false)
     }
   }
 
-  const onDeleteRoom = async (room: ExamRoom) => {
+  const onToggleRoomActive = async (room: ExamRoom, checked: boolean) => {
     try {
-      await deleteExamRoom(room.id)
-      message.success('Salon silindi')
+      await updateExamRoom(room.id, { is_active: checked })
       void load()
     } catch (err) {
       message.error(getErrorMessage(err))
     }
   }
+
+  const onDeleteRoom = (room: ExamRoom) => {
+    modal.confirm({
+      title: 'Salonu sil',
+      content: `"${room.name}" salonunu silmek istediğinize emin misiniz?`,
+      okText: 'Sil',
+      okButtonProps: { danger: true },
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        try {
+          await deleteExamRoom(room.id)
+          message.success('Salon silindi')
+          void load()
+        } catch (err) {
+          message.error(getErrorMessage(err))
+        }
+      },
+    })
+  }
+
+  const roomColumns: ColumnsType<ExamRoom> = [
+    { title: 'Salon Adı', dataIndex: 'name' },
+    { title: 'Sıra Sayısı', dataIndex: 'capacity', width: 110 },
+    {
+      title: 'Oturma Düzeni',
+      width: 120,
+      align: 'center',
+      render: (_: unknown, room: ExamRoom) => (
+        <Button
+          size="small"
+          icon={<TableOutlined />}
+          disabled={!room.seating_layout}
+          onClick={() => setSeatingPreviewRoom(room)}
+        />
+      ),
+    },
+    {
+      title: 'Sınav Salonu',
+      width: 120,
+      align: 'center',
+      render: (_: unknown, room: ExamRoom) => (
+        <Switch
+          checked={room.is_active}
+          checkedChildren="Aktif"
+          unCheckedChildren="Pasif"
+          disabled={!canCreate}
+          onChange={(checked) => void onToggleRoomActive(room, checked)}
+        />
+      ),
+    },
+    {
+      title: 'Seçenekler',
+      width: 130,
+      align: 'center',
+      render: (_: unknown, room: ExamRoom) => (
+        <Space size={4}>
+          {canCreate && <Button size="small" icon={<CopyOutlined />} onClick={() => openDuplicateRoom(room)} />}
+          {canCreate && <Button size="small" icon={<EditOutlined />} onClick={() => openEditRoom(room)} />}
+          {canDelete && <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onDeleteRoom(room)} />}
+        </Space>
+      ),
+    },
+  ]
 
   const onCreateSession = async (values: { name: string; exam_date: string; notes?: string }) => {
     if (!session) return
@@ -265,6 +370,36 @@ export function KelebekPage() {
     },
   ]
 
+  const sessionColumns: ColumnsType<ExamSession> = [
+    { title: 'Sınav Adı', dataIndex: 'name' },
+    { title: 'Tarih', dataIndex: 'exam_date', width: 140 },
+    {
+      title: 'Not',
+      dataIndex: 'notes',
+      ellipsis: true,
+      render: (v: string | null) => v || '—',
+    },
+    {
+      title: 'İşlem',
+      width: 160,
+      align: 'center',
+      render: (_: unknown, row: ExamSession) => (
+        <Space size={4} onClick={(e) => e.stopPropagation()}>
+          <Button
+            size="small"
+            type={selectedSessionId === row.id ? 'primary' : 'default'}
+            onClick={() => setSelectedSessionId(row.id)}
+          >
+            {selectedSessionId === row.id ? 'Seçili' : 'Seç'}
+          </Button>
+          {canDelete && (
+            <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onDeleteSession(row)} />
+          )}
+        </Space>
+      ),
+    },
+  ]
+
   return (
     <AppLayout title="Kelebek Sistemi — Sınav Salon ve Oturma Planı">
       <Typography.Title level={3} style={{ margin: 0, marginBottom: 16 }}>
@@ -281,7 +416,7 @@ export function KelebekPage() {
           style={{ width: 300 }}
         />
         <Space wrap>
-          <Button onClick={() => setRoomModalOpen(true)}>Salonlar</Button>
+          <Button onClick={() => setRoomsDrawerOpen(true)}>Salonlar</Button>
           {canCreate && (
             <Button icon={<PlusOutlined />} onClick={() => setSessionModalOpen(true)}>
               Yeni Oturum
@@ -336,42 +471,94 @@ export function KelebekPage() {
             </Space>
           )}
 
-          <Tabs
-            items={seatingByRoom.map(([roomId, group]) => ({
-              key: String(roomId),
-              label: `${group.roomName} (${group.seats.length})`,
-              children: <Table rowKey="id" size="small" columns={seatColumns} dataSource={group.seats} pagination={false} />,
-            }))}
-          />
+          {seatingByRoom.length > 0 ? (
+            <Tabs
+              items={seatingByRoom.map(([roomId, group]) => ({
+                key: String(roomId),
+                label: `${group.roomName} (${group.seats.length})`,
+                children: (
+                  <Table
+                    rowKey="id"
+                    size="small"
+                    columns={seatColumns}
+                    dataSource={group.seats}
+                    pagination={false}
+                    scroll={{ x: 'max-content' }}
+                  />
+                ),
+              }))}
+            />
+          ) : (
+            <Empty description="Bu oturum için henüz oturma planı oluşturulmadı" style={{ margin: '32px 0' }} />
+          )}
         </>
       )}
 
-      <Modal title="Sınav Salonları" open={roomModalOpen} onCancel={() => setRoomModalOpen(false)} footer={null}>
-        <Space direction="vertical" style={{ width: '100%' }}>
-          {rooms.map((r) => (
-            <Space key={r.id} style={{ width: '100%', justifyContent: 'space-between' }}>
-              <Tag>{r.name} (kapasite: {r.capacity})</Tag>
-              {canDelete && (
-                <Button size="small" danger icon={<DeleteOutlined />} onClick={() => void onDeleteRoom(r)} />
-              )}
-            </Space>
-          ))}
-          {canCreate && (
-            <Form form={roomForm} layout="inline" onFinish={onCreateRoom} style={{ marginTop: 12 }}>
-              <Form.Item name="name" rules={[{ required: true, message: 'Ad zorunludur' }]}>
-                <Input placeholder="Salon adı" />
-              </Form.Item>
-              <Form.Item name="capacity" rules={[{ required: true, message: 'Kapasite zorunludur' }]} initialValue={30}>
-                <InputNumber min={1} max={500} placeholder="Kapasite" />
-              </Form.Item>
-              <Form.Item>
-                <Button htmlType="submit" loading={submitting}>
-                  Ekle
-                </Button>
-              </Form.Item>
-            </Form>
-          )}
-        </Space>
+      <Typography.Title level={4} style={{ marginTop: selectedSessionId ? 32 : 0 }}>
+        Oluşturulan Sınavlar
+      </Typography.Title>
+      <Table
+        rowKey="id"
+        loading={loading}
+        size="small"
+        columns={sessionColumns}
+        dataSource={sessions}
+        pagination={{ pageSize: 20 }}
+        rowClassName={(row) => (row.id === selectedSessionId ? 'ant-table-row-selected' : '')}
+        onRow={(row) => ({
+          onClick: () => setSelectedSessionId(row.id),
+          style: { cursor: 'pointer' },
+        })}
+        locale={{ emptyText: <Empty description="Henüz sınav oturumu oluşturulmadı" /> }}
+        scroll={{ x: 'max-content' }}
+      />
+
+      <Drawer
+        title="Sınav Salonları"
+        open={roomsDrawerOpen}
+        onClose={() => setRoomsDrawerOpen(false)}
+        width={640}
+        extra={
+          canCreate && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={openAddRoom}>
+              Salon Ekle
+            </Button>
+          )
+        }
+      >
+        <Table
+          rowKey="id"
+          size="small"
+          columns={roomColumns}
+          dataSource={rooms}
+          pagination={false}
+          locale={{ emptyText: <Empty description="Henüz salon eklenmedi" /> }}
+          scroll={{ x: 'max-content' }}
+        />
+      </Drawer>
+
+      <ExamRoomModal
+        open={roomEditorOpen}
+        editing={editingRoom}
+        duplicateFrom={duplicateRoom}
+        submitting={roomSubmitting}
+        onCancel={() => setRoomEditorOpen(false)}
+        onSubmit={onSubmitRoom}
+      />
+
+      <Modal
+        title={`Oturma Düzeni${seatingPreviewRoom ? ` — ${seatingPreviewRoom.name}` : ''}`}
+        open={!!seatingPreviewRoom}
+        onCancel={() => setSeatingPreviewRoom(null)}
+        footer={null}
+        width={760}
+        destroyOnHidden
+      >
+        {seatingPreviewRoom?.seating_layout ? (
+          <SeatingLayoutBoard layout={seatingPreviewRoom.seating_layout} />
+        ) : (
+          <Empty description="Bu salon için oturma düzeni tanımlı değil" />
+        )}
       </Modal>
 
       <Modal
@@ -413,7 +600,13 @@ export function KelebekPage() {
         </Typography.Paragraph>
         <Form form={generateForm} layout="vertical" onFinish={onGenerate}>
           <Form.Item name="exam_room_ids" label="Salonlar" rules={[{ required: true, message: 'En az bir salon seçin' }]}>
-            <Select mode="multiple" options={rooms.map((r) => ({ value: r.id, label: r.name }))} />
+            <Select
+              mode="multiple"
+              options={rooms
+                .filter((r) => r.is_active)
+                .map((r) => ({ value: r.id, label: r.name }))}
+              placeholder="Aktif salonlar"
+            />
           </Form.Item>
           <Form.Item name="classroom_ids" label="Sınıflar" rules={[{ required: true, message: 'En az bir sınıf seçin' }]}>
             <Select mode="multiple" options={classrooms.map((c) => ({ value: c.id, label: classroomLabel(c) }))} />
@@ -432,13 +625,50 @@ export function KelebekPage() {
       >
         <Form form={proctorForm} layout="vertical" onFinish={onAssignProctor}>
           <Form.Item name="exam_room_id" label="Salon" rules={[{ required: true, message: 'Salon seçimi zorunludur' }]}>
-            <Select options={rooms.map((r) => ({ value: r.id, label: r.name }))} />
+            <Select
+              options={rooms
+                .filter((r) => r.is_active)
+                .map((r) => ({ value: r.id, label: r.name }))}
+              placeholder="Aktif salon seçin"
+            />
           </Form.Item>
-          <Form.Item name="teacher_id" label="Öğretmen" rules={[{ required: true, message: 'Öğretmen seçimi zorunludur' }]}>
+          <Form.Item
+            name="teacher_id"
+            label="Öğretmen"
+            rules={[{ required: true, message: 'Öğretmen seçimi zorunludur' }]}
+            extra={
+              scheduleTeachers.length > 0
+                ? 'Öncelikle ders programındaki öğretmenler listelenir.'
+                : 'Ders programı yüklenince program öğretmenleri burada öncelikli görünür.'
+            }
+          >
             <Select
               showSearch
               optionFilterProp="label"
-              options={teachers.map((t) => ({ value: t.id, label: `${t.first_name} ${t.last_name}` }))}
+              options={[
+                ...(scheduleTeachers.length
+                  ? [
+                      {
+                        label: 'Ders programından',
+                        options: scheduleTeachers.map((t) => ({
+                          value: t.id,
+                          label: `${t.first_name} ${t.last_name}${
+                            t.subject_names.length ? ` (${t.subject_names.slice(0, 2).join(', ')})` : ''
+                          }`,
+                        })),
+                      },
+                    ]
+                  : []),
+                {
+                  label: 'Tüm öğretmenler',
+                  options: teachers
+                    .filter((t) => !scheduleTeachers.some((s) => s.id === t.id))
+                    .map((t) => ({
+                      value: t.id,
+                      label: `${t.first_name} ${t.last_name}`,
+                    })),
+                },
+              ]}
             />
           </Form.Item>
         </Form>

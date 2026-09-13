@@ -151,6 +151,7 @@ export function AuditLogsPage() {
           columns={columns}
           dataSource={rows}
           pagination={{ pageSize: 25 }}
+          scroll={{ x: 'max-content' }}
         />
       </div>
     </AppLayout>

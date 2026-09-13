@@ -1,9 +1,35 @@
-import { useState } from 'react'
-import { App, Card, Col, Descriptions, Form, Input, Row, Space, Tag, Typography, Button } from 'antd'
+import { useEffect, useState } from 'react'
+import {
+  Alert,
+  App,
+  Card,
+  Col,
+  Descriptions,
+  Form,
+  Input,
+  Row,
+  Segmented,
+  Space,
+  Switch,
+  Tag,
+  Typography,
+  Button,
+} from 'antd'
+import { MoonOutlined, SunOutlined } from '@ant-design/icons'
 import { AppLayout } from '../components/AppLayout'
 import { useAuth } from '../auth/AuthContext'
-import { changePassword, updateProfile } from '../api/auth'
+import { useThemeMode } from '../theme/ThemeContext'
+import {
+  changePassword,
+  confirm2fa,
+  disable2fa,
+  get2faStatus,
+  setup2fa,
+  updateProfile,
+  updateTenantTwoFactorSetting,
+} from '../api/auth'
 import { getErrorMessage } from '../api/client'
+import type { TwoFactorSetup } from '../types/auth'
 
 interface ProfileForm {
   full_name: string
@@ -15,15 +41,52 @@ interface PasswordForm {
   confirm_password: string
 }
 
+interface Confirm2faForm {
+  code: string
+}
+
+interface Disable2faForm {
+  password: string
+  code: string
+}
+
 export function ProfilePage() {
   const { message } = App.useApp()
-  const { session, setSessionPayload } = useAuth()
+  const { session, setSessionPayload, refreshSession } = useAuth()
+  const { mode, setMode } = useThemeMode()
   const [profileSubmitting, setProfileSubmitting] = useState(false)
   const [passwordSubmitting, setPasswordSubmitting] = useState(false)
+  const [twoFactorLoading, setTwoFactorLoading] = useState(false)
+  const [tenant2faSaving, setTenant2faSaving] = useState(false)
+  const [tenantTwoFactorEnabled, setTenantTwoFactorEnabled] = useState(
+    Boolean(session?.tenant_two_factor_enabled),
+  )
+  const [userTotpEnabled, setUserTotpEnabled] = useState(Boolean(session?.user.totp_enabled))
+  const [setupData, setSetupData] = useState<TwoFactorSetup | null>(null)
+  const [backupCodes, setBackupCodes] = useState<string[] | null>(null)
   const [profileForm] = Form.useForm<ProfileForm>()
   const [passwordForm] = Form.useForm<PasswordForm>()
+  const [confirm2faForm] = Form.useForm<Confirm2faForm>()
+  const [disable2faForm] = Form.useForm<Disable2faForm>()
 
   const user = session?.user
+  const canManageTenant2fa = Boolean(session?.is_global_admin && !session?.is_platform_admin)
+
+  useEffect(() => {
+    let cancelled = false
+    get2faStatus()
+      .then((status) => {
+        if (cancelled) return
+        setTenantTwoFactorEnabled(status.tenant_two_factor_enabled)
+        setUserTotpEnabled(status.totp_enabled)
+      })
+      .catch(() => {
+        // Profil yüklenirken 2FA durumu alınamazsa mevcut session değeri kullanılır.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const onSaveProfile = async (values: ProfileForm) => {
     setProfileSubmitting(true)
@@ -48,6 +111,77 @@ export function ProfilePage() {
       message.error(getErrorMessage(err))
     } finally {
       setPasswordSubmitting(false)
+    }
+  }
+
+  const onToggleTenant2fa = async (checked: boolean) => {
+    setTenant2faSaving(true)
+    try {
+      const result = await updateTenantTwoFactorSetting(checked)
+      setTenantTwoFactorEnabled(result.two_factor_enabled)
+      if (!result.two_factor_enabled) {
+        setUserTotpEnabled(false)
+        setSetupData(null)
+        setBackupCodes(null)
+      }
+      await refreshSession()
+      message.success(
+        result.two_factor_enabled
+          ? 'Hesap için iki adımlı doğrulama açıldı'
+          : 'Hesap için iki adımlı doğrulama kapatıldı',
+      )
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setTenant2faSaving(false)
+    }
+  }
+
+  const onStart2faSetup = async () => {
+    setTwoFactorLoading(true)
+    try {
+      const data = await setup2fa()
+      setSetupData(data)
+      setBackupCodes(null)
+      confirm2faForm.resetFields()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setTwoFactorLoading(false)
+    }
+  }
+
+  const onConfirm2fa = async (values: Confirm2faForm) => {
+    setTwoFactorLoading(true)
+    try {
+      const result = await confirm2fa(values.code.trim())
+      setUserTotpEnabled(true)
+      setSetupData(null)
+      setBackupCodes(result.backup_codes)
+      confirm2faForm.resetFields()
+      await refreshSession()
+      message.success('İki adımlı doğrulama etkinleştirildi')
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setTwoFactorLoading(false)
+    }
+  }
+
+  const onDisable2fa = async (values: Disable2faForm) => {
+    setTwoFactorLoading(true)
+    try {
+      await disable2fa(values.password, values.code.trim())
+      setUserTotpEnabled(false)
+      setSetupData(null)
+      setBackupCodes(null)
+      disable2faForm.resetFields()
+      await refreshSession()
+      message.success('İki adımlı doğrulama kapatıldı')
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setTwoFactorLoading(false)
     }
   }
 
@@ -101,12 +235,29 @@ export function ProfilePage() {
                     ? new Date(user.last_login_at).toLocaleString('tr-TR')
                     : '—'}
                 </Descriptions.Item>
+                <Descriptions.Item label="2FA">
+                  {userTotpEnabled ? <Tag color="green">Açık</Tag> : <Tag>Kapalı</Tag>}
+                </Descriptions.Item>
               </Descriptions>
             </Card>
           </Col>
 
           <Col xs={24} md={12}>
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
+              <Card title="Görünüm">
+                <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+                  Arayüz temasını açık veya koyu moda alın. Tercih bu cihazda saklanır.
+                </Typography.Paragraph>
+                <Segmented
+                  value={mode}
+                  onChange={(value) => setMode(value as 'light' | 'dark')}
+                  options={[
+                    { label: 'Açık', value: 'light', icon: <SunOutlined /> },
+                    { label: 'Koyu', value: 'dark', icon: <MoonOutlined /> },
+                  ]}
+                />
+              </Card>
+
               <Card title="Ad soyad güncelle">
                 <Form
                   form={profileForm}
@@ -171,6 +322,108 @@ export function ProfilePage() {
                     Şifreyi güncelle
                   </Button>
                 </Form>
+              </Card>
+
+              {canManageTenant2fa ? (
+                <Card title="Hesap güvenliği (yönetici)">
+                  <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+                    Açıldığında kullanıcılar profilinden iki adımlı doğrulama kurabilir. Kapatılırsa
+                    tüm kullanıcıların 2FA ayarları sıfırlanır.
+                  </Typography.Paragraph>
+                  <Space>
+                    <Switch
+                      checked={tenantTwoFactorEnabled}
+                      loading={tenant2faSaving}
+                      onChange={(checked) => void onToggleTenant2fa(checked)}
+                    />
+                    <span>{tenantTwoFactorEnabled ? '2FA hesapta açık' : '2FA hesapta kapalı'}</span>
+                  </Space>
+                </Card>
+              ) : null}
+
+              <Card title="İki adımlı doğrulama (2FA)">
+                {!tenantTwoFactorEnabled ? (
+                  <Alert
+                    type="info"
+                    showIcon
+                    message="Hesabınızda 2FA henüz açılmamış. Yönetici Profilim üzerinden açabilir."
+                  />
+                ) : userTotpEnabled ? (
+                  <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                    <Alert type="success" showIcon message="Authenticator ile 2FA aktif." />
+                    {backupCodes ? (
+                      <Alert
+                        type="warning"
+                        showIcon
+                        message="Yedek kodları güvenli bir yere kaydedin (bir kez gösterilir)."
+                        description={
+                          <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+                            {backupCodes.map((code) => (
+                              <li key={code}>
+                                <code>{code}</code>
+                              </li>
+                            ))}
+                          </ul>
+                        }
+                      />
+                    ) : null}
+                    <Form form={disable2faForm} layout="vertical" onFinish={onDisable2fa}>
+                      <Form.Item
+                        name="password"
+                        label="Şifre"
+                        rules={[{ required: true, message: 'Şifre zorunludur' }]}
+                      >
+                        <Input.Password autoComplete="current-password" />
+                      </Form.Item>
+                      <Form.Item
+                        name="code"
+                        label="Doğrulama kodu"
+                        rules={[{ required: true, message: 'Kod zorunludur' }]}
+                      >
+                        <Input placeholder="6 haneli kod veya yedek kod" />
+                      </Form.Item>
+                      <Button danger htmlType="submit" loading={twoFactorLoading}>
+                        2FA’yı kapat
+                      </Button>
+                    </Form>
+                  </Space>
+                ) : (
+                  <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                    <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+                      Google Authenticator veya benzeri bir uygulama ile girişlerde ek kod isteyin.
+                    </Typography.Paragraph>
+                    {!setupData ? (
+                      <Button type="primary" loading={twoFactorLoading} onClick={() => void onStart2faSetup()}>
+                        2FA kurulumunu başlat
+                      </Button>
+                    ) : (
+                      <>
+                        <img
+                          src={setupData.qr_data_url}
+                          alt="2FA QR kodu"
+                          width={180}
+                          height={180}
+                          style={{ borderRadius: 8 }}
+                        />
+                        <Typography.Text type="secondary">
+                          Manuel anahtar: <code>{setupData.secret}</code>
+                        </Typography.Text>
+                        <Form form={confirm2faForm} layout="vertical" onFinish={onConfirm2fa}>
+                          <Form.Item
+                            name="code"
+                            label="Uygulamadaki kod"
+                            rules={[{ required: true, message: 'Kod zorunludur' }]}
+                          >
+                            <Input placeholder="6 haneli kod" autoComplete="one-time-code" />
+                          </Form.Item>
+                          <Button type="primary" htmlType="submit" loading={twoFactorLoading}>
+                            Doğrula ve etkinleştir
+                          </Button>
+                        </Form>
+                      </>
+                    )}
+                  </Space>
+                )}
               </Card>
             </Space>
           </Col>

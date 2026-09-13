@@ -1,17 +1,17 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { AutoComplete, Button, Input, Layout, Menu, Space } from 'antd'
+import { AutoComplete, Button, Input, Layout, Menu, Select, Space } from 'antd'
+import type { MenuProps } from 'antd'
 import {
   AlertOutlined,
   ApartmentOutlined,
   AuditOutlined,
   BankOutlined,
-  BookOutlined,
   ClockCircleOutlined,
   CommentOutlined,
+  BellOutlined,
   CalendarOutlined,
-  ContactsOutlined,
   DollarOutlined,
   ExclamationCircleOutlined,
   FieldTimeOutlined,
@@ -22,6 +22,8 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  MoonOutlined,
+  SunOutlined,
   NotificationOutlined,
   ReadOutlined,
   SafetyOutlined,
@@ -31,108 +33,256 @@ import {
   TeamOutlined,
   UserOutlined,
   ClusterOutlined,
+  SettingOutlined,
+  DatabaseOutlined,
+  SolutionOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons'
 import { useAuth } from '../auth/AuthContext'
+import { useActiveSchool } from '../auth/ActiveSchoolContext'
+import { useThemeMode } from '../theme/ThemeContext'
+import { FeedbackFabModal } from './FeedbackFabModal'
+import { NotificationBell } from './NotificationBell'
+import { MENU_PATH_PERMISSION } from '../constants/menuPermissions'
 
 interface AppLayoutProps {
   title?: string
   children: ReactNode
 }
 
-interface NavItem {
+interface NavLeaf {
   key: string
-  icon: ReactNode
+  icon?: ReactNode
   label: string
 }
 
-const PLATFORM_ADMIN_ITEMS: NavItem[] = [
+interface NavGroup {
+  key: string
+  icon: ReactNode
+  label: string
+  children: NavLeaf[]
+}
+
+type NavNode = NavLeaf | NavGroup
+
+function isGroup(item: NavNode): item is NavGroup {
+  return 'children' in item && Array.isArray(item.children)
+}
+
+function flattenLeaves(nodes: NavNode[]): NavLeaf[] {
+  const out: NavLeaf[] = []
+  for (const node of nodes) {
+    if (isGroup(node)) out.push(...node.children)
+    else out.push(node)
+  }
+  return out
+}
+
+const PLATFORM_ADMIN_ITEMS: NavNode[] = [
   { key: '/', icon: <HomeOutlined />, label: 'Ana Sayfa' },
   { key: '/platform/tenants', icon: <ApartmentOutlined />, label: 'Hesap Yönetimi' },
   { key: '/platform/licenses', icon: <IdcardOutlined />, label: 'Lisans Yönetimi' },
   { key: '/platform/feedback', icon: <CommentOutlined />, label: 'Geri Bildirimler' },
+  { key: '/platform/notifications', icon: <BellOutlined />, label: 'Bildirimler' },
+  { key: '/platform/backups', icon: <DatabaseOutlined />, label: 'Yedekleme' },
+  { key: '/profile', icon: <UserOutlined />, label: 'Profilim' },
 ]
 
-const MODULE_ITEMS: Record<string, NavItem> = {
-  schools: { key: '/schools', icon: <BankOutlined />, label: 'Okullar' },
-  teachers: { key: '/teachers', icon: <TeamOutlined />, label: 'Öğretmenler' },
-  classrooms: { key: '/classrooms', icon: <ClusterOutlined />, label: 'Sınıflar' },
-  students: { key: '/students', icon: <ReadOutlined />, label: 'Öğrenciler' },
-  users: { key: '/users', icon: <UserOutlined />, label: 'Yetkilendirme' },
-  schedule: { key: '/schedule', icon: <ScheduleOutlined />, label: 'Ders Programı' },
-  leaves: { key: '/leaves', icon: <CalendarOutlined />, label: 'İzin Takibi' },
-  duty: { key: '/duty', icon: <FieldTimeOutlined />, label: 'Nöbet Programı' },
-  communications: { key: '/communications', icon: <NotificationOutlined />, label: 'Veli İletişim' },
-  exams: { key: '/exams', icon: <FileDoneOutlined />, label: 'Sınav Programı' },
-  discipline: { key: '/discipline', icon: <ExclamationCircleOutlined />, label: 'Disiplin' },
-  guidance: { key: '/guidance', icon: <SafetyOutlined />, label: 'Rehberlik' },
+function buildTenantMenu(opts: {
+  hasModule: (m: string) => boolean
+  modules: string[]
+}): NavNode[] {
+  const { hasModule } = opts
+  const nodes: NavNode[] = [{ key: '/', icon: <HomeOutlined />, label: 'Ana Sayfa' }]
+
+  const definitions: NavLeaf[] = []
+  if (hasModule('schools')) definitions.push({ key: '/schools', icon: <BankOutlined />, label: 'Okullar' })
+  if (hasModule('classrooms')) definitions.push({ key: '/classrooms', icon: <ClusterOutlined />, label: 'Sınıflar' })
+  if (hasModule('students')) definitions.push({ key: '/students', icon: <ReadOutlined />, label: 'Öğrenciler' })
+  if (hasModule('teachers')) definitions.push({ key: '/teachers', icon: <TeamOutlined />, label: 'Öğretmenler' })
+  if (hasModule('schedule')) definitions.push({ key: '/subjects', icon: <IdcardOutlined />, label: 'Dersler' })
+  definitions.push({ key: '/academic-years', icon: <CalendarOutlined />, label: 'Eğitim Öğretim Yılları' })
+  if (definitions.length > 0) {
+    nodes.push({
+      key: 'grp-definitions',
+      icon: <AppstoreOutlined />,
+      label: 'Temel Tanımlar',
+      children: definitions,
+    })
+  }
+
+  const personnel: NavLeaf[] = []
+  if (hasModule('teachers')) {
+    personnel.push(
+      { key: '/norm-positions', icon: <ApartmentOutlined />, label: 'Norm Kadro' },
+      { key: '/trainings', icon: <ReadOutlined />, label: 'Hizmet İçi Eğitim' },
+      { key: '/teacher-documents', icon: <FileProtectOutlined />, label: 'Öğretmen Evrak Arşivi' },
+    )
+  }
+  if (hasModule('leaves')) personnel.push({ key: '/leaves', icon: <CalendarOutlined />, label: 'İzin Takibi' })
+  if (hasModule('duty')) personnel.push({ key: '/duty', icon: <FieldTimeOutlined />, label: 'Nöbet Programı' })
+  if (hasModule('payroll')) {
+    personnel.push(
+      { key: '/extra-lessons', icon: <DollarOutlined />, label: 'Ek Ders Puantajı' },
+      { key: '/attendance', icon: <ClockCircleOutlined />, label: 'İşçi / TYP Puantaj' },
+    )
+  }
+  if (personnel.length > 0) {
+    nodes.push({
+      key: 'grp-personnel',
+      icon: <SolutionOutlined />,
+      label: 'Personel İşleri',
+      children: personnel,
+    })
+  }
+
+  const programs: NavLeaf[] = []
+  if (hasModule('schedule')) programs.push({ key: '/schedule', icon: <ScheduleOutlined />, label: 'Ders Programı' })
+  if (hasModule('exams')) {
+    programs.push(
+      { key: '/exams', icon: <FileDoneOutlined />, label: 'Sınav Programı Hazırlama' },
+      { key: '/kelebek', icon: <TableOutlined />, label: 'Kelebek Sistemi' },
+    )
+  }
+  if (programs.length > 0) {
+    nodes.push({
+      key: 'grp-programs',
+      icon: <ScheduleOutlined />,
+      label: 'Programlar',
+      children: programs,
+    })
+  }
+
+  const studentOps: NavLeaf[] = []
+  if (hasModule('attendance')) {
+    studentOps.push({
+      key: '/absences',
+      icon: <AlertOutlined />,
+      label: 'DYK Devamsızlık Takibi',
+    })
+  }
+  if (hasModule('communications')) {
+    studentOps.push({ key: '/communications', icon: <NotificationOutlined />, label: 'Veli İletişim' })
+  }
+  if (hasModule('discipline')) {
+    studentOps.push({ key: '/discipline', icon: <ExclamationCircleOutlined />, label: 'Disiplin' })
+  }
+  if (studentOps.length > 0) {
+    nodes.push({
+      key: 'grp-students',
+      icon: <ReadOutlined />,
+      label: 'Öğrenci İşleri',
+      children: studentOps,
+    })
+  }
+
+  if (hasModule('guidance')) {
+    nodes.push({ key: '/guidance', icon: <SafetyOutlined />, label: 'Rehberlik' })
+  }
+
+  const system: NavLeaf[] = []
+  if (hasModule('users')) system.push({ key: '/users', icon: <UserOutlined />, label: 'Yetkilendirme' })
+  if (hasModule('audit')) {
+    system.push({ key: '/audit-logs', icon: <AuditOutlined />, label: 'Denetim Kayıtları' })
+  }
+  system.push({ key: '/feedback', icon: <CommentOutlined />, label: 'Geri Bildirim' })
+  nodes.push({
+    key: 'grp-system',
+    icon: <SettingOutlined />,
+    label: 'Sistem',
+    children: system,
+  })
+
+  return nodes
 }
 
-const SCHEDULE_EXTRA_ITEM: NavItem = { key: '/subjects', icon: <IdcardOutlined />, label: 'Dersler' }
-const NORM_POSITIONS_EXTRA_ITEM: NavItem = {
-  key: '/norm-positions',
-  icon: <ApartmentOutlined />,
-  label: 'Norm Kadro',
+function toMenuItems(nodes: NavNode[]): MenuProps['items'] {
+  return nodes.map((node) => {
+    if (isGroup(node)) {
+      return {
+        key: node.key,
+        icon: node.icon,
+        label: node.label,
+        children: node.children.map((c) => ({ key: c.key, icon: c.icon, label: c.label })),
+      }
+    }
+    return { key: node.key, icon: node.icon, label: node.label }
+  })
 }
-const TRAININGS_EXTRA_ITEM: NavItem = {
-  key: '/trainings',
-  icon: <ReadOutlined />,
-  label: 'Hizmet İçi Eğitim',
-}
-const ACADEMIC_YEARS_ITEM: NavItem = {
-  key: '/academic-years',
-  icon: <CalendarOutlined />,
-  label: 'Eğitim Öğretim Yılları',
-}
-const EXTRA_LESSONS_ITEM: NavItem = { key: '/extra-lessons', icon: <DollarOutlined />, label: 'Ek Ders Puantajı' }
-const ATTENDANCE_PAYROLL_ITEM: NavItem = {
-  key: '/attendance',
-  icon: <ClockCircleOutlined />,
-  label: 'İşçi / TYP Puantaj',
-}
-const ABSENCES_ITEM: NavItem = { key: '/absences', icon: <AlertOutlined />, label: 'Devamsızlık Takibi' }
-const DYK_ITEM: NavItem = { key: '/dyk', icon: <BookOutlined />, label: 'DYK Kursları' }
-const KELEBEK_ITEM: NavItem = { key: '/kelebek', icon: <TableOutlined />, label: 'Kelebek Sistemi' }
-const TEACHER_DOCUMENTS_ITEM: NavItem = {
-  key: '/teacher-documents',
-  icon: <FileProtectOutlined />,
-  label: 'Öğretmen Evrak Arşivi',
-}
+
+const MOBILE_BREAKPOINT = 767
 
 export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayoutProps) {
-  const { session, logout, hasRole, hasModule } = useAuth()
+  const { session, logout, hasModule, hasPermission } = useAuth()
+  const { schools, activeSchoolId, setActiveSchoolId } = useActiveSchool()
+  const { mode, toggleMode } = useThemeMode()
   const location = useLocation()
   const navigate = useNavigate()
   const user = session?.user
 
-  const [collapsed, setCollapsed] = useState(false)
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= MOBILE_BREAKPOINT)
+  const [collapsed, setCollapsed] = useState(() => window.innerWidth <= MOBILE_BREAKPOINT)
   const [search, setSearch] = useState('')
+  const [openKeys, setOpenKeys] = useState<string[]>([])
 
-  const items: NavItem[] = session?.is_platform_admin
-    ? PLATFORM_ADMIN_ITEMS
-    : [
-        { key: '/', icon: <HomeOutlined />, label: 'Ana Sayfa' },
-        ...(session?.modules || []).map((mod) => MODULE_ITEMS[mod]).filter((item): item is NavItem => Boolean(item)),
-        ...(hasModule('schedule') ? [SCHEDULE_EXTRA_ITEM] : []),
-        ...(hasModule('teachers') ? [NORM_POSITIONS_EXTRA_ITEM, TRAININGS_EXTRA_ITEM, TEACHER_DOCUMENTS_ITEM] : []),
-        ...(hasModule('exams') ? [KELEBEK_ITEM] : []),
-        ...(hasModule('payroll') ? [EXTRA_LESSONS_ITEM, ATTENDANCE_PAYROLL_ITEM] : []),
-        ...(hasModule('attendance') ? [ABSENCES_ITEM, DYK_ITEM] : []),
-        ACADEMIC_YEARS_ITEM,
-        ...(hasModule('audit') && hasRole('Müdür')
-          ? [{ key: '/audit-logs', icon: <AuditOutlined />, label: 'Denetim Kayıtları' } as NavItem]
-          : []),
-        { key: '/profile', icon: <ContactsOutlined />, label: 'Profilim' },
-        { key: '/feedback', icon: <CommentOutlined />, label: 'Geri Bildirim' },
-      ]
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
-  const selected = items
+  const canSeePath = (path: string) => {
+    if (session?.is_global_admin || session?.is_platform_admin) return true
+    const need = MENU_PATH_PERMISSION[path]
+    if (!need) return true
+    return hasPermission(need)
+  }
+
+  const navNodes: NavNode[] = useMemo(() => {
+    if (session?.is_platform_admin) return PLATFORM_ADMIN_ITEMS
+    const built = buildTenantMenu({
+      hasModule,
+      modules: session?.modules || [],
+    })
+    return built
+      .map((node) => {
+        if (!isGroup(node)) {
+          if (node.key === '/') return node
+          return canSeePath(node.key) ? node : null
+        }
+        const children = node.children.filter((c) => canSeePath(c.key))
+        if (children.length === 0) return null
+        return { ...node, children }
+      })
+      .filter((n): n is NavNode => Boolean(n))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, hasModule, hasPermission])
+
+  const leaves = useMemo(() => flattenLeaves(navNodes), [navNodes])
+
+  const selected = leaves
     .filter((item) => location.pathname === item.key || location.pathname.startsWith(`${item.key}/`))
     .sort((a, b) => b.key.length - a.key.length)[0]
+
+  const activeGroupKey = useMemo(() => {
+    if (!selected) return null
+    for (const node of navNodes) {
+      if (isGroup(node) && node.children.some((c) => c.key === selected.key)) return node.key
+    }
+    return null
+  }, [navNodes, selected])
+
+  useEffect(() => {
+    if (collapsed) return
+    if (activeGroupKey) {
+      setOpenKeys((prev) => (prev.includes(activeGroupKey) ? prev : [...prev, activeGroupKey]))
+    }
+  }, [activeGroupKey, collapsed])
 
   const searchOptions = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('tr-TR')
     if (!query) return []
-    return items
+    return leaves
       .filter((item) => item.label.toLocaleLowerCase('tr-TR').includes(query))
       .map((item) => ({
         value: item.key,
@@ -143,17 +293,22 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
           </Space>
         ),
       }))
-  }, [items, search])
+  }, [leaves, search])
 
   const goTo = (key: string) => {
+    if (key.startsWith('grp-')) return
     navigate(key)
     setSearch('')
+    if (isMobile) setCollapsed(true)
   }
 
   return (
     <Layout className="app-shell">
+      {isMobile && !collapsed && (
+        <div className="app-sider-backdrop" onClick={() => setCollapsed(true)} />
+      )}
       <Layout.Sider
-        width={230}
+        width={240}
         collapsedWidth={72}
         className="app-sider"
         collapsible
@@ -183,8 +338,12 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
           mode="inline"
           theme="dark"
           className="app-sider-menu"
+          inlineCollapsed={collapsed}
           selectedKeys={selected ? [selected.key] : []}
-          items={items.map(({ key, icon, label }) => ({ key, icon, label }))}
+          triggerSubMenuAction="click"
+          getPopupContainer={() => document.body}
+          {...(collapsed ? {} : { openKeys, onOpenChange: setOpenKeys })}
+          items={toMenuItems(navNodes)}
           onClick={({ key }) => goTo(key)}
         />
       </Layout.Sider>
@@ -198,20 +357,44 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
             />
             <span className="app-header-title">{title}</span>
           </Space>
-          <Space>
-            {!session?.is_platform_admin && (
-              <Button type="link" onClick={() => goTo('/profile')} style={{ paddingInline: 4 }}>
-                {user?.full_name}
-              </Button>
+          <Space wrap className="app-header-actions">
+            {!session?.is_platform_admin && schools.length > 0 && (
+              <Select
+                size="small"
+                value={activeSchoolId ?? undefined}
+                onChange={(value) => setActiveSchoolId(value)}
+                options={schools.map((s) => ({ value: s.id, label: s.name }))}
+                style={{ minWidth: 160 }}
+                placeholder="Okul seçin"
+                suffixIcon={<BankOutlined />}
+                title="Aktif okul"
+              />
             )}
-            {session?.is_platform_admin && <span className="app-header-user">{user?.full_name}</span>}
+            <Button
+              type="text"
+              icon={mode === 'dark' ? <SunOutlined /> : <MoonOutlined />}
+              onClick={toggleMode}
+              title={mode === 'dark' ? 'Açık moda geç' : 'Koyu moda geç'}
+              aria-label={mode === 'dark' ? 'Açık moda geç' : 'Koyu moda geç'}
+            />
+            <NotificationBell />
+            <Button
+              type="link"
+              icon={<UserOutlined />}
+              onClick={() => goTo('/profile')}
+              style={{ paddingInline: 4 }}
+              title="Profilim"
+            >
+              <span className="app-header-username">{user?.full_name}</span>
+            </Button>
             <Button icon={<LogoutOutlined />} onClick={() => void logout()}>
-              Çıkış
+              <span className="app-header-logout-label">Çıkış</span>
             </Button>
           </Space>
         </Layout.Header>
         <Layout.Content className="app-content">{children}</Layout.Content>
       </Layout>
+      {!session?.is_platform_admin && <FeedbackFabModal />}
     </Layout>
   )
 }

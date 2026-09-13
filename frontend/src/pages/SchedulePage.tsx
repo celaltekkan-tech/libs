@@ -2,18 +2,23 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   App,
   Button,
+  Checkbox,
   Collapse,
   Empty,
   Form,
   Input,
+  InputNumber,
   Modal,
   Select,
   Space,
+  Steps,
   Table,
   Tag,
   Typography,
+  Upload,
 } from 'antd'
-import { DeleteOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
+import type { UploadFile } from 'antd/es/upload/interface'
+import { DeleteOutlined, DownloadOutlined, InboxOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons'
 import { AppLayout } from '../components/AppLayout'
 import { useAuth } from '../auth/AuthContext'
 import {
@@ -22,9 +27,11 @@ import {
   exportSchedule,
   fetchHoursCheck,
   fetchTeacherLoad,
+  importSchedule,
   listScheduleEntries,
+  previewScheduleImport,
 } from '../api/schedule'
-import type { HoursCheckRow } from '../api/schedule'
+import type { HoursCheckRow, ScheduleImportPreview } from '../api/schedule'
 import { listSubjects } from '../api/subjects'
 import { listTeachers } from '../api/teachers'
 import { listClassrooms } from '../api/classrooms'
@@ -60,12 +67,30 @@ export function SchedulePage() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
+  const [importStep, setImportStep] = useState(0)
+  const [importFile, setImportFile] = useState<UploadFile | null>(null)
+  const [importPreview, setImportPreview] = useState<ScheduleImportPreview | null>(null)
+  const [importHeaderRow, setImportHeaderRow] = useState(1)
+  const [importMapping, setImportMapping] = useState<Record<string, string>>({})
+  const [importReplace, setImportReplace] = useState(false)
+  const [importAcademicYear, setImportAcademicYear] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx')
   const [form] = Form.useForm<ScheduleEntryPayload>()
 
   const canCreate = hasPermission('schedule.create')
   const canDelete = hasPermission('schedule.delete')
+
+  const resetImportState = () => {
+    setImportStep(0)
+    setImportFile(null)
+    setImportPreview(null)
+    setImportHeaderRow(1)
+    setImportMapping({})
+    setImportReplace(false)
+    setImportAcademicYear('')
+  }
 
   const loadLookups = useCallback(async () => {
     setLoading(true)
@@ -139,6 +164,11 @@ export function SchedulePage() {
     entries.forEach((entry) => map.set(`${entry.day_of_week}-${entry.period_no}`, entry))
     return map
   }, [entries])
+
+  const usedImportFields = useMemo(
+    () => new Set(Object.values(importMapping).filter(Boolean)),
+    [importMapping],
+  )
 
   const openCreate = (dayOfWeek?: number, periodNo?: number) => {
     if (viewMode !== 'classroom' || !selectedClassroomId) return
@@ -215,6 +245,68 @@ export function SchedulePage() {
     }
   }
 
+  const applyImportPreview = async (headerRow?: number | null) => {
+    const file = importFile?.originFileObj
+    if (!file) {
+      message.warning('Önce Excel dosyası seçin')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const preview = await previewScheduleImport(file, { headerRow })
+      setImportPreview(preview)
+      setImportHeaderRow(preview.header_row)
+      setImportMapping({ ...preview.suggested_mapping })
+      setImportStep(1)
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const onImport = async () => {
+    const file = importFile?.originFileObj
+    if (!file) return
+    setSubmitting(true)
+    try {
+      const result = await importSchedule(file, {
+        headerRow: importHeaderRow,
+        columnMapping: importMapping,
+        replaceExisting: importReplace,
+        academicYear: importAcademicYear || null,
+      })
+      message.success(
+        `İçe aktarma tamamlandı: ${result.created} yeni, ${result.updated} güncellendi` +
+          (result.error_count ? `, ${result.error_count} uyarı/hata` : ''),
+      )
+      if (result.errors.length > 0) {
+        modal.warning({
+          title: 'İçe aktarma uyarıları',
+          width: 640,
+          content: (
+            <div style={{ maxHeight: 320, overflow: 'auto' }}>
+              {result.errors.slice(0, 40).map((e) => (
+                <div key={`${e.row}-${e.message}`}>
+                  Satır {e.row}: {e.message}
+                </div>
+              ))}
+            </div>
+          ),
+        })
+      }
+      setImportOpen(false)
+      resetImportState()
+      void loadLookups()
+      void loadEntries()
+      void loadHoursCheck()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const renderCell = (day: number, period: number) => {
     const entry = grid.get(`${day}-${period}`)
     if (!entry) {
@@ -265,9 +357,13 @@ export function SchedulePage() {
         .schedule-period { display: flex; align-items: center; justify-content: center; font-weight: 600; color: #6b7280; }
       `}</style>
 
-      <Typography.Title level={3} style={{ margin: 0, marginBottom: 16 }}>
+      <Typography.Title level={3} style={{ margin: 0, marginBottom: 8 }}>
         Ders Dağıtım ve Haftalık Ders Programı
       </Typography.Title>
+      <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
+        Programı Excel ile içe yükleyin. Bu bilgilere dayalı öğretmen listesi; ortak sınav öğretmen
+        ataması ve kelebek gözetmen seçiminde kullanılır. Manuel satır eklemek zorunlu değildir.
+      </Typography.Paragraph>
 
       <Space wrap style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
         <Space wrap>
@@ -305,11 +401,23 @@ export function SchedulePage() {
           )}
         </Space>
         <Space wrap>
+          {canCreate && (
+            <Button
+              type="primary"
+              icon={<UploadOutlined />}
+              onClick={() => {
+                resetImportState()
+                setImportOpen(true)
+              }}
+            >
+              Excel İçe Yükle
+            </Button>
+          )}
           <Button icon={<DownloadOutlined />} onClick={() => setExportOpen(true)}>
             Dışa Aktar
           </Button>
           {viewMode === 'classroom' && canCreate && selectedClassroomId && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>
+            <Button icon={<PlusOutlined />} onClick={() => openCreate()}>
               Yeni Kayıt
             </Button>
           )}
@@ -347,6 +455,7 @@ export function SchedulePage() {
             rowKey="subject_id"
             pagination={false}
             dataSource={hoursCheck}
+            scroll={{ x: 'max-content' }}
             columns={[
               { title: 'Ders', dataIndex: 'subject_name' },
               { title: 'Gerekli Saat', dataIndex: 'required_hours' },
@@ -383,6 +492,7 @@ export function SchedulePage() {
               rowKey="name"
               pagination={false}
               dataSource={row.subjects}
+              scroll={{ x: 'max-content' }}
               columns={[
                 { title: 'Ders', dataIndex: 'name' },
                 { title: 'Haftalık Saat', dataIndex: 'hours' },
@@ -458,6 +568,151 @@ export function SchedulePage() {
             />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="Ders Programı Excel İçe Yükle"
+        open={importOpen}
+        onCancel={() => {
+          setImportOpen(false)
+          resetImportState()
+        }}
+        width={720}
+        footer={
+          <Space>
+            {importStep > 0 && (
+              <Button onClick={() => setImportStep((s) => Math.max(0, s - 1))}>Geri</Button>
+            )}
+            <Button
+              onClick={() => {
+                setImportOpen(false)
+                resetImportState()
+              }}
+            >
+              Vazgeç
+            </Button>
+            {importStep === 0 ? (
+              <Button type="primary" loading={submitting} onClick={() => void applyImportPreview(null)}>
+                Önizle
+              </Button>
+            ) : (
+              <Button type="primary" loading={submitting} onClick={() => void onImport()}>
+                İçe Aktar
+              </Button>
+            )}
+          </Space>
+        }
+        destroyOnHidden
+      >
+        <Steps
+          size="small"
+          current={importStep}
+          style={{ marginBottom: 16 }}
+          items={[{ title: 'Dosya' }, { title: 'Eşleme' }]}
+        />
+        {importStep === 0 && (
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+              Beklenen sütunlar: Sınıf/Şube (veya ayrı Sınıf + Şube), Ders, Gün, Ders Saati, Öğretmen
+              (veya Sicil No). Sınıf ve ders kayıtları sistemde önceden tanımlı olmalıdır.
+            </Typography.Paragraph>
+            <Upload.Dragger
+              accept=".xls,.xlsx"
+              maxCount={1}
+              beforeUpload={(file) => {
+                setImportFile({ uid: file.uid, name: file.name, originFileObj: file })
+                setImportPreview(null)
+                return false
+              }}
+              onRemove={() => {
+                setImportFile(null)
+                setImportPreview(null)
+              }}
+              fileList={importFile ? [importFile] : []}
+            >
+              <p className="ant-upload-drag-icon">
+                <InboxOutlined />
+              </p>
+              <p className="ant-upload-text">Dosyayı buraya sürükleyin veya tıklayarak seçin</p>
+              <p className="ant-upload-hint">Excel (.xls, .xlsx)</p>
+            </Upload.Dragger>
+          </Space>
+        )}
+        {importStep === 1 && importPreview && (
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            <Space wrap>
+              <span>Başlık satırı:</span>
+              <InputNumber
+                min={1}
+                value={importHeaderRow}
+                onChange={(v) => setImportHeaderRow(Number(v) || 1)}
+              />
+              <Button loading={submitting} onClick={() => void applyImportPreview(importHeaderRow)}>
+                Yeniden oku
+              </Button>
+            </Space>
+            <Form layout="vertical">
+              <Form.Item label="Varsayılan eğitim öğretim yılı (sütunda yoksa)">
+                <Input
+                  value={importAcademicYear}
+                  onChange={(e) => setImportAcademicYear(e.target.value)}
+                  placeholder="Örn. 2025-2026"
+                />
+              </Form.Item>
+              <Checkbox checked={importReplace} onChange={(e) => setImportReplace(e.target.checked)}>
+                Mevcut ders programını silip yeniden yükle
+              </Checkbox>
+            </Form>
+            <Typography.Text strong>Sütun eşlemesi</Typography.Text>
+            {importPreview.headers.map((h) => (
+              <Space key={h.index} style={{ width: '100%', justifyContent: 'space-between' }}>
+                <Typography.Text style={{ width: 200 }} ellipsis>
+                  {h.label}
+                </Typography.Text>
+                <Select
+                  allowClear
+                  style={{ width: 260 }}
+                  placeholder="Alan seçin"
+                  value={importMapping[String(h.index)] || undefined}
+                  options={importPreview.importable_fields.map((f) => ({
+                    value: f.key,
+                    label: `${f.label}${f.required ? ' *' : ''}`,
+                    disabled:
+                      usedImportFields.has(f.key) && importMapping[String(h.index)] !== f.key,
+                  }))}
+                  onChange={(v) =>
+                    setImportMapping((prev) => {
+                      const next = { ...prev }
+                      if (!v) delete next[String(h.index)]
+                      else next[String(h.index)] = v
+                      return next
+                    })
+                  }
+                />
+              </Space>
+            ))}
+            {importPreview.sample_rows.length > 0 && (
+              <>
+                <Typography.Text strong>Örnek satırlar</Typography.Text>
+                <Table
+                  size="small"
+                  pagination={false}
+                  rowKey="row"
+                  scroll={{ x: true }}
+                  dataSource={importPreview.sample_rows}
+                  columns={[
+                    { title: 'Satır', dataIndex: 'row', width: 60 },
+                    ...importPreview.headers.slice(0, 6).map((h) => ({
+                      title: h.label,
+                      dataIndex: ['values', h.label],
+                      ellipsis: true,
+                    })),
+                  ]}
+                />
+              </>
+            )}
+          </Space>
+        )}
       </Modal>
     </AppLayout>
   )

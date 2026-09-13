@@ -5,10 +5,10 @@ module.exports = (sequelize, DataTypes) => {
       tenant_id: DataTypes.INTEGER,
       student_id: DataTypes.INTEGER,
       absence_date: DataTypes.DATEONLY,
-      is_excused: {
-        type: DataTypes.BOOLEAN,
+      absence_type: {
+        type: DataTypes.STRING,
         allowNull: false,
-        defaultValue: false,
+        defaultValue: 'mazeretsiz',
       },
       reason: DataTypes.STRING,
     },

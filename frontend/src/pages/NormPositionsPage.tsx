@@ -162,7 +162,14 @@ export function NormPositionsPage() {
         )}
       </Space>
 
-      <Table rowKey="id" loading={loading} columns={columns} dataSource={rows} pagination={{ pageSize: 20 }} />
+      <Table
+        rowKey="id"
+        loading={loading}
+        columns={columns}
+        dataSource={rows}
+        pagination={{ pageSize: 20 }}
+        scroll={{ x: 'max-content' }}
+      />
 
       <Modal
         title={editing ? 'Norm Kadroyu Düzenle' : 'Yeni Norm Kadro'}

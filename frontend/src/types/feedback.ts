@@ -19,6 +19,7 @@ export interface Feedback {
   status: FeedbackStatus
   reply: string | null
   replied_at: string | null
+  cancel_reason: string | null
   created_at: string
   updated_at: string
   Tenant?: { id: number; name: string } | null
@@ -41,14 +42,15 @@ export const FEEDBACK_STATUS_LABEL: Record<FeedbackStatus, { text: string; color
 }
 
 export const FEEDBACK_FILTER_OPTIONS: Array<{ value: FeedbackStatusFilter; label: string }> = [
-  { value: 'all', label: 'Tümü' },
   { value: 'pending', label: 'Bekleyenler' },
+  { value: 'read', label: 'İnceleniyor' },
   { value: 'resolved', label: 'Sonuçlananlar' },
   { value: 'cancelled', label: 'İptal edilenler' },
+  { value: 'all', label: 'Tümü' },
 ]
 
 export const FEEDBACK_ACCEPT =
-  '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation'
+  '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.odt,.ods,.odp,.png,.jpg,.jpeg,.gif,.webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/png,image/jpeg,image/gif,image/webp'
 
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -58,4 +60,10 @@ export function formatFileSize(bytes: number): string {
 
 export function isPdfAttachment(att: Pick<FeedbackAttachment, 'mime_type' | 'original_name'>): boolean {
   return att.mime_type === 'application/pdf' || att.original_name.toLowerCase().endsWith('.pdf')
+}
+
+export function isImageAttachment(att: Pick<FeedbackAttachment, 'mime_type' | 'original_name'>): boolean {
+  return (
+    att.mime_type.startsWith('image/') || /\.(png|jpe?g|gif|webp)$/i.test(att.original_name)
+  )
 }

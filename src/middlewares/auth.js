@@ -13,7 +13,15 @@ module.exports = (req, res, next) => {
   }
 
   try {
-    req.user = jwtUtil.verify(token);
+    const payload = jwtUtil.verify(token);
+    if (payload.purpose === '2fa_pending') {
+      return res.status(401).json({
+        success: false,
+        code: 'TOKEN_INVALID',
+        message: 'İki adımlı doğrulama tamamlanmadan oturum açılamaz',
+      });
+    }
+    req.user = payload;
     return next();
   } catch (err) {
     const expired = err.name === 'TokenExpiredError';

@@ -64,6 +64,40 @@ export interface StudentImportResult {
   errors: Array<{ row: number; message: string }>
 }
 
+export interface StudentImportField {
+  key: string
+  label: string
+  required: boolean
+}
+
+export interface StudentImportPreview {
+  sheet_names: string[]
+  sheet_name: string
+  header_row: number
+  headers: Array<{ index: number; label: string }>
+  suggested_mapping: Record<string, string>
+  detected_class: { class_level: string; section: string; source_text?: string } | null
+  sample_rows: Array<{ row: number; values: Record<string, string | null> }>
+  importable_fields: StudentImportField[]
+  total_rows: number
+}
+
+export const STUDENT_IMPORT_FIELD_OPTIONS = [
+  { value: 'student_number', label: 'Öğrenci No' },
+  { value: 'national_id', label: 'T.C. Kimlik No' },
+  { value: 'first_name', label: 'Ad' },
+  { value: 'last_name', label: 'Soyad' },
+  { value: 'class_level', label: 'Sınıf' },
+  { value: 'section', label: 'Şube' },
+  { value: 'gender', label: 'Cinsiyet' },
+  { value: 'birth_date', label: 'Doğum Tarihi' },
+  { value: 'registration_status', label: 'Kayıt Durumu' },
+  { value: 'parent_name', label: 'Veli Adı' },
+  { value: 'parent_phone', label: 'Veli Telefon' },
+  { value: 'is_inclusion', label: 'Kaynaştırma' },
+  { value: 'is_foreign', label: 'Yabancı Uyruklu' },
+] as const
+
 export const STUDENT_COLUMN_OPTIONS = [
   { value: 'student_number', label: 'Öğrenci No' },
   { value: 'national_id', label: 'T.C. Kimlik No' },

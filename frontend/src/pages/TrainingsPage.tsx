@@ -194,7 +194,14 @@ export function TrainingsPage() {
         style={{ width: 260, marginBottom: 16 }}
       />
 
-      <Table rowKey="id" loading={loading} columns={columns} dataSource={rows} pagination={{ pageSize: 20 }} />
+      <Table
+        rowKey="id"
+        loading={loading}
+        columns={columns}
+        dataSource={rows}
+        pagination={{ pageSize: 20 }}
+        scroll={{ x: 'max-content' }}
+      />
 
       <Modal
         title={editing ? 'Eğitim Kaydını Düzenle' : 'Yeni Eğitim Kaydı'}

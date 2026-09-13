@@ -208,7 +208,14 @@ export function DisciplinePage() {
         )}
       </Space>
 
-      <Table rowKey="id" loading={loading} columns={columns} dataSource={cases} pagination={{ pageSize: 20 }} />
+      <Table
+        rowKey="id"
+        loading={loading}
+        columns={columns}
+        dataSource={cases}
+        pagination={{ pageSize: 20 }}
+        scroll={{ x: 'max-content' }}
+      />
 
       <Modal
         title="Yeni Disiplin Dosyası"

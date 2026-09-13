@@ -12,6 +12,7 @@ module.exports = (sequelize, DataTypes) => {
       },
       reply: { type: DataTypes.TEXT, allowNull: true },
       replied_at: { type: DataTypes.DATE, allowNull: true },
+      cancel_reason: { type: DataTypes.TEXT, allowNull: true },
     },
     {
       tableName: 'Feedbacks',

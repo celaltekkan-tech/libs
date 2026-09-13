@@ -116,7 +116,12 @@ module.exports = {
       );
 
       const school = await School.create(
-        { tenant_id: tenant.id, name: payload.school.name, code: payload.school.code },
+        {
+          tenant_id: tenant.id,
+          name: payload.school.name,
+          code: payload.school.code,
+          school_type: payload.school.school_type,
+        },
         { transaction }
       );
 
@@ -167,9 +172,80 @@ module.exports = {
       }
 
       const payload = req.validatedBody || req.body;
+      const disabling2fa =
+        Object.prototype.hasOwnProperty.call(payload, 'two_factor_enabled') &&
+        payload.two_factor_enabled === false &&
+        tenant.two_factor_enabled === true;
+
       await tenant.update(payload);
 
+      if (disabling2fa) {
+        await User.update(
+          { totp_enabled: false, totp_secret: null, totp_backup_codes: null },
+          { where: { tenant_id: tenant.id } }
+        );
+      }
+
       res.json({ success: true, data: tenant });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async resetTwoFactor(req, res, next) {
+    try {
+      const tenant = await Tenant.findByPk(req.params.id);
+      if (!tenant) {
+        return res.status(404).json({ success: false, message: 'Hesap bulunamadı' });
+      }
+
+      const [affectedCount] = await User.update(
+        { totp_enabled: false, totp_secret: null, totp_backup_codes: null },
+        { where: { tenant_id: tenant.id } }
+      );
+
+      res.json({
+        success: true,
+        message: 'Hesaptaki tüm kullanıcıların 2FA ayarları sıfırlandı',
+        data: {
+          tenant_id: tenant.id,
+          two_factor_enabled: Boolean(tenant.two_factor_enabled),
+          reset_user_count: affectedCount,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async resetUserTwoFactor(req, res, next) {
+    try {
+      const tenant = await Tenant.findByPk(req.params.id);
+      if (!tenant) {
+        return res.status(404).json({ success: false, message: 'Hesap bulunamadı' });
+      }
+
+      const user = await User.findOne({
+        where: { id: req.params.userId, tenant_id: tenant.id },
+      });
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı' });
+      }
+
+      await user.update({
+        totp_enabled: false,
+        totp_secret: null,
+        totp_backup_codes: null,
+      });
+
+      res.json({
+        success: true,
+        message: `2FA sıfırlandı: ${user.full_name}`,
+        data: {
+          user_id: user.id,
+          totp_enabled: false,
+        },
+      });
     } catch (err) {
       next(err);
     }

@@ -40,6 +40,13 @@ export async function deleteFeedback(id: number): Promise<void> {
   await client.delete(`/api/feedback/${id}`)
 }
 
+export async function cancelFeedback(id: number, cancelReason: string): Promise<Feedback> {
+  const { data } = await client.put<Envelope<Feedback>>(`/api/feedback/${id}/cancel`, {
+    cancel_reason: cancelReason,
+  })
+  return data.data
+}
+
 export async function fetchFeedbackAttachmentBlob(attachmentId: number): Promise<Blob> {
   const { data } = await client.get(`/api/feedback/attachments/${attachmentId}/download`, {
     responseType: 'blob',

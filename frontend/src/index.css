@@ -4,6 +4,33 @@
   box-sizing: border-box;
 }
 
+:root,
+[data-theme='light'] {
+  --app-bg: #f4f6f9;
+  --app-text: #1f2937;
+  --app-header-bg: #fff;
+  --app-header-border: #e5e7eb;
+  --app-header-title: #1f2937;
+  --app-header-user: #4b5563;
+  --app-sider-bg: #10233f;
+  --app-login-panel-bg: #fff;
+  --app-login-subtitle: #6b7280;
+  --app-muted: #6b7280;
+}
+
+[data-theme='dark'] {
+  --app-bg: #0b1220;
+  --app-text: #e5e7eb;
+  --app-header-bg: #111827;
+  --app-header-border: #1f2937;
+  --app-header-title: #f3f4f6;
+  --app-header-user: #9ca3af;
+  --app-sider-bg: #0a1628;
+  --app-login-panel-bg: #111827;
+  --app-login-subtitle: #9ca3af;
+  --app-muted: #9ca3af;
+}
+
 html,
 body,
 #root {
@@ -13,8 +40,8 @@ body,
 
 body {
   font-family: 'Segoe UI', system-ui, sans-serif;
-  background: #f4f6f9;
-  color: #1f2937;
+  background: var(--app-bg);
+  color: var(--app-text);
 }
 
 .app-boot {
@@ -25,6 +52,7 @@ body {
 }
 
 .login-page {
+  position: relative;
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -35,10 +63,18 @@ body {
     linear-gradient(160deg, #0f2744 0%, #1d4e89 48%, #2f6fad 100%);
 }
 
+.login-theme-toggle {
+  position: absolute !important;
+  top: 16px;
+  right: 16px;
+  color: #fff !important;
+  font-size: 18px;
+}
+
 .login-panel {
   width: 100%;
   max-width: 420px;
-  background: #fff;
+  background: var(--app-login-panel-bg);
   border-radius: 16px;
   padding: 32px 28px 24px;
   box-shadow: 0 24px 60px rgba(8, 25, 48, 0.28);
@@ -70,12 +106,12 @@ body {
 
 .login-subtitle {
   margin: 0 !important;
-  color: #6b7280 !important;
+  color: var(--app-login-subtitle) !important;
 }
 
 .login-hint {
   margin: 20px 0 0;
-  color: #6b7280;
+  color: var(--app-muted);
   font-size: 13px;
   line-height: 1.5;
   text-align: center;
@@ -83,11 +119,12 @@ body {
 
 .app-shell {
   min-height: 100vh;
-  background: #f4f6f9;
+  background: var(--app-bg);
 }
 
 .app-sider {
-  background: #10233f;
+  background: var(--app-sider-bg) !important;
+  overflow: visible;
 }
 
 .app-sider-brand {
@@ -108,30 +145,133 @@ body {
 .app-sider-menu {
   background: transparent;
   border-inline-end: none;
+  overflow-y: auto;
+  overflow-x: visible;
+  max-height: calc(100vh - 140px);
+}
+
+.app-sider-menu .ant-menu-submenu-title {
+  font-weight: 600;
+}
+
+/* Daraltılmış menüde grup popup'ının sider içinde kesilmesini önle */
+.app-sider .ant-layout-sider-children {
+  overflow: visible;
+}
+
+.rich-text-editor-surface:focus {
+  border-color: #1677ff;
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.12);
+}
+
+.rich-text-editor-surface ul,
+.feedback-message-html ul {
+  margin: 0.25em 0;
+  padding-left: 1.4em;
+  list-style: disc;
+}
+
+.rich-text-editor-surface ol,
+.feedback-message-html ol {
+  margin: 0.25em 0;
+  padding-left: 1.4em;
+  list-style: decimal;
+}
+
+.rich-text-editor-surface p,
+.feedback-message-html p {
+  margin: 0 0 0.4em;
+}
+
+.rich-text-editor-surface li,
+.feedback-message-html li {
+  margin: 0.15em 0;
+}
+
+[data-theme='dark'] .rich-text-editor-surface {
+  background: #1f2937;
+  color: #e5e7eb;
+  border-color: #374151;
 }
 
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #fff;
+  background: var(--app-header-bg);
   padding-inline: 24px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--app-header-border);
 }
 
 .app-header-title {
   font-weight: 600;
   font-size: 16px;
-  color: #1f2937;
+  color: var(--app-header-title);
 }
 
 .app-header-user {
-  color: #4b5563;
+  color: var(--app-header-user);
 }
 
 .app-content {
   padding: 32px;
   width: 100%;
+  overflow-x: hidden;
+}
+
+.app-sider-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+@media (max-width: 767px) {
+  .app-content {
+    padding: 16px;
+  }
+
+  .app-header {
+    height: auto;
+    min-height: 56px;
+    line-height: normal;
+    flex-wrap: wrap;
+    row-gap: 8px;
+    padding-block: 8px;
+    padding-inline: 12px;
+  }
+
+  .app-header-actions {
+    flex-wrap: wrap;
+  }
+
+  .app-header-title {
+    font-size: 14px;
+  }
+
+  .app-header-username {
+    display: none;
+  }
+
+  .app-header-logout-label {
+    display: none;
+  }
+
+  .app-sider.ant-layout-sider-collapsed {
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    overflow: hidden;
+  }
+
+  .app-sider:not(.ant-layout-sider-collapsed) {
+    position: fixed;
+    inset-block: 0;
+    left: 0;
+    z-index: 1000;
+    height: 100vh;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.28);
+  }
 }
 
 .license-expired-page {
@@ -140,5 +280,303 @@ body {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: #f4f6f9;
+  background: var(--app-bg);
+}
+
+.feedback-fab {
+  position: fixed;
+  right: 0;
+  bottom: 28px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: none;
+  border-radius: 12px 0 0 12px;
+  background: #1d4e89;
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  box-shadow: -4px 4px 16px rgba(15, 39, 68, 0.28);
+  transform: translateX(28px);
+  opacity: 0.55;
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease,
+    background 0.2s ease;
+}
+
+.feedback-fab:hover,
+.feedback-fab:focus-visible {
+  transform: translateX(0);
+  opacity: 1;
+  background: #163a66;
+  outline: none;
+}
+
+/* —— Nöbet programı ızgarası —— */
+.duty-empty {
+  padding: 48px 24px;
+  text-align: center;
+  background: var(--app-header-bg);
+  border: 1px dashed var(--app-header-border);
+  border-radius: 12px;
+}
+
+.duty-grid-wrap {
+  overflow-x: auto;
+  background: var(--app-header-bg);
+  border: 1px solid var(--app-header-border);
+  border-radius: 12px;
+  padding: 8px;
+}
+
+.duty-grid {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 6px;
+  min-width: 640px;
+}
+
+.duty-grid th,
+.duty-grid td {
+  vertical-align: middle;
+}
+
+.duty-grid thead th {
+  text-align: center;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--app-header-title);
+  padding: 8px 6px;
+}
+
+.duty-grid-corner {
+  width: 120px;
+  text-align: left !important;
+  color: var(--app-muted) !important;
+  font-weight: 500 !important;
+}
+
+.duty-grid-day {
+  text-align: left;
+  padding: 4px 10px 4px 12px;
+  border-left: 4px solid;
+  background: transparent;
+  min-width: 120px;
+}
+
+.duty-grid-day-name {
+  display: block;
+  font-weight: 700;
+  font-size: 13px;
+  text-transform: capitalize;
+  line-height: 1.3;
+}
+
+.duty-grid-day-meta {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--app-muted);
+  margin-top: 2px;
+}
+
+.duty-grid-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 8px;
+  border: 1px dashed var(--app-header-border);
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.duty-grid-cell:hover,
+.duty-grid-cell.is-active {
+  border-style: solid;
+  border-color: #1d4e89;
+  background: rgba(29, 78, 137, 0.06);
+}
+
+.duty-grid-cell.has-teacher {
+  border-style: solid;
+  border-color: var(--app-header-border);
+}
+
+.duty-grid-cell.is-locked {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.duty-grid-cell.is-locked:disabled {
+  cursor: default;
+}
+
+.duty-day-start td,
+.duty-day-start th {
+  border-top: 1px solid var(--app-header-border);
+}
+
+.duty-grid-placeholder {
+  color: var(--app-muted);
+  font-size: 18px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+.duty-grid-placeholder.is-muted {
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+.duty-teacher-name {
+  display: inline-block;
+  max-width: 100%;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.duty-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  padding: 12px 8px 4px;
+}
+
+.duty-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--app-muted);
+  text-transform: capitalize;
+}
+
+.duty-legend-item i {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+.duty-teacher-picker {
+  width: 280px;
+  max-width: 80vw;
+}
+
+.duty-teacher-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.duty-teacher-picker-list {
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.duty-teacher-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.duty-teacher-picker-item:hover:not(:disabled) {
+  background: rgba(29, 78, 137, 0.08);
+}
+
+.duty-teacher-picker-item.is-selected {
+  background: rgba(29, 78, 137, 0.12);
+}
+
+.duty-teacher-picker-item.is-disabled,
+.duty-teacher-picker-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.duty-teacher-picker-hint {
+  font-size: 11px;
+  color: var(--app-muted);
+  flex-shrink: 0;
+}
+
+[data-theme='dark'] .duty-grid-cell:hover,
+[data-theme='dark'] .duty-grid-cell.is-active {
+  background: rgba(96, 165, 250, 0.1);
+}
+
+/* —— Bildirim zili —— */
+.notification-bell.has-unread {
+  animation: notification-bell-shake 60s ease-in-out infinite;
+}
+
+@keyframes notification-bell-shake {
+  0%,
+  1.2%,
+  100% {
+    transform: rotate(0deg);
+  }
+  0.2% {
+    transform: rotate(16deg);
+  }
+  0.4% {
+    transform: rotate(-14deg);
+  }
+  0.6% {
+    transform: rotate(12deg);
+  }
+  0.8% {
+    transform: rotate(-10deg);
+  }
+  1% {
+    transform: rotate(6deg);
+  }
+}
+
+.notification-popover {
+  width: 360px;
+  max-width: 90vw;
+}
+
+.notification-item.is-unread {
+  background: rgba(29, 78, 137, 0.06);
+  border-radius: 8px;
+  padding-inline: 8px !important;
+}
+
+.notification-item.is-read {
+  padding-inline: 8px !important;
+}
+
+[data-theme='dark'] .notification-item.is-unread {
+  background: rgba(96, 165, 250, 0.1);
 }

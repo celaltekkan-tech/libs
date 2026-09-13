@@ -1,9 +1,10 @@
 'use strict';
 
 const PDFDocument = require('pdfkit');
-const { Teacher, School } = require('../models');
+const { Teacher, School, sequelize } = require('../models');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
+const { parseMebbisWorkbook } = require('../services/mebbisImportService');
 
 const PERSONNEL_DOCUMENT_TITLES = {
   gorevlendirme: 'GÖREVLENDİRME YAZISI',
@@ -85,8 +86,144 @@ function addYears(date, years) {
   return d;
 }
 
+function splitIlIlce(ilIlce) {
+  const parts = String(ilIlce || '')
+    .split('/')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return { city: parts[0] || null, district: parts[1] || null };
+}
+
+function buildTitleBranch(row) {
+  const parts = [];
+  if (row.gorev) parts.push(row.gorev);
+  if (row.brans) parts.push(row.brans);
+  let text = parts.join(' / ');
+  if (row.seviye_unvani) text += ` (${row.seviye_unvani})`;
+  return text || null;
+}
+
+function buildTeacherPayloadFromMebbisRow(row, tenantId, schoolId) {
+  const { city, district } = splitIlIlce(row.il_ilce);
+  return {
+    tenant_id: tenantId,
+    school_id: schoolId,
+    city,
+    district,
+    personnel_no: row.kurum_sicil_no || null,
+    national_id: row.national_id || null,
+    first_name: row.first_name,
+    last_name: row.last_name,
+    title_branch: buildTitleBranch(row),
+    working_institution: row.kurum_adi || null,
+    pension_degree: row.emekli_sicil_no || null,
+    rank: row.kademe != null ? String(row.kademe) : null,
+    degree: row.derece != null ? String(row.derece) : null,
+    service_start_date: row.kurum_baslama_tarihi || null,
+    personnel_type: row.personnel_type || 'ogretmen',
+    union_name: row.union_name || null,
+    meta: {
+      il_ilce: row.il_ilce || null,
+      kurum_kodu: row.kurum_kodu || null,
+      ogrenim_durumu: row.ogrenim_durumu || null,
+      arsiv_no: row.arsiv_no || null,
+      cinsiyet: row.cinsiyet || null,
+      kan_grubu: row.kan_grubu || null,
+      dogum_tarihi: row.dogum_tarihi || null,
+      ilk_gorev_tarihi: row.ilk_gorev_tarihi || null,
+      durum: row.durum || null,
+      seviye_unvani: row.seviye_unvani || null,
+      mebbis_import_at: new Date().toISOString(),
+    },
+  };
+}
+
 module.exports = {
   COLUMN_LABELS,
+
+  async importMebbisPreview(req, res, next) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, message: 'Dosya yüklenmedi' });
+      }
+      const tenantId = req.user && req.user.tenant_id;
+      const parsed = parseMebbisWorkbook(req.file.buffer);
+      if (parsed.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Dosyada tanınabilir bir personel kaydı bulunamadı. MEBBİS "Personel Listesi Özet Bilgiler" dökümü olduğundan emin olun.',
+        });
+      }
+
+      const nationalIds = parsed.map((r) => r.national_id).filter(Boolean);
+      const existing = await Teacher.findAll({
+        where: { tenant_id: tenantId, national_id: nationalIds },
+        attributes: ['id', 'national_id', 'union_name'],
+      });
+      const byNationalId = new Map(existing.map((t) => [t.national_id, t]));
+
+      const rows = parsed.map((row) => {
+        const match = byNationalId.get(row.national_id);
+        return {
+          ...row,
+          matched_teacher_id: match ? match.id : null,
+          union_name: match ? match.union_name || null : null,
+          include: true,
+        };
+      });
+
+      res.json({ success: true, data: rows });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async importMebbisCommit(req, res, next) {
+    try {
+      const tenantId = req.user && req.user.tenant_id;
+      const { school_id: schoolId, rows } = req.validatedBody || req.body;
+
+      if (schoolId) {
+        const school = await School.findByPk(schoolId);
+        if (!school || (tenantId && school.tenant_id !== tenantId)) {
+          return res.status(400).json({ success: false, message: 'Geçersiz okul' });
+        }
+      }
+
+      const toImport = rows.filter((r) => r.include !== false);
+      let created = 0;
+      let updated = 0;
+
+      await sequelize.transaction(async (transaction) => {
+        for (const row of toImport) {
+          const payload = buildTeacherPayloadFromMebbisRow(row, tenantId, schoolId);
+          let teacher = null;
+          if (row.matched_teacher_id) {
+            teacher = await Teacher.findByPk(row.matched_teacher_id, { transaction });
+            if (teacher && tenantId && teacher.tenant_id !== tenantId) teacher = null;
+          }
+          if (teacher) {
+            await teacher.update(payload, { transaction });
+            updated += 1;
+          } else {
+            await Teacher.create(payload, { transaction });
+            created += 1;
+          }
+        }
+      });
+
+      await audit.log(req, {
+        action: 'create',
+        entityType: 'teacher_mebbis_import',
+        entityId: schoolId,
+        summary: `MEBBİS'ten içe aktarma: ${created} yeni, ${updated} güncellenen personel`,
+      });
+
+      res.json({ success: true, data: { created, updated, total: toImport.length } });
+    } catch (err) {
+      next(err);
+    }
+  },
 
   async document(req, res, next) {
     try {

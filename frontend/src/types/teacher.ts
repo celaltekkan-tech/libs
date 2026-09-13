@@ -22,8 +22,32 @@ export interface Teacher {
   personnel_type: string
   contract_start_date: string | null
   contract_end_date: string | null
+  union_name: string | null
   created_at: string
   updated_at: string
+}
+
+export interface PromotionHistory {
+  id: number
+  tenant_id: number
+  teacher_id: number
+  previous_degree: string | null
+  previous_rank: string | null
+  previous_degree_rank_date: string | null
+  new_degree: string
+  new_rank: string
+  new_degree_rank_date: string
+  note: string | null
+  created_by: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ApplyPromotionPayload {
+  new_degree: string
+  new_rank: string
+  new_degree_rank_date: string
+  note?: string | null
 }
 
 export interface TeacherPayload {
@@ -48,4 +72,5 @@ export interface TeacherPayload {
   personnel_type?: string
   contract_start_date?: string | null
   contract_end_date?: string | null
+  union_name?: string | null
 }

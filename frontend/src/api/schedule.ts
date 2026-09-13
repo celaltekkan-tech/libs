@@ -86,3 +86,81 @@ export async function exportSchedule(payload: {
   })
   return data as Blob
 }
+
+export interface ScheduleTeacherOption {
+  id: number
+  first_name: string
+  last_name: string
+  personnel_no: string | null
+  subject_ids: number[]
+  classroom_ids: number[]
+  subject_names: string[]
+}
+
+export async function listScheduleTeachers(params?: {
+  classroom_id?: number
+  subject_id?: number
+  day_of_week?: number
+  academic_year?: string
+}): Promise<ScheduleTeacherOption[]> {
+  const { data } = await client.get<Envelope<ScheduleTeacherOption[]>>('/api/schedule/teachers', {
+    params,
+  })
+  return data.data
+}
+
+export interface ScheduleImportPreview {
+  sheet_names: string[]
+  sheet_name: string
+  header_row: number
+  headers: { index: number; label: string }[]
+  suggested_mapping: Record<string, string>
+  sample_rows: { row: number; values: Record<string, string | null> }[]
+  importable_fields: { key: string; label: string; required: boolean }[]
+  total_rows: number
+}
+
+export interface ScheduleImportResult {
+  created: number
+  updated: number
+  skipped: number
+  error_count: number
+  errors: { row: number; message: string }[]
+}
+
+export async function previewScheduleImport(
+  file: File,
+  options?: { headerRow?: number | null },
+): Promise<ScheduleImportPreview> {
+  const form = new FormData()
+  form.append('file', file)
+  if (options?.headerRow != null) form.append('header_row', String(options.headerRow))
+  const { data } = await client.post<Envelope<ScheduleImportPreview>>(
+    '/api/schedule/import/preview',
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 },
+  )
+  return data.data
+}
+
+export async function importSchedule(
+  file: File,
+  options?: {
+    headerRow?: number | null
+    columnMapping?: Record<string, string>
+    replaceExisting?: boolean
+    academicYear?: string | null
+  },
+): Promise<ScheduleImportResult> {
+  const form = new FormData()
+  form.append('file', file)
+  if (options?.headerRow != null) form.append('header_row', String(options.headerRow))
+  if (options?.columnMapping) form.append('column_mapping', JSON.stringify(options.columnMapping))
+  if (options?.replaceExisting) form.append('replace_existing', 'true')
+  if (options?.academicYear) form.append('academic_year', options.academicYear)
+  const { data } = await client.post<Envelope<ScheduleImportResult>>('/api/schedule/import', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+  })
+  return data.data
+}

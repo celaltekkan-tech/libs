@@ -1,5 +1,5 @@
 import client from './client'
-import type { Teacher, TeacherPayload } from '../types/teacher'
+import type { ApplyPromotionPayload, PromotionHistory, Teacher, TeacherPayload } from '../types/teacher'
 import type { ExportFormat } from '../utils/download'
 
 interface Envelope<T> {
@@ -64,6 +64,39 @@ export async function fetchUpcomingPromotions(days = 90): Promise<UpcomingPromot
   return data.data
 }
 
+export async function applyPromotion(
+  teacherId: number,
+  payload: ApplyPromotionPayload,
+): Promise<{ teacher: Teacher; history: PromotionHistory }> {
+  const { data } = await client.post<Envelope<{ teacher: Teacher; history: PromotionHistory }>>(
+    `/api/teachers/${teacherId}/promotions`,
+    payload,
+  )
+  return data.data
+}
+
+export async function fetchPromotionHistory(teacherId: number): Promise<PromotionHistory[]> {
+  const { data } = await client.get<Envelope<PromotionHistory[]>>(`/api/teachers/${teacherId}/promotions`)
+  return data.data
+}
+
+export async function downloadPromotionForm(historyId: number): Promise<Blob> {
+  const { data } = await client.get(`/api/teachers/promotions/${historyId}/export-form`, {
+    responseType: 'blob',
+    timeout: 30000,
+  })
+  return data as Blob
+}
+
+export async function downloadSalaryChangeForm(month: number, year: number): Promise<Blob> {
+  const { data } = await client.get('/api/teachers/promotions/salary-form/export', {
+    params: { month, year },
+    responseType: 'blob',
+    timeout: 30000,
+  })
+  return data as Blob
+}
+
 export type TeacherDocumentType = 'gorevlendirme' | 'baslama' | 'ayrilis'
 
 export async function downloadTeacherDocument(id: number, type: TeacherDocumentType): Promise<Blob> {
@@ -73,4 +106,62 @@ export async function downloadTeacherDocument(id: number, type: TeacherDocumentT
     timeout: 30000,
   })
   return data as Blob
+}
+
+export interface MebbisImportRow {
+  row_index: number
+  il_ilce: string | null
+  kurum_adi: string | null
+  kurum_kodu: string | null
+  kurum_baslama_tarihi: string | null
+  first_name: string
+  last_name: string
+  national_id: string | null
+  unvan: string | null
+  gorev: string | null
+  brans: string | null
+  seviye_unvani: string | null
+  personnel_type: string
+  ogrenim_durumu: string | null
+  kurum_sicil_no: string | null
+  emekli_sicil_no: string | null
+  arsiv_no: string | null
+  cinsiyet: string | null
+  kan_grubu: string | null
+  dogum_tarihi: string | null
+  ilk_gorev_tarihi: string | null
+  durum: string | null
+  kademe: number | null
+  derece: number | null
+  matched_teacher_id: number | null
+  union_name: string | null
+  include?: boolean
+}
+
+export async function previewMebbisImport(file: File): Promise<MebbisImportRow[]> {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await client.post<Envelope<MebbisImportRow[]>>('/api/teachers/import/mebbis/preview', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60000,
+  })
+  return data.data
+}
+
+export interface MebbisImportCommitResult {
+  created: number
+  updated: number
+  total: number
+}
+
+export async function commitMebbisImport(
+  schoolId: number,
+  rows: MebbisImportRow[],
+): Promise<MebbisImportCommitResult> {
+  const { data } = await client.post<Envelope<MebbisImportCommitResult>>(
+    '/api/teachers/import/mebbis/commit',
+    { school_id: schoolId, rows },
+    { timeout: 60000 },
+  )
+  return data.data
 }

@@ -1,8 +1,24 @@
+/** TYP EK-2 hücre kodları — Excel çıktısında kullanılır; kodlar sonra güncellenebilir. */
+export const TYP_STATUS_CODES: Record<string, string> = {
+  geldi: '',
+  fazla_mesai: '',
+  gelmedi: 'D',
+  izinli: 'Ü',
+  raporlu: 'R',
+  mazeretli: 'M',
+  is_kazasi: 'İ',
+}
+
+/** Devamsızlık / mazeret durumları (neden alanı bunlarda anlamlı) */
+export const ABSENCE_STATUSES = new Set(['gelmedi', 'izinli', 'raporlu', 'mazeretli', 'is_kazasi'])
+
 export const ATTENDANCE_STATUS_OPTIONS = [
   { value: 'geldi', label: 'Geldi' },
-  { value: 'gelmedi', label: 'Gelmedi' },
-  { value: 'izinli', label: 'İzinli' },
-  { value: 'raporlu', label: 'Raporlu' },
+  { value: 'gelmedi', label: 'Gelmedi (D)' },
+  { value: 'izinli', label: 'Ücretsiz İzin (Ü)' },
+  { value: 'raporlu', label: 'Raporlu (R)' },
+  { value: 'mazeretli', label: 'Mazeretli (M)' },
+  { value: 'is_kazasi', label: 'İş Kazası (İ)' },
   { value: 'fazla_mesai', label: 'Fazla Mesai' },
 ]
 

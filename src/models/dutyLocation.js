@@ -5,6 +5,16 @@ module.exports = (sequelize, DataTypes) => {
       tenant_id: DataTypes.INTEGER,
       school_id: DataTypes.INTEGER,
       name: DataTypes.STRING,
+      floor_level: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+      },
+      sort_order: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+      },
       is_active: {
         type: DataTypes.BOOLEAN,
         allowNull: false,

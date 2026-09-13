@@ -1,8 +1,10 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { ConfigProvider, App as AntApp } from 'antd'
+import { ConfigProvider, App as AntApp, theme as antdTheme } from 'antd'
 import trTR from 'antd/locale/tr_TR'
 import { AuthProvider } from './auth/AuthContext'
-import { GuestRoute, LicenseGuard, ModuleRoute, PlatformAdminRoute, ProtectedRoute, RoleRoute } from './auth/routes'
+import { ActiveSchoolProvider } from './auth/ActiveSchoolContext'
+import { ThemeProvider, useThemeMode } from './theme/ThemeContext'
+import { GuestRoute, LicenseGuard, ModuleRoute, PlatformAdminRoute, ProtectedRoute } from './auth/routes'
 import { LoginPage } from './pages/LoginPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ProfilePage } from './pages/ProfilePage'
@@ -10,7 +12,9 @@ import { TenantsListPage } from './pages/platform/TenantsListPage'
 import { TenantDetailPage } from './pages/platform/TenantDetailPage'
 import { FeedbackPage } from './pages/FeedbackPage'
 import { FeedbackListPage } from './pages/platform/FeedbackListPage'
+import { PlatformNotificationsPage } from './pages/platform/PlatformNotificationsPage'
 import { LicensesPage } from './pages/platform/LicensesPage'
+import { BackupsPage } from './pages/platform/BackupsPage'
 import { SchoolsPage } from './pages/SchoolsPage'
 import { TeachersPage } from './pages/TeachersPage'
 import { StudentsPage } from './pages/StudentsPage'
@@ -35,19 +39,23 @@ import { DisciplinePage } from './pages/DisciplinePage'
 import { GuidancePage } from './pages/GuidancePage'
 import { TeacherDocumentsPage } from './pages/TeacherDocumentsPage'
 
-const theme = {
-  token: {
-    colorPrimary: '#1d4e89',
-    borderRadius: 8,
-    fontFamily: "'Segoe UI', system-ui, sans-serif",
-  },
-}
+function ThemedApp() {
+  const { mode } = useThemeMode()
 
-export default function App() {
+  const theme = {
+    algorithm: mode === 'dark' ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
+    token: {
+      colorPrimary: '#1d4e89',
+      borderRadius: 8,
+      fontFamily: "'Segoe UI', system-ui, sans-serif",
+    },
+  }
+
   return (
     <ConfigProvider locale={trTR} theme={theme}>
       <AntApp>
         <AuthProvider>
+          <ActiveSchoolProvider>
           <BrowserRouter>
             <Routes>
               <Route element={<GuestRoute />}>
@@ -57,6 +65,9 @@ export default function App() {
                 <Route element={<LicenseGuard />}>
                   <Route path="/" element={<DashboardPage />} />
                   <Route path="/profile" element={<ProfilePage />} />
+                  <Route element={<ModuleRoute module="audit" />}>
+                    <Route path="/audit-logs" element={<AuditLogsPage />} />
+                  </Route>
                   <Route path="/feedback" element={<FeedbackPage />} />
                   <Route element={<ModuleRoute module="schools" />}>
                     <Route path="/schools" element={<SchoolsPage />} />
@@ -108,24 +119,30 @@ export default function App() {
                   <Route element={<ModuleRoute module="leaves" />}>
                     <Route path="/leaves" element={<LeavesPage />} />
                   </Route>
-                  <Route element={<ModuleRoute module="audit" />}>
-                    <Route element={<RoleRoute roles={['Müdür']} />}>
-                      <Route path="/audit-logs" element={<AuditLogsPage />} />
-                    </Route>
-                  </Route>
                 </Route>
                 <Route element={<PlatformAdminRoute />}>
                   <Route path="/platform/tenants" element={<TenantsListPage />} />
                   <Route path="/platform/tenants/:id" element={<TenantDetailPage />} />
                   <Route path="/platform/licenses" element={<LicensesPage />} />
                   <Route path="/platform/feedback" element={<FeedbackListPage />} />
+                  <Route path="/platform/notifications" element={<PlatformNotificationsPage />} />
+                  <Route path="/platform/backups" element={<BackupsPage />} />
                 </Route>
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </BrowserRouter>
+          </ActiveSchoolProvider>
         </AuthProvider>
       </AntApp>
     </ConfigProvider>
+  )
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <ThemedApp />
+    </ThemeProvider>
   )
 }

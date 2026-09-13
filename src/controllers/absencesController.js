@@ -2,15 +2,29 @@
 
 const { Op } = require('sequelize');
 const PDFDocument = require('pdfkit');
-const { StudentAbsence, Student, Classroom, School } = require('../models');
+const { StudentAbsence, Student, Classroom, School, Holiday } = require('../models');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
 
 const THRESHOLDS = [10, 20, 30];
 
+// Devamsızlık eşiği hesaplamasında mazeretsiz gün 1, yarım gün 0.5 olarak
+// sayılır; mazeretli ve raporlu günler toplam devamsızlığa dahil edilmez.
+const ABSENCE_TYPE_WEIGHTS = { mazeretsiz: 1, yarim_gun: 0.5, mazeretli: 0, raporlu: 0 };
+const ABSENCE_TYPE_LABELS = {
+  mazeretsiz: 'Mazeretsiz',
+  mazeretli: 'Mazeretli',
+  raporlu: 'Raporlu',
+  yarim_gun: 'Yarım Gün',
+};
+
 function assertTenantAccess(req, row) {
   if (req.user && req.user.tenant_id && row.tenant_id !== req.user.tenant_id) return false;
   return true;
+}
+
+function weightOf(absenceType) {
+  return ABSENCE_TYPE_WEIGHTS[absenceType] ?? 1;
 }
 
 const studentInclude = {
@@ -21,6 +35,8 @@ const studentInclude = {
 };
 
 module.exports = {
+  ABSENCE_TYPE_LABELS,
+
   async list(req, res, next) {
     try {
       const tenantId = req.user && req.user.tenant_id;
@@ -45,23 +61,25 @@ module.exports = {
 
   async bulkCreate(req, res, next) {
     try {
-      const { absence_date, student_ids, is_excused, reason } = req.validatedBody || req.body;
+      const { absence_date, entries } = req.validatedBody || req.body;
       const tenantId = req.user && req.user.tenant_id;
 
       let created = 0;
-      for (const studentId of student_ids) {
+      let updated = 0;
+      for (const entry of entries) {
         const [row, wasCreated] = await StudentAbsence.findOrCreate({
-          where: { tenant_id: tenantId, student_id: studentId, absence_date },
+          where: { tenant_id: tenantId, student_id: entry.student_id, absence_date },
           defaults: {
             tenant_id: tenantId,
-            student_id: studentId,
+            student_id: entry.student_id,
             absence_date,
-            is_excused: is_excused ?? false,
-            reason: reason ?? null,
+            absence_type: entry.absence_type,
+            reason: entry.reason ?? null,
           },
         });
         if (!wasCreated) {
-          await row.update({ is_excused: is_excused ?? row.is_excused, reason: reason ?? row.reason });
+          await row.update({ absence_type: entry.absence_type, reason: entry.reason ?? row.reason });
+          updated += 1;
         } else {
           created += 1;
         }
@@ -70,10 +88,10 @@ module.exports = {
       await audit.log(req, {
         action: 'create',
         entityType: 'student_absence_batch',
-        summary: `Devamsızlık girişi: ${absence_date} (${student_ids.length} öğrenci, ${created} yeni)`,
+        summary: `Devamsızlık girişi: ${absence_date} (${entries.length} öğrenci, ${created} yeni, ${updated} güncellendi)`,
       });
 
-      res.json({ success: true, data: { processed: student_ids.length, created } });
+      res.json({ success: true, data: { processed: entries.length, created, updated } });
     } catch (err) {
       next(err);
     }
@@ -95,7 +113,7 @@ module.exports = {
   async warnings(req, res, next) {
     try {
       const tenantId = req.user && req.user.tenant_id;
-      const where = { tenant_id: tenantId, is_excused: false };
+      const where = { tenant_id: tenantId };
       if (req.query.start_date && req.query.end_date) {
         where.absence_date = { [Op.gte]: req.query.start_date, [Op.lte]: req.query.end_date };
       }
@@ -104,6 +122,8 @@ module.exports = {
       const byStudent = new Map();
       rows.forEach((row) => {
         if (!row.Student) return;
+        const weight = weightOf(row.absence_type);
+        if (weight <= 0) return;
         const key = row.student_id;
         if (!byStudent.has(key)) {
           byStudent.set(key, {
@@ -114,7 +134,7 @@ module.exports = {
             count: 0,
           });
         }
-        byStudent.get(key).count += 1;
+        byStudent.get(key).count += weight;
       });
 
       const data = Array.from(byStudent.values())
@@ -144,9 +164,8 @@ module.exports = {
       if (!assertTenantAccess(req, student)) return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
 
       const tenantId = req.user && req.user.tenant_id;
-      const count = await StudentAbsence.count({
-        where: { tenant_id: tenantId, student_id: student.id, is_excused: false },
-      });
+      const rows = await StudentAbsence.findAll({ where: { tenant_id: tenantId, student_id: student.id } });
+      const count = rows.reduce((sum, r) => sum + weightOf(r.absence_type), 0);
 
       const doc = new PDFDocument({ margin: 60, size: 'A4' });
       res.setHeader('Content-Type', 'application/pdf');
@@ -192,6 +211,63 @@ module.exports = {
     }
   },
 
+  // Ay bazlı takvim görünümü. student_id verilirse yalnızca o öğrencinin
+  // devamsızlık günleri döner; verilmezse tüm öğrenciler için gün bazlı
+  // devamsız oranı (renk yoğunluğu için) ve o gün devamsız olan öğrenci listesi döner.
+  async calendar(req, res, next) {
+    try {
+      const tenantId = req.user && req.user.tenant_id;
+      const year = Number(req.query.year);
+      const month = Number(req.query.month);
+      if (!year || !month) {
+        return res.status(400).json({ success: false, message: 'year ve month zorunludur' });
+      }
+      const studentId = req.query.student_id ? Number(req.query.student_id) : null;
+
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
+      const monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
+
+      const totalStudents = await Student.count({ where: { tenant_id: tenantId } });
+
+      const holidays = await Holiday.findAll({ where: { tenant_id: tenantId, month } });
+      const holidayByDay = new Map();
+      holidays.forEach((h) => {
+        if (h.year == null || h.year === year) holidayByDay.set(h.day, h.name);
+      });
+
+      const where = { tenant_id: tenantId, absence_date: { [Op.between]: [monthStart, monthEnd] } };
+      if (studentId) where.student_id = studentId;
+      const rows = await StudentAbsence.findAll({ where, include: [studentInclude] });
+
+      const days = [];
+      for (let day = 1; day <= daysInMonth; day += 1) {
+        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const dayRows = rows.filter((r) => r.absence_date === dateStr);
+        days.push({
+          date: dateStr,
+          day,
+          is_holiday: holidayByDay.has(day),
+          holiday_name: holidayByDay.get(day) || null,
+          absent_count: dayRows.length,
+          total_students: totalStudents,
+          absent_ratio: totalStudents > 0 ? dayRows.length / totalStudents : 0,
+          students: dayRows.map((r) => ({
+            student_id: r.student_id,
+            student_name: r.Student ? `${r.Student.first_name} ${r.Student.last_name}` : null,
+            student_number: r.Student?.student_number || null,
+            absence_type: r.absence_type,
+            reason: r.reason,
+          })),
+        });
+      }
+
+      res.json({ success: true, data: { total_students: totalStudents, student_id: studentId, days } });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async exportFile(req, res, next) {
     try {
       const tenantId = req.user && req.user.tenant_id;
@@ -211,13 +287,13 @@ module.exports = {
         format,
         filename: 'devamsizlik-raporu',
         title: 'Devamsızlık Raporu',
-        headers: ['Öğrenci', 'Öğrenci No', 'Sınıf', 'Tarih', 'Mazeretli mi', 'Açıklama'],
+        headers: ['Öğrenci', 'Öğrenci No', 'Sınıf', 'Tarih', 'Durum', 'Açıklama'],
         rows: rows.map((r) => [
           r.Student ? `${r.Student.first_name} ${r.Student.last_name}` : '',
           r.Student?.student_number || '',
           r.Student?.Classroom ? `${r.Student.Classroom.class_level}/${r.Student.Classroom.section}` : '',
           r.absence_date,
-          r.is_excused ? 'Evet' : 'Hayır',
+          ABSENCE_TYPE_LABELS[r.absence_type] || r.absence_type,
           r.reason || '',
         ]),
       });

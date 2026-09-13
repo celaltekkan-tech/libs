@@ -41,7 +41,20 @@ export async function fetchAttendanceMonthlySummary(year: number, month: number)
   return data.data
 }
 
-export async function exportAttendance(payload: { format: ExportFormat; year?: number; month?: number }): Promise<Blob> {
+export interface AttendanceExportPayload {
+  format: ExportFormat
+  year: number
+  month: number
+  /** Resmi tatil / hafta sonu dışında kapatılacak günler */
+  closed_days?: number[]
+  typ_no?: string
+  typ_subject?: string
+  typ_start_date?: string
+  typ_end_date?: string
+  school_id?: number
+}
+
+export async function exportAttendance(payload: AttendanceExportPayload): Promise<Blob> {
   const { data } = await client.post('/api/attendance/export', payload, { responseType: 'blob', timeout: 60000 })
   return data as Blob
 }

@@ -193,7 +193,14 @@ export function TeacherDocumentsPage() {
         )}
       </Space>
 
-      <Table rowKey="id" loading={loading} columns={columns} dataSource={docs} pagination={{ pageSize: 20 }} />
+      <Table
+        rowKey="id"
+        loading={loading}
+        columns={columns}
+        dataSource={docs}
+        pagination={{ pageSize: 20 }}
+        scroll={{ x: 'max-content' }}
+      />
 
       <Modal
         title="Yeni Evrak"

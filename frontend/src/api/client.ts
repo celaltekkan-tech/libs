@@ -74,7 +74,10 @@ const client = axios.create({
 
 client.interceptors.request.use((config) => {
   const url = config.url || ''
-  const isPublicAuth = url.includes('/api/auth/login') || url.includes('/api/auth/register')
+  const isPublicAuth =
+    url.includes('/api/auth/login') ||
+    url.includes('/api/auth/register') ||
+    url.includes('/api/auth/verify-2fa')
   const token = getStoredToken()
   if (token && !isPublicAuth) {
     config.headers.Authorization = `Bearer ${token}`

@@ -19,9 +19,11 @@ export interface Exam {
   exam_date: string
   start_time: string | null
   duration_minutes: number | null
+  teacher_id: number | null
   notes: string | null
   Classroom?: { id: number; class_level: string; section: string; academic_year: string | null } | null
   Subject?: { id: number; name: string; difficulty_level: string | null } | null
+  Teacher?: { id: number; first_name: string; last_name: string; personnel_no: string | null } | null
   created_at: string
   updated_at: string
 }
@@ -34,5 +36,6 @@ export interface ExamPayload {
   exam_date: string
   start_time?: string | null
   duration_minutes?: number | null
+  teacher_id?: number | null
   notes?: string | null
 }

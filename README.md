@@ -1,4 +1,4 @@
-# Lise İdari
+# Okul İdari
 
 Okulların idari işlerini yönetmek için geliştirilmiş sistem. Backend (Node.js/Express REST API) ve frontend (React yönetici paneli) aynı depoda birlikte geliştirilir.
 
@@ -205,6 +205,77 @@ durum güncelleme ve silme sadece `is_platform_admin = true` olan kullanıcılar
 Frontend: `/feedback` sayfasından her kullanıcı gönderebilir ve kendi tenant'ının
 gönderdiklerini + admin cevabını görebilir; `/platform/feedback` sayfasından
 platform admin tüm geri bildirimleri görüntüleyip yanıtlayabilir.
+
+### Communications (Duyurular / SMS Motoru)
+
+Gerekli izinler: `communications.read`, `communications.create`, `communications.update`, `communications.delete`.
+Ayrıca tenant'ın planında `communications` modülü açık olmalıdır.
+
+- `GET /api/announcements` - Duyuru listesi (tenant ile sınırlı, en yeni 500)
+- `GET /api/announcements/preview-recipients?target_type=&target_ids=` - Gönderim öncesi alıcı sayısını hesapla
+- `POST /api/announcements` - Yeni duyuru oluştur (taslak) — gövde: `{ "title", "body", "channel": "sms"|"email"|"both", "target_type": "all"|"classroom"|"class_level"|"student", "target_ids"?: [...] }`
+- `POST /api/announcements/:id/mark-sent` - Duyuruyu gönder. `channel` `sms`/`both` ise hedeflenen her öğrencinin veli telefonuna gerçek bir SMS denemesi yapılır (bkz. SMS Motoru); `channel` sadece `email` ise duyuru yalnızca "gönderildi" işaretlenir (e-posta gönderimi henüz uygulanmadı). Yanıt: `{ "data": <announcement>, "summary": { "total", "basarili", "basarisiz", "iptal" } }`
+- `DELETE /api/announcements/:id` - Duyuruyu sil
+
+Her gönderim denemesi `AnnouncementRecipient` tablosuna tek satır olarak işlenir: `phone_number`,
+`status` (`beklemede` | `basarili` | `basarisiz` | `iptal`), `provider`, `provider_message_id`,
+`error_message`, `sent_at`. Telefon numarası olmayan öğrenciler otomatik `iptal` olarak işaretlenir.
+
+#### SMS Motoru (`src/services/smsEngine.js`)
+
+Toplu SMS sağlayıcılarıyla veya bir SMS gönderme programıyla konuşan, sağlayıcıdan bağımsız
+bir modül. Tek fonksiyonu dışa açar:
+
+```js
+const { sendSms, SMS_STATUS } = require('./src/services/smsEngine');
+
+const result = await sendSms({ phoneNumber: '5551234567', message: 'Merhaba' });
+// result: { status: SMS_STATUS.SUCCESS | FAILED | CANCELLED, providerName, providerMessageId, error }
+```
+
+- Telefon veya mesaj boşsa hiçbir sağlayıcıya gitmeden `SMS_STATUS.CANCELLED` (`iptal`) döner.
+- Aksi halde `SMS_PROVIDER` env değişkeninde seçili sağlayıcı çağrılır; sonuç `basarili`/`basarisiz`
+  olarak normalize edilir. Sağlayıcı hiçbir zaman exception fırlatıp süreci düşürmez — network/timeout/
+  parse hataları da `basarisiz` sonucuna çevrilir (yapılandırma eksikliği hariç, bkz. altta).
+
+İki yerleşik sağlayıcı (`SMS_PROVIDER` ile seçilir), tüm ayarlar `.env` üzerinden:
+
+**`external_cli`** — bir SMS gönderme programını parametreyle çalıştırır (varsayılan sağlayıcı):
+
+| Değişken | Açıklama |
+|---|---|
+| `SMS_EXTERNAL_PROGRAM_PATH` | Çalıştırılabilir programın tam yolu (zorunlu) |
+| `SMS_EXTERNAL_PROGRAM_ARGS` | JSON dizi şablonu, örn. `["--to","{phone}","--text","{message}"]`. Boşsa program `[telefon, mesaj]` ile çağrılır |
+| `SMS_EXTERNAL_PROGRAM_TIMEOUT_MS` | Varsayılan `15000` |
+
+Program stdout'a **tek satır JSON** yazmalıdır:
+
+```json
+{"success": true, "messageId": "abc123"}
+{"success": false, "error": "Bakiye yetersiz"}
+```
+
+Zaman aşımı, sıfırdan farklı çıkış kodu veya geçersiz/JSON-olmayan çıktı otomatik olarak
+`basarisiz` sayılır; hata mesajı `error_message` alanına yazılır.
+
+**`http_api`** — belirli bir toplu SMS firmasına bağlı olmayan, config-driven genel bir HTTP
+adaptörü (firma netleşince kullanılır, kod değişikliği gerekmeden `.env` ile uyarlanır):
+
+| Değişken | Açıklama |
+|---|---|
+| `SMS_HTTP_URL` | İstek atılacak uç (zorunlu) |
+| `SMS_HTTP_METHOD` | Varsayılan `POST` |
+| `SMS_HTTP_API_KEY` / `SMS_HTTP_API_KEY_HEADER` | API anahtarı ve hangi header'a konacağı (varsayılan `Authorization`) |
+| `SMS_HTTP_BODY_TEMPLATE` | JSON gövde şablonu, `{phone}`/`{message}` yer tutucularıyla. Boşsa `{ "to": phone, "message": message }` gönderilir |
+| `SMS_HTTP_SUCCESS_FIELD` | Yanıt gövdesinde başarıyı belirten alan. Boşsa yalnızca HTTP 2xx başarı sayılır |
+| `SMS_HTTP_MESSAGE_ID_FIELD` / `SMS_HTTP_ERROR_FIELD` | Yanıttan mesaj id'si / hata metni okunacak alan adları |
+| `SMS_HTTP_TIMEOUT_MS` | Varsayılan `15000` |
+
+Tüm değişkenlerin varsayılanları ve açıklamaları `.env.example` içinde de yer alır. Yapılandırma
+eksik/geçersizse (`SMS_EXTERNAL_PROGRAM_PATH` tanımlı değil, `SMS_HTTP_URL` tanımlı değil, geçersiz
+JSON şablonu vb.) `smsEngine.SmsConfigError` fırlatılır; `announcementsController.markSent` bunu
+yakalayıp `500` ile "SMS motoru yapılandırma hatası" mesajı döner — bu, tek bir alıcının
+gönderim başarısızlığından ayrıdır, motor hiç çalıştırılamadığı anlamına gelir.
 
 ### Licenses (Lisans Yönetimi)
 
@@ -466,6 +537,114 @@ Tenant (Kiracı)
 - `npm run smoke:auth` - Auth uçlarını uçtan uca test et
 - `npm run smoke:cors` - CORS ayarlarını test et
 - `npm run build:frontend` - Frontend üretim derlemesi
+
+## Docker ile Çalıştırma (Production)
+
+Proje, biri veritabanı (`db`), biri backend (`backend`), biri de frontend (`frontend`)
+olmak üzere üç ayrı container olarak çalışacak şekilde yapılandırılmıştır. `frontend`
+container'ı statik dosyaları Nginx ile sunar ve `/api`, `/health` isteklerini kendi
+içinde `backend` container'ına proxy'ler; böylece tarayıcı tek bir origin görür ve
+CORS ayarına ihtiyaç kalmaz.
+
+Sunucuda zaten çalışan **Nginx Proxy Manager (NPM)** ile entegre olması için `frontend`
+container'ı NPM'in Docker network'üne de katılır. NPM tarafında yapmanız gereken tek şey
+domaininizi `frontend` container adına (port `80`) yönlendiren bir Proxy Host oluşturmak.
+
+```bash
+# 1) .env dosyasını oluşturun (yoksa)
+cp .env.example .env
+# DB_USER / DB_PASS / DB_NAME, JWT_SECRET vb. değerleri doldurun.
+
+# 2) NPM'in kullandığı network adını bulun
+docker network ls
+# .env içine NPM_NETWORK_NAME=<bulduğunuz-ad> yazın (örn. npm_default)
+
+# 3) Build edip ayağa kaldırın
+docker compose up -d --build
+
+# 4) İlk kurulumda demo/platform admin verisini oluşturmak isterseniz
+docker compose exec backend npm run seed
+```
+
+Notlar:
+- Migration'lar `backend` container'ı her başladığında otomatik çalışır
+  (`docker/backend-entrypoint.sh`).
+- `db` ve `backend` yalnızca dahili (`internal`) network'te yer alır; dışarıya port
+  açılmaz. Dışarıdan tek erişim noktası NPM üzerinden `frontend` container'ıdır.
+- Veriler Docker'ın kendi iç volume'lerinde değil, doğrudan host makinede tutulur:
+  Postgres verisi `./data/postgres`, yüklenen dosyalar `./uploads` klasöründedir.
+  `docker compose down`, `up -d --build`, container silme/yeniden oluşturma gibi
+  işlemler bu klasörlere dokunmaz; veri kaybı yaşamamak için tek şart bu klasörleri
+  **silmemek** ve düzenli yedeklemektir (`data/postgres` ve `uploads`).
+- Ayrı bir API subdomain'i (örn. `api.example.com`) kullanmak isterseniz `.env` içindeki
+  `VITE_API_URL` değerini doldurup frontend'i yeniden build edin; bu durumda `CORS_ORIGIN`
+  değerini de gerçek frontend domaininize göre güncelleyin.
+- Landing sayfası bu compose dosyasının kapsamında değildir; ayrı bir servis/proje olarak
+  eklenmek istendiğinde aynı `proxy` network'üne katılacak şekilde entegre edilebilir.
+
+### Otomatik Deploy (dev → master)
+
+Geliştirme `dev` branch'inde yapılır. `dev` → `master` merge/push edildiğinde,
+sunucuda cron ile periyodik çalışan `scripts/deploy-watch.sh` yeni commit'i görüp
+otomatik olarak `git pull` + `docker compose up -d --build` yapar.
+
+Sunucuda tek seferlik kurulum:
+
+```bash
+# 1) Repoyu sunucuya klonlayın ve production .env dosyasını oluşturun
+git clone https://github.com/celaltekkan-tech/libs.git /opt/libs
+cd /opt/libs
+git checkout master
+cp .env.example .env   # gerçek değerleri doldurun (DB_*, JWT_SECRET, NPM_NETWORK_NAME, ...)
+
+# 2) İlk build
+docker compose up -d --build
+
+# 3) Deploy script'ini çalıştırılabilir yapın
+chmod +x scripts/deploy-watch.sh
+
+# 4) Cron'a ekleyin (her 2 dakikada bir kontrol eder, log dosyasına yazar)
+crontab -e
+# aşağıdaki satırı ekleyin:
+*/2 * * * * /opt/libs/scripts/deploy-watch.sh >> /var/log/libs-deploy.log 2>&1
+```
+
+Notlar:
+- `scripts/deploy-watch.sh` sadece `master` branch'ini izler (`DEPLOY_BRANCH` env
+  değişkeniyle değiştirilebilir) ve yalnızca fast-forward mümkünse pull yapar; sunucuda
+  elle değişiklik yapılmamalıdır.
+- Aynı anda iki deploy'un çakışmaması için `flock` ile kilitlenir.
+- Script yalnızca yeni commit varsa `docker compose up -d --build` çalıştırır; migration'lar
+  backend container'ı her (yeniden) başladığında otomatik uygulanır.
+- `dev` branch'inde çalışırken sunucu hiçbir şekilde etkilenmez; sadece `master`'a
+  merge/push edildiğinde bir sonraki cron taramasında (en fazla 2 dk içinde) devreye girer.
+
+### Veritabanı Yedekleme
+
+`scripts/db-backup.sh`, `db` container'ının kendi `pg_dump`'ı ile (sunucuyla birebir aynı
+sürüm) sıkıştırılmış (`.sql.gz`) bir yedek alır ve saklama süresini aşan eski yedekleri siler.
+Saklama süresi (gün) **Platform Yönetimi → Yedekleme** ekranından değiştirilebilir; script her
+çalıştığında bu değeri `BackupSettings` tablosundan okur (varsayılan 30 gün).
+
+Sunucuda tek seferlik kurulum:
+
+```bash
+chmod +x scripts/db-backup.sh
+
+crontab -e
+# her gece 03:30'da yedek al:
+30 3 * * * /opt/libs/scripts/db-backup.sh >> /var/log/libs-backup.log 2>&1
+```
+
+Notlar:
+- Yedekler `./backups` klasöründe tutulur (host'ta, `data/postgres` ve `uploads` ile
+  aynı mantıkla); admin panelindeki "Yedekleme" ekranı bu klasörü salt-okunur olarak
+  (`backend` container'ına `ro` mount ile) listeler, silme işlemi de aynı ekrandan yapılabilir.
+  Yeni yedek alma işlemi panelden değil, yalnızca `scripts/db-backup.sh` (cron) üzerinden
+  yapılır — panel/backend container'ının Docker'ı tetikleme yetkisi (docker.sock erişimi)
+  bilinçli olarak yoktur.
+- Aynı anda iki yedekleme çakışmasın diye `flock` ile kilitlenir.
+- Geri yükleme (restore) örneği: `gunzip -c backups/<dosya>.sql.gz | docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME"`
 
 ## Güvenlik
 

@@ -1,11 +1,22 @@
 const Joi = require('joi');
 
+const ABSENCE_TYPES = ['mazeretsiz', 'mazeretli', 'raporlu', 'yarim_gun'];
+
 const bulkAbsenceSchema = Joi.object({
   tenant_id: Joi.number().integer().required(),
   absence_date: Joi.date().iso().required(),
-  student_ids: Joi.array().items(Joi.number().integer()).min(1).required(),
-  is_excused: Joi.boolean().allow(null),
-  reason: Joi.string().allow('', null).max(255),
+  entries: Joi.array()
+    .items(
+      Joi.object({
+        student_id: Joi.number().integer().required(),
+        absence_type: Joi.string()
+          .valid(...ABSENCE_TYPES)
+          .required(),
+        reason: Joi.string().allow('', null).max(255),
+      })
+    )
+    .min(1)
+    .required(),
 });
 
 const exportAbsenceSchema = Joi.object({
@@ -14,4 +25,4 @@ const exportAbsenceSchema = Joi.object({
   end_date: Joi.date().iso().optional(),
 });
 
-module.exports = { bulkAbsenceSchema, exportAbsenceSchema };
+module.exports = { bulkAbsenceSchema, exportAbsenceSchema, ABSENCE_TYPES };

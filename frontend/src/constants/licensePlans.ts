@@ -46,7 +46,7 @@ export const LICENSE_PLANS: LicensePlanDefinition[] = [
       'Ders dağıtım ve haftalık ders programı',
       'Personel izin takibi',
       'Dönüşümlü nöbet, ek ders ve puantaj',
-      'Devamsızlık/DYK takibi ve veli iletişimi',
+      'DYK / öğrenci devamsızlık takibi ve veli iletişimi',
       'E-posta desteği',
     ],
     modules: [
@@ -95,9 +95,9 @@ export const MODULE_LABELS: Record<LicenseModule, string> = {
   leaves: 'İzin Takibi',
   duty: 'Nöbet Programı',
   payroll: 'Ek Ders / Puantaj',
-  attendance: 'Devamsızlık / DYK',
+  attendance: 'DYK Devamsızlık Takibi',
   communications: 'Veli İletişim',
-  exams: 'Sınav Programı',
+  exams: 'Sınav Programı Hazırlama',
   discipline: 'Disiplin',
   guidance: 'Rehberlik',
 }

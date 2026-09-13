@@ -1,16 +1,27 @@
 'use strict';
 
 const { Op } = require('sequelize');
-const { AttendanceRecord, Teacher } = require('../models');
+const {
+  AttendanceRecord,
+  Teacher,
+  Holiday,
+  School,
+  User,
+  UserSchool,
+  Role,
+} = require('../models');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
+const { sendTypPuantajExport } = require('../services/typPuantajExportService');
 
 const STATUS_LABELS = {
   geldi: 'Geldi',
-  gelmedi: 'Gelmedi',
-  izinli: 'İzinli',
-  raporlu: 'Raporlu',
+  gelmedi: 'Gelmedi (D)',
+  izinli: 'Ücretsiz İzin (Ü)',
+  raporlu: 'Raporlu (R)',
   fazla_mesai: 'Fazla Mesai',
+  mazeretli: 'Mazeretli (M)',
+  is_kazasi: 'İş Kazası (İ)',
 };
 
 function assertTenantAccess(req, row) {
@@ -20,9 +31,48 @@ function assertTenantAccess(req, row) {
 
 const teacherInclude = {
   model: Teacher,
-  attributes: ['id', 'first_name', 'last_name', 'personnel_no', 'personnel_type'],
+  attributes: [
+    'id',
+    'first_name',
+    'last_name',
+    'personnel_no',
+    'personnel_type',
+    'national_id',
+    'title_branch',
+    'contract_start_date',
+    'contract_end_date',
+    'school_id',
+  ],
   required: false,
 };
+
+async function resolvePrincipalName(tenantId, schoolId) {
+  const mudurRole = await Role.findOne({ where: { role_name: 'Müdür' } });
+  if (!mudurRole) return '';
+
+  const includeUser = {
+    model: User,
+    attributes: ['id', 'full_name', 'tenant_id', 'is_active'],
+    required: true,
+    where: { tenant_id: tenantId, is_active: true },
+  };
+
+  if (schoolId) {
+    const bySchool = await UserSchool.findOne({
+      where: { role_id: mudurRole.id, school_id: schoolId },
+      include: [includeUser],
+      order: [['id', 'ASC']],
+    });
+    if (bySchool?.User?.full_name) return bySchool.User.full_name;
+  }
+
+  const anyMudur = await UserSchool.findOne({
+    where: { role_id: mudurRole.id },
+    include: [includeUser],
+    order: [['id', 'ASC']],
+  });
+  return anyMudur?.User?.full_name || '';
+}
 
 module.exports = {
   STATUS_LABELS,
@@ -151,21 +201,101 @@ module.exports = {
   async exportFile(req, res, next) {
     try {
       const tenantId = req.user && req.user.tenant_id;
-      const { format, year, month } = req.validatedBody || req.body || {};
-      const where = {};
-      if (tenantId) where.tenant_id = tenantId;
-      if (year && month) {
-        const m = String(Number(month)).padStart(2, '0');
-        const daysInMonth = new Date(Number(year), Number(month), 0).getDate();
-        where.attendance_date = { [Op.between]: [`${year}-${m}-01`, `${year}-${m}-${daysInMonth}`] };
-      }
+      const body = req.validatedBody || req.body || {};
+      const {
+        format,
+        year,
+        month,
+        closed_days,
+        typ_no,
+        typ_subject,
+        typ_start_date,
+        typ_end_date,
+        school_id,
+      } = body;
+
+      const y = Number(year);
+      const mNum = Number(month);
+      const m = String(mNum).padStart(2, '0');
+      const daysInMonth = new Date(y, mNum, 0).getDate();
+      const dateFrom = `${y}-${m}-01`;
+      const dateTo = `${y}-${m}-${daysInMonth}`;
+
+      const teacherWhere = {
+        tenant_id: tenantId,
+        personnel_type: { [Op.in]: ['typ', 'isci'] },
+      };
+      if (school_id) teacherWhere.school_id = Number(school_id);
+
+      const teachers = await Teacher.findAll({
+        where: teacherWhere,
+        include: [{ model: School, attributes: ['id', 'name'], required: false }],
+        order: [
+          ['personnel_type', 'ASC'],
+          ['last_name', 'ASC'],
+          ['first_name', 'ASC'],
+        ],
+      });
+
+      // TYP personeli varsa yalnızca onları çizelgeye al; yoksa işçi+TYP
+      const typOnly = teachers.filter((t) => t.personnel_type === 'typ');
+      const exportTeachers = typOnly.length > 0 ? typOnly : teachers;
 
       const rows = await AttendanceRecord.findAll({
-        where,
+        where: {
+          tenant_id: tenantId,
+          attendance_date: { [Op.between]: [dateFrom, dateTo] },
+          ...(exportTeachers.length
+            ? { teacher_id: { [Op.in]: exportTeachers.map((t) => t.id) } }
+            : {}),
+        },
         include: [teacherInclude],
         order: [['attendance_date', 'ASC']],
         limit: 5000,
       });
+
+      if (format === 'xlsx') {
+        const schoolId =
+          Number(school_id) ||
+          exportTeachers.find((t) => t.school_id)?.school_id ||
+          req.user?.school_id ||
+          null;
+
+        let schoolName = '';
+        if (schoolId) {
+          const school = await School.findByPk(schoolId);
+          schoolName = school?.name || '';
+        }
+        if (!schoolName) {
+          schoolName = exportTeachers.find((t) => t.School?.name)?.School?.name || '';
+        }
+
+        const principalName = await resolvePrincipalName(tenantId, schoolId);
+        const holidays = await Holiday.findAll({
+          where: {
+            tenant_id: tenantId,
+            month: mNum,
+            [Op.or]: [{ year: null }, { year: y }],
+          },
+        });
+
+        await sendTypPuantajExport(res, {
+          year: y,
+          month: mNum,
+          teachers: exportTeachers,
+          attendanceRows: rows,
+          holidays,
+          closedDays: closed_days || [],
+          schoolName,
+          principalName,
+          typNo: typ_no || '',
+          typSubject: typ_subject || '',
+          typStartDate: typ_start_date || '',
+          typEndDate: typ_end_date || '',
+          filename: `typ-gunluk-puantaj-${y}-${m}`,
+        });
+        return;
+      }
 
       await sendTableExport(res, {
         format,

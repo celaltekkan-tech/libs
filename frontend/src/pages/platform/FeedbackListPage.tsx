@@ -6,7 +6,6 @@ import {
   DatePicker,
   Empty,
   Form,
-  Input,
   List,
   Modal,
   Segmented,
@@ -27,6 +26,7 @@ import {
 } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
 import { AppLayout } from '../../components/AppLayout'
+import { FeedbackMessageHtml, RichTextEditor, sanitizeFeedbackHtml } from '../../components/RichTextEditor'
 import {
   deleteFeedback,
   downloadFeedbackAttachment,
@@ -55,7 +55,7 @@ export function FeedbackListPage() {
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([])
   const [tenants, setTenants] = useState<TenantListItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [statusFilter, setStatusFilter] = useState<FeedbackStatusFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<FeedbackStatusFilter>('pending')
   const [tenantFilter, setTenantFilter] = useState<number | undefined>(undefined)
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null)
   const [replyTarget, setReplyTarget] = useState<Feedback | null>(null)
@@ -116,7 +116,8 @@ export function FeedbackListPage() {
     if (!replyTarget) return
     setReplySubmitting(true)
     try {
-      await updateFeedback(replyTarget.id, { status: values.status, reply: values.reply })
+      const reply = values.reply ? sanitizeFeedbackHtml(values.reply) : ''
+      await updateFeedback(replyTarget.id, { status: values.status, reply: reply || null })
       message.success('Cevap gönderildi')
       setReplyTarget(null)
       void load()
@@ -235,9 +236,7 @@ export function FeedbackListPage() {
                           <Tag color={statusMeta.color}>{statusMeta.text}</Tag>
                         </Space>
 
-                        <Typography.Paragraph style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>
-                          {item.message}
-                        </Typography.Paragraph>
+                        <FeedbackMessageHtml html={item.message} />
 
                         {!!item.Attachments?.length && (
                           <Space wrap size={[8, 8]}>
@@ -284,14 +283,20 @@ export function FeedbackListPage() {
 
                         {item.reply && (
                           <Card size="small" type="inner" title="Verilen cevap">
-                            <Typography.Paragraph style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>
-                              {item.reply}
-                            </Typography.Paragraph>
+                            <FeedbackMessageHtml html={item.reply} />
                             {item.replied_at && (
                               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                                 {new Date(item.replied_at).toLocaleString('tr-TR')}
                               </Typography.Text>
                             )}
+                          </Card>
+                        )}
+
+                        {item.status === 'cancelled' && item.cancel_reason && (
+                          <Card size="small" type="inner" title="Kullanıcının iptal nedeni">
+                            <Typography.Paragraph style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>
+                              {item.cancel_reason}
+                            </Typography.Paragraph>
                           </Card>
                         )}
 
@@ -352,9 +357,7 @@ export function FeedbackListPage() {
               {replyTarget.User ? ` · ${replyTarget.User.full_name}` : ''}
             </Typography.Paragraph>
             <Card size="small" style={{ marginBottom: 16 }}>
-              <Typography.Paragraph style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>
-                {replyTarget.message}
-              </Typography.Paragraph>
+              <FeedbackMessageHtml html={replyTarget.message} />
             </Card>
             {!!replyTarget.Attachments?.length && (
               <Space direction="vertical" size={4} style={{ marginBottom: 16, width: '100%' }}>
@@ -398,8 +401,21 @@ export function FeedbackListPage() {
                   ]}
                 />
               </Form.Item>
-              <Form.Item name="reply" label="Cevabınız" rules={[{ max: 2000 }]}>
-                <Input.TextArea rows={4} maxLength={2000} showCount placeholder="Kullanıcıya iletilecek cevap..." />
+              <Form.Item
+                name="reply"
+                label="Cevabınız"
+                rules={[
+                  {
+                    validator: async (_, value) => {
+                      if ((value || '').length > 10000) throw new Error('Cevap çok uzun')
+                    },
+                  },
+                ]}
+              >
+                <RichTextEditor
+                  minHeight={120}
+                  placeholder="Kullanıcıya iletilecek cevap… (madde imi için araç çubuğunu kullanın)"
+                />
               </Form.Item>
             </Form>
           </>

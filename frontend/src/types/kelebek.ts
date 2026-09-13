@@ -1,9 +1,46 @@
+export type SeatType = 'ikili' | 'tekli'
+
+export interface SeatingLayoutGroup {
+  name: string
+  rows: number
+  /** Sütun sayısı kadar eleman; her biri o sütunun aktif olup olmadığını belirtir. */
+  columns: boolean[]
+  /** row*columns.length+col şeklindeki slot indeksleri — iptal edilmiş tekil sıralar. */
+  disabled_seats: number[]
+}
+
+export interface SeatingLayout {
+  seat_type: SeatType
+  groups: SeatingLayoutGroup[]
+}
+
+export function computeSeatingCapacity(layout: SeatingLayout | null | undefined): number {
+  if (!layout || !Array.isArray(layout.groups)) return 0
+  let total = 0
+  for (const group of layout.groups) {
+    const columns = Array.isArray(group.columns) ? group.columns : []
+    const disabled = new Set(group.disabled_seats || [])
+    for (let r = 0; r < group.rows; r += 1) {
+      for (let c = 0; c < columns.length; c += 1) {
+        if (!columns[c]) continue
+        if (disabled.has(r * columns.length + c)) continue
+        total += 1
+      }
+    }
+  }
+  return total
+}
+
 export interface ExamRoom {
   id: number
   tenant_id: number
   school_id: number | null
   name: string
   capacity: number
+  building: string | null
+  floor: string | null
+  is_active: boolean
+  seating_layout: SeatingLayout | null
   created_at: string
   updated_at: string
 }
@@ -11,7 +48,11 @@ export interface ExamRoom {
 export interface ExamRoomPayload {
   school_id?: number | null
   name: string
-  capacity: number
+  building?: string | null
+  floor?: string | null
+  is_active?: boolean
+  seating_layout?: SeatingLayout | null
+  capacity?: number
 }
 
 export interface ExamSession {
