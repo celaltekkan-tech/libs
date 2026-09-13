@@ -31,6 +31,7 @@ services:
       NODE_ENV: production
     volumes:
       - ./uploads:/app/uploads
+      - ./backups:/app/backups:ro
     depends_on:
       db:
         condition: service_healthy

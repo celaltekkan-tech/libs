@@ -6,6 +6,7 @@ npm-debug.log*
 .env.local
 uploads
 data
+backups
 frontend
 docs
 coverage

@@ -619,6 +619,33 @@ Notlar:
 - `dev` branch'inde çalışırken sunucu hiçbir şekilde etkilenmez; sadece `master`'a
   merge/push edildiğinde bir sonraki cron taramasında (en fazla 2 dk içinde) devreye girer.
 
+### Veritabanı Yedekleme
+
+`scripts/db-backup.sh`, `db` container'ının kendi `pg_dump`'ı ile (sunucuyla birebir aynı
+sürüm) sıkıştırılmış (`.sql.gz`) bir yedek alır ve saklama süresini aşan eski yedekleri siler.
+Saklama süresi (gün) **Platform Yönetimi → Yedekleme** ekranından değiştirilebilir; script her
+çalıştığında bu değeri `BackupSettings` tablosundan okur (varsayılan 30 gün).
+
+Sunucuda tek seferlik kurulum:
+
+```bash
+chmod +x scripts/db-backup.sh
+
+crontab -e
+# her gece 03:30'da yedek al:
+30 3 * * * /opt/libs/scripts/db-backup.sh >> /var/log/libs-backup.log 2>&1
+```
+
+Notlar:
+- Yedekler `./backups` klasöründe tutulur (host'ta, `data/postgres` ve `uploads` ile
+  aynı mantıkla); admin panelindeki "Yedekleme" ekranı bu klasörü salt-okunur olarak
+  (`backend` container'ına `ro` mount ile) listeler, silme işlemi de aynı ekrandan yapılabilir.
+  Yeni yedek alma işlemi panelden değil, yalnızca `scripts/db-backup.sh` (cron) üzerinden
+  yapılır — panel/backend container'ının Docker'ı tetikleme yetkisi (docker.sock erişimi)
+  bilinçli olarak yoktur.
+- Aynı anda iki yedekleme çakışmasın diye `flock` ile kilitlenir.
+- Geri yükleme (restore) örneği: `gunzip -c backups/<dosya>.sql.gz | docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME"`
+
 ## Güvenlik
 
 - Şifreler bcrypt ile hash'lenir; `password_hash` hiçbir API yanıtında dönmez

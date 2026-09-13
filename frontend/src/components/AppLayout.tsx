@@ -34,6 +34,7 @@ import {
   UserOutlined,
   ClusterOutlined,
   SettingOutlined,
+  DatabaseOutlined,
   SolutionOutlined,
   AppstoreOutlined,
 } from '@ant-design/icons'
@@ -83,6 +84,7 @@ const PLATFORM_ADMIN_ITEMS: NavNode[] = [
   { key: '/platform/licenses', icon: <IdcardOutlined />, label: 'Lisans Yönetimi' },
   { key: '/platform/feedback', icon: <CommentOutlined />, label: 'Geri Bildirimler' },
   { key: '/platform/notifications', icon: <BellOutlined />, label: 'Bildirimler' },
+  { key: '/platform/backups', icon: <DatabaseOutlined />, label: 'Yedekleme' },
   { key: '/profile', icon: <UserOutlined />, label: 'Profilim' },
 ]
 

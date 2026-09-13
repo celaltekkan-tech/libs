@@ -8,5 +8,6 @@ build/
 coverage/
 uploads/
 data/
+backups/
 .DS_Store
 Thumbs.db

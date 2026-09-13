@@ -36,6 +36,7 @@ const guidanceRoutes = require('./routes/guidance');
 const teacherDocumentsRoutes = require('./routes/teacherDocuments');
 const holidaysRoutes = require('./routes/holidays');
 const notificationsRoutes = require('./routes/notifications');
+const backupsRoutes = require('./routes/backups');
 const errorHandler = require('./middlewares/errorHandler');
 const db = require('./models');
 
@@ -162,6 +163,7 @@ app.use('/api/guidance', guidanceRoutes);
 app.use('/api/teacher-documents', teacherDocumentsRoutes);
 app.use('/api/holidays', holidaysRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/backups', backupsRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
