@@ -30,7 +30,7 @@ export async function listFeedback(params?: FeedbackListParams): Promise<Feedbac
 
 export async function updateFeedback(
   id: number,
-  payload: { status?: FeedbackStatus; reply?: string },
+  payload: { status?: FeedbackStatus; reply?: string | null },
 ): Promise<Feedback> {
   const { data } = await client.put<Envelope<Feedback>>(`/api/feedback/${id}`, payload)
   return data.data
