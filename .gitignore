@@ -9,5 +9,6 @@ coverage/
 uploads/
 data/
 backups/
+logs/
 .DS_Store
 Thumbs.db
