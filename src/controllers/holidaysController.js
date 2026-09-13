@@ -1,7 +1,7 @@
 'use strict';
 
 const { Holiday } = require('../models');
-const { seedDefaultHolidays } = require('../services/holidayService');
+const { seedDefaultHolidays, createHolidays } = require('../services/holidayService');
 
 function assertTenantAccess(req, row) {
   if (req.user && req.user.tenant_id && row.tenant_id !== req.user.tenant_id) return false;
@@ -15,6 +15,7 @@ module.exports = {
       const rows = await Holiday.findAll({
         where: { tenant_id: tenantId },
         order: [
+          ['year', 'ASC'],
           ['month', 'ASC'],
           ['day', 'ASC'],
         ],
@@ -28,10 +29,26 @@ module.exports = {
   async create(req, res, next) {
     try {
       const payload = { ...(req.validatedBody || req.body) };
-      if (req.user && req.user.tenant_id) payload.tenant_id = req.user.tenant_id;
-      const row = await Holiday.create(payload);
-      res.status(201).json({ success: true, data: row });
+      const tenantId = (req.user && req.user.tenant_id) || payload.tenant_id;
+      const result = await createHolidays(tenantId, payload);
+
+      if (result.created.length === 0 && result.skipped > 0) {
+        return res.status(409).json({
+          success: false,
+          message: result.total === 1
+            ? 'Bu tarih için zaten bir resmi tatil tanımlı'
+            : 'Seçilen aralıktaki günlerin tümü zaten tanımlı',
+        });
+      }
+
+      const data = result.total === 1 ? result.created[0] : result.created;
+      res.status(201).json({
+        success: true,
+        data,
+        meta: { created: result.created.length, skipped: result.skipped, total: result.total },
+      });
     } catch (err) {
+      if (err.status) return res.status(err.status).json({ success: false, message: err.message });
       if (err.name === 'SequelizeUniqueConstraintError') {
         return res.status(409).json({ success: false, message: 'Bu tarih için zaten bir resmi tatil tanımlı' });
       }
@@ -57,7 +74,14 @@ module.exports = {
     try {
       const tenantId = req.user && req.user.tenant_id;
       await seedDefaultHolidays(tenantId);
-      const rows = await Holiday.findAll({ where: { tenant_id: tenantId }, order: [['month', 'ASC'], ['day', 'ASC']] });
+      const rows = await Holiday.findAll({
+        where: { tenant_id: tenantId },
+        order: [
+          ['year', 'ASC'],
+          ['month', 'ASC'],
+          ['day', 'ASC'],
+        ],
+      });
       res.json({ success: true, data: rows });
     } catch (err) {
       next(err);

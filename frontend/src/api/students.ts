@@ -4,6 +4,7 @@ import type {
   StudentFilters,
   StudentImportResult,
   StudentPayload,
+  StudentImportPreview,
 } from '../types/student'
 import type { ExportFormat } from '../utils/download'
 
@@ -48,16 +49,48 @@ export async function deleteStudent(id: number): Promise<void> {
   await client.delete(`/api/students/${id}`)
 }
 
+export async function previewStudentImport(
+  file: File,
+  options?: { headerRow?: number | null },
+): Promise<StudentImportPreview> {
+  const form = new FormData()
+  form.append('file', file)
+  if (options?.headerRow != null) form.append('header_row', String(options.headerRow))
+  const { data } = await client.post<Envelope<StudentImportPreview>>(
+    '/api/students/import/preview',
+    form,
+    {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000,
+    },
+  )
+  return data.data
+}
+
 export async function importStudents(
   file: File,
-  schoolId?: number | null,
+  options?: {
+    schoolId?: number | null
+    classroomId?: number | null
+    headerRow?: number | null
+    columnMapping?: Record<string, string>
+    classLevel?: string | null
+    section?: string | null
+  },
 ): Promise<StudentImportResult> {
   const form = new FormData()
   form.append('file', file)
-  if (schoolId != null) form.append('school_id', String(schoolId))
+  if (options?.schoolId != null) form.append('school_id', String(options.schoolId))
+  if (options?.classroomId != null) form.append('classroom_id', String(options.classroomId))
+  if (options?.headerRow != null) form.append('header_row', String(options.headerRow))
+  if (options?.classLevel) form.append('class_level', options.classLevel)
+  if (options?.section) form.append('section', options.section)
+  if (options?.columnMapping) {
+    form.append('column_mapping', JSON.stringify(options.columnMapping))
+  }
   const { data } = await client.post<Envelope<StudentImportResult>>('/api/students/import', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 60000,
+    timeout: 120000,
   })
   return data.data
 }

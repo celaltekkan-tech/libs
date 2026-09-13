@@ -314,6 +314,7 @@ function PlatformAdminDashboard() {
                       columns={tenantColumns}
                       dataSource={recentTenants}
                       locale={{ emptyText: 'Henüz hesap yok' }}
+                      scroll={{ x: 'max-content' }}
                     />
                   </Card>
                 </Col>

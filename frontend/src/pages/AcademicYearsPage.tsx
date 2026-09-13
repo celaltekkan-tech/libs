@@ -170,7 +170,14 @@ export function AcademicYearsPage() {
         )}
       </Space>
 
-      <Table rowKey="id" loading={loading} columns={columns} dataSource={rows} pagination={{ pageSize: 20 }} />
+      <Table
+        rowKey="id"
+        loading={loading}
+        columns={columns}
+        dataSource={rows}
+        pagination={{ pageSize: 20 }}
+        scroll={{ x: 'max-content' }}
+      />
 
       <Modal
         title={editing ? 'Eğitim Öğretim Yılını Düzenle' : 'Yeni Eğitim Öğretim Yılı'}

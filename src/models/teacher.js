@@ -26,6 +26,7 @@ module.exports = (sequelize, DataTypes) => {
     },
     contract_start_date: DataTypes.DATEONLY,
     contract_end_date: DataTypes.DATEONLY,
+    union_name: DataTypes.STRING,
     meta: DataTypes.JSONB
     }, {
     tableName: 'Teachers',
@@ -48,6 +49,7 @@ module.exports = (sequelize, DataTypes) => {
     Teacher.hasMany(models.DykCourse, { foreignKey: 'teacher_id' });
     Teacher.hasMany(models.ProctorAssignment, { foreignKey: 'teacher_id' });
     Teacher.hasMany(models.TeacherDocument, { foreignKey: 'teacher_id' });
+    Teacher.hasMany(models.PromotionHistory, { foreignKey: 'teacher_id' });
     };
     
     

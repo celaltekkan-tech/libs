@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Button, Form, Input, Modal, Select, Space, Switch, Table, Tag, Typography } from 'antd'
+import { App, Button, Form, Input, Modal, Select, Space, Switch, Table, Tabs, Tag, Typography } from 'antd'
 import { DeleteOutlined, EditOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { RoleGroupsPanel } from '../components/RoleGroupsPanel'
 import { useAuth } from '../auth/AuthContext'
 import {
   createManagedUser,
@@ -12,20 +13,14 @@ import {
   updateManagedUser,
 } from '../api/managedUsers'
 import { getErrorMessage } from '../api/client'
-import type {
-  ManagedUser,
-  ManagedUserPayload,
-  SchoolRoleName,
-  UserFormOptions,
-} from '../types/managedUser'
-import { SCHOOL_ROLE_OPTIONS } from '../types/managedUser'
+import type { ManagedUser, ManagedUserPayload, UserFormOptions } from '../types/managedUser'
 
 interface UserFormValues {
   full_name: string
   email: string
   password?: string
   school_id: number
-  school_role: SchoolRoleName
+  role_id: number
   is_active: boolean
 }
 
@@ -77,20 +72,28 @@ export function UsersPage() {
     })
   }, [users, search])
 
-  const roleOptions = useMemo(() => {
-    const fromApi = options.school_roles.map((r) => r.name)
-    const known = SCHOOL_ROLE_OPTIONS.filter((o) => fromApi.includes(o.value) || fromApi.length === 0)
-    return (known.length ? known : SCHOOL_ROLE_OPTIONS).map((o) => ({
-      value: o.value,
-      label: `${o.label} — ${o.description}`,
-    }))
-  }, [options.school_roles])
+  const roleOptions = useMemo(
+    () =>
+      options.school_roles.map((r) => ({
+        value: r.id,
+        label: `${r.name}${r.is_system ? '' : ' (özel)'}${r.description ? ` — ${r.description}` : ''}`,
+      })),
+    [options.school_roles],
+  )
+
+  const resolveRoleId = (user: ManagedUser | null): number | undefined => {
+    if (!user) return options.school_roles[0]?.id
+    const byAssignment = user.school_assignments?.[0]?.role_id
+    if (byAssignment) return byAssignment
+    const byName = options.school_roles.find((r) => r.name === user.school_role)
+    return byName?.id
+  }
 
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
     form.setFieldsValue({
-      school_role: 'Memur',
+      role_id: options.school_roles.find((r) => r.name === 'Memur')?.id || options.school_roles[0]?.id,
       is_active: true,
       school_id: options.schools[0]?.id,
     })
@@ -103,7 +106,7 @@ export function UsersPage() {
       full_name: user.full_name,
       email: user.email,
       school_id: user.assigned_school_id || user.school_id || undefined,
-      school_role: (user.school_role as SchoolRoleName) || 'Memur',
+      role_id: resolveRoleId(user),
       is_active: user.is_active,
       password: undefined,
     })
@@ -121,11 +124,13 @@ export function UsersPage() {
         return
       }
 
+      const roleMeta = options.school_roles.find((r) => r.id === values.role_id)
       const payload: ManagedUserPayload = {
         full_name: values.full_name,
         email: values.email,
         school_id: values.school_id,
-        school_role: values.school_role,
+        role_id: values.role_id,
+        school_role: roleMeta?.name || 'Memur',
         is_active: isSelf ? true : values.is_active,
       }
       if (values.password) payload.password = values.password
@@ -182,7 +187,7 @@ export function UsersPage() {
     { title: 'Ad soyad', dataIndex: 'full_name' },
     { title: 'E-posta', dataIndex: 'email' },
     {
-      title: 'Görev / Yetki',
+      title: 'Yetki grubu',
       dataIndex: 'school_role',
       render: (role: string | null) => (role ? <Tag color="blue">{role}</Tag> : <Tag>Atanmamış</Tag>),
     },
@@ -224,56 +229,69 @@ export function UsersPage() {
   return (
     <AppLayout title="Kullanıcılar ve Yetkilendirme">
       <div style={{ maxWidth: 1100 }}>
-        <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }} wrap>
-          <div>
-            <Typography.Title level={3} style={{ margin: 0 }}>
-              Kullanıcılar ve Yetkilendirme
-            </Typography.Title>
-            <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Alt kullanıcı oluşturun; Müdür, Müdür Yardımcısı, Memur veya Öğretmen yetkisi atayın.
-              {' · '}
-              {quotaLabel}
-            </Typography.Paragraph>
-          </div>
-          {canCreate && (
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={openCreate}
-              disabled={options.schools.length === 0 || atUserLimit}
-            >
-              Yeni Kullanıcı
-            </Button>
-          )}
-        </Space>
+        <Typography.Title level={3} style={{ margin: 0, marginBottom: 4 }}>
+          Kullanıcılar ve Yetkilendirme
+        </Typography.Title>
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
+          Özel yetki grupları tanımlayın, her menü için yetki verin ve kullanıcılara atayın. {quotaLabel}
+        </Typography.Paragraph>
 
-        {options.schools.length === 0 && (
-          <Typography.Paragraph type="warning">
-            Kullanıcı atamak için önce bir okul kaydı olmalıdır.
-          </Typography.Paragraph>
-        )}
-        {atUserLimit && (
-          <Typography.Paragraph type="warning">
-            Plan kullanıcı limitine ulaşıldı ({options.user_count}/{options.user_limit}). Yeni kullanıcı için
-            planınızı yükseltin.
-          </Typography.Paragraph>
-        )}
+        <Tabs
+          items={[
+            {
+              key: 'roles',
+              label: 'Yetki Grupları',
+              children: <RoleGroupsPanel />,
+            },
+            {
+              key: 'users',
+              label: 'Kullanıcılar',
+              children: (
+                <>
+                  <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }} wrap>
+                    <Input
+                      allowClear
+                      prefix={<SearchOutlined />}
+                      placeholder="Ad, e-posta, yetki veya okul ile ara..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      style={{ maxWidth: 420 }}
+                    />
+                    {canCreate && (
+                      <Button
+                        type="primary"
+                        icon={<PlusOutlined />}
+                        onClick={openCreate}
+                        disabled={options.schools.length === 0 || atUserLimit}
+                      >
+                        Yeni Kullanıcı
+                      </Button>
+                    )}
+                  </Space>
 
-        <Input
-          allowClear
-          prefix={<SearchOutlined />}
-          placeholder="Ad, e-posta, yetki veya okul ile ara..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ maxWidth: 420, marginBottom: 16 }}
-        />
+                  {options.schools.length === 0 && (
+                    <Typography.Paragraph type="warning">
+                      Kullanıcı atamak için önce bir okul kaydı olmalıdır.
+                    </Typography.Paragraph>
+                  )}
+                  {atUserLimit && (
+                    <Typography.Paragraph type="warning">
+                      Plan kullanıcı limitine ulaşıldı ({options.user_count}/{options.user_limit}).
+                    </Typography.Paragraph>
+                  )}
 
-        <Table
-          rowKey="id"
-          loading={loading}
-          columns={columns}
-          dataSource={filteredUsers}
-          pagination={{ pageSize: 20 }}
+                  <Table
+                    rowKey="id"
+                    loading={loading}
+                    columns={columns}
+                    dataSource={filteredUsers}
+                    pagination={{ pageSize: 20 }}
+                    scroll={{ x: 'max-content' }}
+                  />
+                </>
+              ),
+            },
+          ]}
         />
       </div>
 
@@ -289,11 +307,7 @@ export function UsersPage() {
         width={560}
       >
         <Form form={form} layout="vertical" onFinish={onFinish}>
-          <Form.Item
-            name="full_name"
-            label="Ad soyad"
-            rules={[{ required: true, message: 'Ad soyad zorunludur' }]}
-          >
+          <Form.Item name="full_name" label="Ad soyad" rules={[{ required: true, message: 'Ad soyad zorunludur' }]}>
             <Input placeholder="Ad Soyad" />
           </Form.Item>
           <Form.Item
@@ -320,32 +334,26 @@ export function UsersPage() {
           >
             <Input.Password placeholder="En az 8 karakter" />
           </Form.Item>
-          <Form.Item
-            name="school_id"
-            label="Okul"
-            rules={[{ required: true, message: 'Okul seçin' }]}
-          >
+          <Form.Item name="school_id" label="Okul" rules={[{ required: true, message: 'Okul seçin' }]}>
             <Select
               placeholder="Okul seçin"
               options={options.schools.map((school) => ({ value: school.id, label: school.name }))}
             />
           </Form.Item>
           <Form.Item
-            name="school_role"
-            label="Görev / Arayüz yetkisi"
-            rules={[{ required: true, message: 'Yetki seçin' }]}
-            extra="Menü ve işlem yetkileri bu role göre belirlenir."
+            name="role_id"
+            label="Yetki grubu"
+            rules={[{ required: true, message: 'Yetki grubu seçin' }]}
+            extra="Menü görünürlüğü ve işlem yetkileri bu gruba göre belirlenir."
           >
-            <Select options={roleOptions} />
+            <Select showSearch optionFilterProp="label" options={roleOptions} />
           </Form.Item>
           <Form.Item
             name="is_active"
             label="Aktif"
             valuePropName="checked"
             extra={
-              editing && session?.user.id === editing.id
-                ? 'Kendi hesabınızı pasife alamazsınız.'
-                : undefined
+              editing && session?.user.id === editing.id ? 'Kendi hesabınızı pasife alamazsınız.' : undefined
             }
           >
             <Switch disabled={Boolean(editing && session?.user.id === editing.id)} />

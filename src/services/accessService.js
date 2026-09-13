@@ -82,13 +82,21 @@ function serializeUser(user) {
     school_id: user.school_id,
     is_active: user.is_active,
     last_login_at: user.last_login_at,
+    totp_enabled: Boolean(user.totp_enabled),
   };
 }
 
 /**
  * Login ve /me uçlarının döndüğü ortak oturum gövdesi.
  */
-function buildSessionPayload(access) {
+async function buildSessionPayload(access) {
+  const { Tenant } = require('../models');
+  const tenant = access.user.is_platform_admin
+    ? null
+    : await Tenant.findByPk(access.user.tenant_id, {
+        attributes: ['id', 'two_factor_enabled'],
+      });
+
   return {
     user: serializeUser(access.user),
     roles: access.roles,
@@ -99,6 +107,7 @@ function buildSessionPayload(access) {
     license_status: access.license_status,
     license: access.license,
     modules: access.modules,
+    tenant_two_factor_enabled: Boolean(tenant?.two_factor_enabled),
   };
 }
 

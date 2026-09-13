@@ -9,6 +9,15 @@ const password = Joi.string().min(8).max(100).messages({
   'string.empty': 'Şifre zorunludur',
 });
 
+const totpCode = Joi.string()
+  .trim()
+  .pattern(/^[0-9A-Fa-f\s-]{6,20}$/)
+  .required()
+  .messages({
+    'string.empty': 'Doğrulama kodu zorunludur',
+    'string.pattern.base': 'Geçerli bir doğrulama kodu girin',
+  });
+
 const registerSchema = Joi.object({
   tenant_id: Joi.number().integer().required(),
   school_id: Joi.number().integer().allow(null),
@@ -27,6 +36,28 @@ const loginSchema = Joi.object({
   }),
 });
 
+const verify2faSchema = Joi.object({
+  temp_token: Joi.string().required().messages({
+    'string.empty': 'Doğrulama oturumu zorunludur',
+  }),
+  code: totpCode,
+});
+
+const confirm2faSchema = Joi.object({
+  code: totpCode,
+});
+
+const disable2faSchema = Joi.object({
+  password: Joi.string().required().messages({
+    'string.empty': 'Şifre zorunludur',
+  }),
+  code: totpCode,
+});
+
+const tenantTwoFactorSchema = Joi.object({
+  two_factor_enabled: Joi.boolean().required(),
+});
+
 const changePasswordSchema = Joi.object({
   current_password: Joi.string().required().messages({
     'string.empty': 'Mevcut şifre zorunludur',
@@ -43,4 +74,13 @@ const updateProfileSchema = Joi.object({
   }),
 });
 
-module.exports = { registerSchema, loginSchema, changePasswordSchema, updateProfileSchema };
+module.exports = {
+  registerSchema,
+  loginSchema,
+  verify2faSchema,
+  confirm2faSchema,
+  disable2faSchema,
+  tenantTwoFactorSchema,
+  changePasswordSchema,
+  updateProfileSchema,
+};

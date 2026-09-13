@@ -26,6 +26,14 @@ export async function createDutyLocation(tenantId: number, payload: DutyLocation
   return data.data
 }
 
+export async function updateDutyLocation(
+  id: number,
+  payload: Partial<DutyLocationPayload>,
+): Promise<DutyLocation> {
+  const { data } = await client.put<Envelope<DutyLocation>>(`/api/duty/locations/${id}`, payload)
+  return data.data
+}
+
 export async function deleteDutyLocation(id: number): Promise<void> {
   await client.delete(`/api/duty/locations/${id}`)
 }
@@ -64,12 +72,17 @@ export async function deleteDutyAssignment(id: number): Promise<void> {
 
 export async function generateDutyRoster(
   tenantId: number,
-  payload: { start_date: string; end_date: string; duty_location_ids: number[]; include_weekends?: boolean },
-): Promise<{ created: number; skipped: { date: string; location: string; reason: string }[] }> {
-  const { data } = await client.post<Envelope<{ created: number; skipped: { date: string; location: string; reason: string }[] }>>(
-    '/api/duty/generate',
-    { tenant_id: tenantId, ...payload },
-  )
+  payload: {
+    start_date: string
+    end_date: string
+    duty_location_ids: number[]
+    include_weekends?: boolean
+    mode?: 'fair' | 'weekly_rotate'
+  },
+): Promise<{ created: number; skipped: { date: string; location: string; reason: string }[]; template_date?: string }> {
+  const { data } = await client.post<
+    Envelope<{ created: number; skipped: { date: string; location: string; reason: string }[]; template_date?: string }>
+  >('/api/duty/generate', { tenant_id: tenantId, ...payload })
   return data.data
 }
 

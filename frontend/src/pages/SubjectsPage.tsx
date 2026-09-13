@@ -258,7 +258,14 @@ export function SubjectsPage() {
           style={{ maxWidth: 420, marginBottom: 16 }}
         />
 
-        <Table rowKey="id" loading={loading} columns={columns} dataSource={filteredRows} pagination={{ pageSize: 20 }} />
+        <Table
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={filteredRows}
+          pagination={{ pageSize: 20 }}
+          scroll={{ x: 'max-content' }}
+        />
       </div>
 
       <Modal

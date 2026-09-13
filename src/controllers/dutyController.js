@@ -18,7 +18,7 @@ const teacherInclude = {
 
 const locationInclude = {
   model: DutyLocation,
-  attributes: ['id', 'name'],
+  attributes: ['id', 'name', 'floor_level', 'sort_order'],
   required: false,
 };
 
@@ -32,6 +32,81 @@ function addDays(dateStr_, days) {
   return d;
 }
 
+/** Pazartesi başlangıçlı haftanın ilk günü (YYYY-MM-DD). */
+function weekMonday(dateISO) {
+  const d = new Date(`${dateISO}T12:00:00`);
+  const day = d.getDay(); // 0=Pazar
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dayNum = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dayNum}`;
+}
+
+function sortLocations(locations) {
+  return [...locations].sort(
+    (a, b) =>
+      (a.floor_level || 0) - (b.floor_level || 0) ||
+      (a.sort_order || 0) - (b.sort_order || 0) ||
+      String(a.name).localeCompare(String(b.name), 'tr'),
+  );
+}
+
+/**
+ * Şablon atamayı hafta ofseti kadar kaydırır:
+ * - Katlar yukarı kayar (zemin → 1 → 2 → … → zemin)
+ * - Aynı kattaki birden fazla nöbetçi sırayla döner
+ */
+function rotateTeacherMap(locations, baseMap, weekOffset) {
+  const sorted = sortLocations(locations);
+  const floors = [...new Set(sorted.map((l) => l.floor_level || 0))];
+  const locsByFloor = new Map();
+  for (const loc of sorted) {
+    const f = loc.floor_level || 0;
+    if (!locsByFloor.has(f)) locsByFloor.set(f, []);
+    locsByFloor.get(f).push(loc);
+  }
+
+  const teachersByFloor = new Map();
+  for (const floor of floors) {
+    const locs = locsByFloor.get(floor) || [];
+    teachersByFloor.set(
+      floor,
+      locs.map((l) => baseMap.get(l.id)).filter((id) => id != null),
+    );
+  }
+
+  const result = new Map();
+  const n = floors.length;
+  if (n === 0) return result;
+
+  for (let fi = 0; fi < n; fi += 1) {
+    const sourceFloor = floors[fi];
+    const targetFloor = floors[(fi + weekOffset) % n];
+    const sourceTeachers = teachersByFloor.get(sourceFloor) || [];
+    const targetLocs = locsByFloor.get(targetFloor) || [];
+    if (sourceTeachers.length === 0 || targetLocs.length === 0) continue;
+
+    const intraShift = weekOffset % sourceTeachers.length;
+    const used = new Set();
+    for (let i = 0; i < targetLocs.length; i += 1) {
+      let chosen = null;
+      for (let k = 0; k < sourceTeachers.length; k += 1) {
+        const tid = sourceTeachers[(i + intraShift + k) % sourceTeachers.length];
+        if (!used.has(tid)) {
+          chosen = tid;
+          break;
+        }
+      }
+      if (chosen == null) break;
+      used.add(chosen);
+      result.set(targetLocs[i].id, chosen);
+    }
+  }
+  return result;
+}
+
 async function isTeacherOnLeave(tenantId, teacherId, dateISO, leaveCache) {
   const key = `${teacherId}`;
   if (!leaveCache.has(key)) {
@@ -42,6 +117,183 @@ async function isTeacherOnLeave(tenantId, teacherId, dateISO, leaveCache) {
   return leaves.some((l) => dateISO >= l.start_date && dateISO <= l.end_date);
 }
 
+/**
+ * Haftalık kat kaydırması:
+ * 1) Aralık başındaki ilk dolu günden (veya adil ilk atamadan) şablon alınır
+ * 2) Her sonraki hafta öğretmenler bir üst kata kaydırılır
+ * 3) Aynı kattaki birden fazla nöbetçi sırayla döner
+ */
+async function generateWeeklyRotate({ tenantId, locations, start_date, end_date, include_weekends }) {
+  const sortedLocs = sortLocations(locations);
+  const locationIds = sortedLocs.map((l) => l.id);
+  const endDateStr = dateStr(end_date);
+  const startDateStr = dateStr(start_date);
+  const leaveCache = new Map();
+  const skipped = [];
+  let created = 0;
+
+  // Şablon günü bul: aralıkta seçilen yerlerin tamamının dolu olduğu ilk iş günü
+  let templateDate = null;
+  let baseMap = new Map();
+  let probe = startDateStr;
+  while (probe <= endDateStr) {
+    const dow = new Date(probe + 'T12:00:00').getDay();
+    const isWeekend = dow === 0 || dow === 6;
+    if (!isWeekend || include_weekends) {
+      const dayRows = await DutyAssignment.findAll({
+        where: {
+          tenant_id: tenantId,
+          duty_date: probe,
+          duty_location_id: { [Op.in]: locationIds },
+        },
+      });
+      if (dayRows.length >= locationIds.length) {
+        templateDate = probe;
+        baseMap = new Map(dayRows.map((r) => [r.duty_location_id, r.teacher_id]));
+        break;
+      }
+      if (dayRows.length > 0 && !templateDate) {
+        // Kısmi şablon: en azından dolu yerleri kullan, boşları sonra doldur
+        templateDate = probe;
+        baseMap = new Map(dayRows.map((r) => [r.duty_location_id, r.teacher_id]));
+      }
+    }
+    probe = dateStr(addDays(probe, 1));
+  }
+
+  // Şablon yoksa ilk iş gününe adil atama yaparak şablon oluştur
+  if (baseMap.size < locationIds.length) {
+    const teachers = await Teacher.findAll({ where: { tenant_id: tenantId }, order: [['id', 'ASC']] });
+    if (teachers.length === 0) {
+      return {
+        created: 0,
+        skipped: [{ date: startDateStr, location: '-', reason: 'Tenant üzerinde öğretmen bulunamadı' }],
+      };
+    }
+    const counts = new Map(teachers.map((t) => [t.id, 0]));
+    const existingCounts = await DutyAssignment.findAll({
+      where: { tenant_id: tenantId },
+      attributes: ['teacher_id'],
+    });
+    existingCounts.forEach((row) => {
+      counts.set(row.teacher_id, (counts.get(row.teacher_id) || 0) + 1);
+    });
+
+    let firstWorkday = startDateStr;
+    while (firstWorkday <= endDateStr) {
+      const dow = new Date(firstWorkday + 'T12:00:00').getDay();
+      const isWeekend = dow === 0 || dow === 6;
+      if (!isWeekend || include_weekends) break;
+      firstWorkday = dateStr(addDays(firstWorkday, 1));
+    }
+    templateDate = templateDate || firstWorkday;
+
+    const assigned = new Set([...baseMap.values()]);
+    for (const loc of sortedLocs) {
+      if (baseMap.has(loc.id)) continue;
+      const ordered = [...teachers].sort((a, b) => (counts.get(a.id) || 0) - (counts.get(b.id) || 0));
+      let chosen = null;
+      for (const candidate of ordered) {
+        if (assigned.has(candidate.id)) continue;
+        const onLeave = await isTeacherOnLeave(tenantId, candidate.id, templateDate, leaveCache);
+        if (onLeave) continue;
+        chosen = candidate;
+        break;
+      }
+      if (!chosen) {
+        skipped.push({ date: templateDate, location: loc.name, reason: 'Şablon için uygun öğretmen yok' });
+        continue;
+      }
+      baseMap.set(loc.id, chosen.id);
+      assigned.add(chosen.id);
+      counts.set(chosen.id, (counts.get(chosen.id) || 0) + 1);
+    }
+  }
+
+  if (baseMap.size === 0) {
+    return {
+      created: 0,
+      skipped: [{ date: startDateStr, location: '-', reason: 'Haftalık kaydırma için şablon oluşturulamadı' }],
+    };
+  }
+
+  const templateMonday = weekMonday(templateDate);
+
+  // Aralık içindeki her gün için ilgili hafta ofsetini hesapla ve yaz
+  let cursor = startDateStr;
+  while (cursor <= endDateStr) {
+    const dow = new Date(cursor + 'T12:00:00').getDay();
+    const isWeekend = dow === 0 || dow === 6;
+    if (!isWeekend || include_weekends) {
+      const monday = weekMonday(cursor);
+      const weekOffset = Math.round(
+        (new Date(monday + 'T12:00:00') - new Date(templateMonday + 'T12:00:00')) / (7 * 24 * 3600 * 1000),
+      );
+      const offset = ((weekOffset % 1000) + 1000) % 1000; // negatif olmasın
+      const dayMap = rotateTeacherMap(sortedLocs, baseMap, offset);
+      const assignedToday = new Set();
+
+      for (const loc of sortedLocs) {
+        const existing = await DutyAssignment.findOne({
+          where: { tenant_id: tenantId, duty_location_id: loc.id, duty_date: cursor },
+        });
+        if (existing) {
+          assignedToday.add(existing.teacher_id);
+          continue;
+        }
+
+        let teacherId = dayMap.get(loc.id);
+        if (teacherId == null || assignedToday.has(teacherId)) {
+          skipped.push({
+            date: cursor,
+            location: loc.name,
+            reason: teacherId == null ? 'Kaydırma sonucu öğretmen yok' : 'Öğretmen o gün başka yerde',
+          });
+          continue;
+        }
+
+        const onLeave = await isTeacherOnLeave(tenantId, teacherId, cursor, leaveCache);
+        if (onLeave) {
+          // Aynı kattaki sıradaki yedek (şablondaki diğer öğretmenler)
+          const alternates = [...dayMap.values()].filter((id) => id !== teacherId && !assignedToday.has(id));
+          let replaced = null;
+          for (const alt of alternates) {
+            if (!(await isTeacherOnLeave(tenantId, alt, cursor, leaveCache))) {
+              replaced = alt;
+              break;
+            }
+          }
+          if (replaced == null) {
+            skipped.push({ date: cursor, location: loc.name, reason: 'Öğretmen izinli, yedek yok' });
+            continue;
+          }
+          teacherId = replaced;
+        }
+
+        try {
+          await DutyAssignment.create({
+            tenant_id: tenantId,
+            teacher_id: teacherId,
+            duty_location_id: loc.id,
+            duty_date: cursor,
+          });
+          assignedToday.add(teacherId);
+          created += 1;
+        } catch (err) {
+          if (err.name === 'SequelizeUniqueConstraintError') {
+            skipped.push({ date: cursor, location: loc.name, reason: 'Çakışma' });
+          } else {
+            throw err;
+          }
+        }
+      }
+    }
+    cursor = dateStr(addDays(cursor, 1));
+  }
+
+  return { created, skipped, template_date: templateDate };
+}
+
 module.exports = {
   // --- Nöbet yerleri ---
   async listLocations(req, res, next) {
@@ -49,7 +301,15 @@ module.exports = {
       const tenantId = req.user && req.user.tenant_id;
       const where = {};
       if (tenantId) where.tenant_id = tenantId;
-      const rows = await DutyLocation.findAll({ where, order: [['name', 'ASC']], limit: 500 });
+      const rows = await DutyLocation.findAll({
+        where,
+        order: [
+          ['floor_level', 'ASC'],
+          ['sort_order', 'ASC'],
+          ['name', 'ASC'],
+        ],
+        limit: 500,
+      });
       res.json({ success: true, data: rows });
     } catch (err) {
       next(err);
@@ -202,10 +462,12 @@ module.exports = {
     }
   },
 
-  // --- Otomatik nöbet dağıtımı: adil (round-robin, en az atanandan başlar), izinlileri atlar ---
+  // --- Otomatik nöbet dağıtımı: fair (adil) veya weekly_rotate (kat kaydırma) ---
   async generate(req, res, next) {
     try {
-      const { start_date, end_date, duty_location_ids, include_weekends } = req.validatedBody || req.body;
+      const body = req.validatedBody || req.body;
+      const { start_date, end_date, duty_location_ids, include_weekends } = body;
+      const mode = body.mode || 'fair';
       const tenantId = req.user && req.user.tenant_id;
 
       const locations = await DutyLocation.findAll({
@@ -213,6 +475,22 @@ module.exports = {
       });
       if (locations.length === 0) {
         return res.status(400).json({ success: false, message: 'Geçerli nöbet yeri bulunamadı' });
+      }
+
+      if (mode === 'weekly_rotate') {
+        const result = await generateWeeklyRotate({
+          tenantId,
+          locations,
+          start_date,
+          end_date,
+          include_weekends: Boolean(include_weekends),
+        });
+        await audit.log(req, {
+          action: 'create',
+          entityType: 'duty_assignment_batch',
+          summary: `Nöbet haftalık kat kaydırması: ${result.created} kayıt (${dateStr(start_date)} - ${dateStr(end_date)})`,
+        });
+        return res.json({ success: true, data: result });
       }
 
       const teachers = await Teacher.findAll({ where: { tenant_id: tenantId }, order: [['id', 'ASC']] });

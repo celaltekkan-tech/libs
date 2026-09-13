@@ -308,7 +308,14 @@ export function LeavesPage() {
         </Descriptions>
       )}
 
-      <Table rowKey="id" loading={rowsLoading} columns={columns} dataSource={rows} pagination={{ pageSize: 20 }} />
+      <Table
+        rowKey="id"
+        loading={rowsLoading}
+        columns={columns}
+        dataSource={rows}
+        pagination={{ pageSize: 20 }}
+        scroll={{ x: 'max-content' }}
+      />
     </>
   )
 

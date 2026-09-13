@@ -1,6 +1,6 @@
+const { Op } = require('sequelize');
 const bcrypt = require('bcrypt');
 const { User, Tenant, School, Role, UserSchool } = require('../models');
-const { SCHOOL_ROLES } = require('../validators/user.validator');
 const licenseService = require('../services/licenseService');
 const { getUserLimitForPlan } = require('../config/licensePlans');
 const audit = require('../services/auditService');
@@ -34,12 +34,28 @@ function serializeManagedUser(user) {
   return data;
 }
 
-async function resolveSchoolRole(roleName) {
-  const role = await Role.findOne({ where: { role_name: roleName } });
+async function resolveAssignableRole(tenantId, { role_id, school_role }) {
+  let role = null;
+  if (role_id) {
+    role = await Role.findByPk(role_id);
+  } else if (school_role) {
+    role = await Role.findOne({
+      where: {
+        role_name: school_role,
+        [Op.or]: [{ is_system: true, tenant_id: null }, { tenant_id: tenantId }],
+      },
+      order: [['is_system', 'ASC']], // tenant özel varsa onu tercih et
+    });
+  }
   if (!role) {
-    const err = new Error(`Rol bulunamadı: ${roleName}`);
+    const err = new Error('Yetki grubu bulunamadı');
     err.status = 400;
     err.code = 'ROLE_NOT_FOUND';
+    throw err;
+  }
+  if (!role.is_system && role.tenant_id !== tenantId) {
+    const err = new Error('Bu yetki grubu bu hesaba ait değil');
+    err.status = 403;
     throw err;
   }
   return role;
@@ -95,9 +111,14 @@ module.exports = {
       const tenantId = req.user.tenant_id;
       const [roles, schools, quota] = await Promise.all([
         Role.findAll({
-          where: { role_name: SCHOOL_ROLES },
-          attributes: ['id', 'role_name'],
-          order: [['id', 'ASC']],
+          where: {
+            [Op.or]: [{ is_system: true, tenant_id: null }, { tenant_id: tenantId }],
+          },
+          attributes: ['id', 'role_name', 'is_system', 'description'],
+          order: [
+            ['is_system', 'DESC'],
+            ['role_name', 'ASC'],
+          ],
         }),
         School.findAll({
           where: { tenant_id: tenantId },
@@ -110,7 +131,12 @@ module.exports = {
       res.json({
         success: true,
         data: {
-          school_roles: roles.map((r) => ({ id: r.id, name: r.role_name })),
+          school_roles: roles.map((r) => ({
+            id: r.id,
+            name: r.role_name,
+            is_system: r.is_system,
+            description: r.description,
+          })),
           schools,
           user_limit: quota.limit,
           user_count: quota.count,
@@ -175,7 +201,10 @@ module.exports = {
       }
 
       await assertSchoolInTenant(payload.school_id, payload.tenant_id);
-      const role = await resolveSchoolRole(payload.school_role);
+      const role = await resolveAssignableRole(payload.tenant_id, {
+        role_id: payload.role_id,
+        school_role: payload.school_role,
+      });
 
       const existingUser = await User.findOne({ where: { email: payload.email } });
       if (existingUser) {
@@ -219,7 +248,7 @@ module.exports = {
         action: 'create',
         entityType: 'user',
         entityId: user.id,
-        summary: `Kullanıcı oluşturuldu: ${user.full_name} (${payload.school_role})`,
+        summary: `Kullanıcı oluşturuldu: ${user.full_name} (${role.role_name})`,
       });
       res.status(201).json({ success: true, data: serializeManagedUser(full) });
     } catch (err) {
@@ -260,7 +289,10 @@ module.exports = {
       }
 
       await assertSchoolInTenant(payload.school_id, tenantId);
-      const role = await resolveSchoolRole(payload.school_role);
+      const role = await resolveAssignableRole(tenantId, {
+        role_id: payload.role_id,
+        school_role: payload.school_role,
+      });
 
       const updates = {
         school_id: payload.school_id,
@@ -298,7 +330,7 @@ module.exports = {
         action: 'update',
         entityType: 'user',
         entityId: user.id,
-        summary: `Kullanıcı güncellendi: ${user.full_name} (${payload.school_role})`,
+        summary: `Kullanıcı güncellendi: ${user.full_name} (${role.role_name})`,
       });
       res.json({ success: true, data: serializeManagedUser(full) });
     } catch (err) {

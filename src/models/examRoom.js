@@ -10,6 +10,14 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 30,
       },
+      building: DataTypes.STRING,
+      floor: DataTypes.STRING,
+      is_active: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
+      },
+      seating_layout: DataTypes.JSONB,
     },
     {
       tableName: 'ExamRooms',

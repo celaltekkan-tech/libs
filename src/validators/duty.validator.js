@@ -4,6 +4,8 @@ const createDutyLocationSchema = Joi.object({
   tenant_id: Joi.number().integer().required(),
   school_id: Joi.number().integer().allow(null),
   name: Joi.string().required().max(100),
+  floor_level: Joi.number().integer().min(0).max(50).allow(null),
+  sort_order: Joi.number().integer().min(0).max(1000).allow(null),
   is_active: Joi.boolean().allow(null),
 });
 
@@ -36,6 +38,8 @@ const generateDutySchema = Joi.object({
   end_date: Joi.date().iso().min(Joi.ref('start_date')).required(),
   duty_location_ids: Joi.array().items(Joi.number().integer()).min(1).required(),
   include_weekends: Joi.boolean().allow(null),
+  /** fair = adil dağıtım; weekly_rotate = kat kaydırma */
+  mode: Joi.string().valid('fair', 'weekly_rotate').default('fair'),
 });
 
 const exportDutySchema = Joi.object({

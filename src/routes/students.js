@@ -17,15 +17,26 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter(req, file, cb) {
+    const name = (file.originalname || '').toLowerCase();
     const ok =
+      name.endsWith('.xlsx') ||
+      name.endsWith('.xls') ||
       file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-      file.originalname.toLowerCase().endsWith('.xlsx');
-    if (!ok) return cb(new Error('Yalnızca .xlsx dosyaları kabul edilir'));
+      file.mimetype === 'application/vnd.ms-excel';
+    if (!ok) return cb(new Error('Yalnızca .xls veya .xlsx dosyaları kabul edilir'));
     return cb(null, true);
   },
 });
 
 router.get('/', auth, moduleGuard, permission('students.read'), ctrl.list);
+router.post(
+  '/import/preview',
+  auth,
+  moduleGuard,
+  permission('students.create'),
+  upload.single('file'),
+  ctrl.previewImport
+);
 router.post('/import', auth, moduleGuard, permission('students.create'), upload.single('file'), ctrl.importExcel);
 router.post('/export', auth, moduleGuard, permission('students.read'), validate(exportStudentSchema), ctrl.exportFile);
 router.get('/:id', auth, moduleGuard, permission('students.read'), ctrl.get);

@@ -1,16 +1,38 @@
 const Joi = require('joi');
 
+const SEAT_TYPES = ['ikili', 'tekli'];
+
+const seatingLayoutSchema = Joi.object({
+  seat_type: Joi.string().valid(...SEAT_TYPES).required(),
+  groups: Joi.array()
+    .items(
+      Joi.object({
+        name: Joi.string().max(50).required(),
+        rows: Joi.number().integer().min(1).max(20).required(),
+        columns: Joi.array().items(Joi.boolean()).min(1).max(2).required(),
+        disabled_seats: Joi.array().items(Joi.number().integer().min(1)).default([]),
+      })
+    )
+    .min(1)
+    .max(10)
+    .required(),
+});
+
 const createExamRoomSchema = Joi.object({
   tenant_id: Joi.number().integer().required(),
   school_id: Joi.number().integer().allow(null),
   name: Joi.string().required().max(100),
-  capacity: Joi.number().integer().min(1).max(500).required(),
+  building: Joi.string().trim().allow('', null).max(100),
+  floor: Joi.string().trim().allow('', null).max(20),
+  is_active: Joi.boolean().default(true),
+  seating_layout: seatingLayoutSchema.allow(null),
+  capacity: Joi.number().integer().min(1).max(500),
 });
 
 const updateExamRoomSchema = createExamRoomSchema.keys({
   tenant_id: Joi.number().integer().optional(),
   name: Joi.string().optional().max(100),
-  capacity: Joi.number().integer().min(1).max(500).optional(),
+  is_active: Joi.boolean().optional(),
 });
 
 const createExamSessionSchema = Joi.object({

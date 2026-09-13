@@ -7,7 +7,7 @@ const requireModule = require('../middlewares/moduleGuard');
 
 const moduleGuard = requireModule('audit');
 
-// Denetim kayıtları planda audit modülü olan tenant'larda ve yalnızca Müdür (ve global admin) tarafından görülebilir.
-router.get('/', auth, moduleGuard, permission.checkRole(['Müdür', 'admin', 'supervisor']), ctrl.list);
+// Denetim kayıtları: audit modülü + audit.read izni
+router.get('/', auth, moduleGuard, permission('audit.read'), ctrl.list);
 
 module.exports = router;

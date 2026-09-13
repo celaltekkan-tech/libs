@@ -8,6 +8,7 @@ const studentsRoutes = require('./routes/students');
 const classroomsRoutes = require('./routes/classrooms');
 const authRoutes = require('./routes/auth');
 const usersRoutes = require('./routes/users');
+const rolesRoutes = require('./routes/roles');
 const schoolsRoutes = require('./routes/schools');
 const tenantsRoutes = require('./routes/tenants');
 const feedbackRoutes = require('./routes/feedback');
@@ -34,6 +35,7 @@ const disciplinaryCasesRoutes = require('./routes/disciplinaryCases');
 const guidanceRoutes = require('./routes/guidance');
 const teacherDocumentsRoutes = require('./routes/teacherDocuments');
 const holidaysRoutes = require('./routes/holidays');
+const notificationsRoutes = require('./routes/notifications');
 const errorHandler = require('./middlewares/errorHandler');
 const db = require('./models');
 
@@ -59,6 +61,12 @@ function isPrivateLanDevOrigin(origin) {
     if (host === 'localhost' || host === '127.0.0.1') return true;
     if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
     if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return true;
+    // Tailscale/CGNAT benzeri geliştirme ağlarında 100.64.0.0/10 aralığı görülebilir.
+    const cgnat = host.match(/^100\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/);
+    if (cgnat) {
+      const second = Number(cgnat[1]);
+      return second >= 64 && second <= 127;
+    }
     const m = host.match(/^172\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/);
     if (m) {
       const second = Number(m[1]);
@@ -119,17 +127,19 @@ app.get('/health', (req, res) =>
 app.use('/api', apiLimiter);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/verify-2fa', authLimiter);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/teachers', teachersRoutes);
 app.use('/api/students', studentsRoutes);
 app.use('/api/classrooms', classroomsRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/roles', rolesRoutes);
 app.use('/api/schools', schoolsRoutes);
 app.use('/api/tenants', tenantsRoutes);
+app.use('/api/audit-logs', auditLogsRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/licenses', licensesRoutes);
-app.use('/api/audit-logs', auditLogsRoutes);
 app.use('/api/subjects', subjectsRoutes);
 app.use('/api/subject-class-hours', subjectClassHoursRoutes);
 app.use('/api/schedule', scheduleRoutes);
@@ -151,6 +161,7 @@ app.use('/api/disciplinary-cases', disciplinaryCasesRoutes);
 app.use('/api/guidance', guidanceRoutes);
 app.use('/api/teacher-documents', teacherDocumentsRoutes);
 app.use('/api/holidays', holidaysRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 app.use((req, res) => {
   res.status(404).json({

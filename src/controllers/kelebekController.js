@@ -17,6 +17,25 @@ function assertTenantAccess(req, row) {
   return true;
 }
 
+// Oturma düzeninden (gruplar/sütunlar/iptal edilen sıralar) toplam sıra sayısını hesaplar.
+function computeCapacityFromLayout(seatingLayout) {
+  if (!seatingLayout || !Array.isArray(seatingLayout.groups)) return null;
+  let total = 0;
+  for (const group of seatingLayout.groups) {
+    const columns = Array.isArray(group.columns) ? group.columns : [];
+    const rows = Number(group.rows) || 0;
+    const disabled = new Set(Array.isArray(group.disabled_seats) ? group.disabled_seats : []);
+    for (let r = 0; r < rows; r += 1) {
+      for (let c = 0; c < columns.length; c += 1) {
+        if (!columns[c]) continue;
+        if (disabled.has(r * columns.length + c)) continue;
+        total += 1;
+      }
+    }
+  }
+  return total;
+}
+
 module.exports = {
   // --- Salonlar ---
   async listRooms(req, res, next) {
@@ -33,6 +52,8 @@ module.exports = {
     try {
       const payload = { ...(req.validatedBody || req.body) };
       if (req.user && req.user.tenant_id) payload.tenant_id = req.user.tenant_id;
+      const computedCapacity = computeCapacityFromLayout(payload.seating_layout);
+      if (computedCapacity !== null) payload.capacity = computedCapacity;
       const row = await ExamRoom.create(payload);
       res.status(201).json({ success: true, data: row });
     } catch (err) {
@@ -45,7 +66,10 @@ module.exports = {
       const row = await ExamRoom.findByPk(req.params.id);
       if (!row) return res.status(404).json({ success: false, message: 'Bulunamadı' });
       if (!assertTenantAccess(req, row)) return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
-      await row.update(req.validatedBody || req.body);
+      const payload = { ...(req.validatedBody || req.body) };
+      const computedCapacity = computeCapacityFromLayout(payload.seating_layout);
+      if (computedCapacity !== null) payload.capacity = computedCapacity;
+      await row.update(payload);
       res.json({ success: true, data: row });
     } catch (err) {
       next(err);

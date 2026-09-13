@@ -1,0 +1,221 @@
+'use strict';
+
+/**
+ * Yetki matrisi için menü → permission grupları.
+ * Frontend "Yetki Grupları" ekranı ve menü görünürlüğü bunu kullanır.
+ */
+const ACTIONS = [
+  { key: 'read', label: 'Görüntüle' },
+  { key: 'create', label: 'Ekle' },
+  { key: 'update', label: 'Düzenle' },
+  { key: 'delete', label: 'Sil' },
+];
+
+/** @type {Array<{ id: string, label: string, group: string, module?: string|null, permissions: string[] }>} */
+const MENU_PERMISSION_GROUPS = [
+  {
+    id: 'schools',
+    label: 'Okullar',
+    group: 'Temel Tanımlar',
+    module: 'schools',
+    permissions: ['schools.read', 'schools.create', 'schools.update', 'schools.delete'],
+  },
+  {
+    id: 'classrooms',
+    label: 'Sınıflar',
+    group: 'Temel Tanımlar',
+    module: 'classrooms',
+    permissions: ['classrooms.read', 'classrooms.create', 'classrooms.update', 'classrooms.delete'],
+  },
+  {
+    id: 'students',
+    label: 'Öğrenciler',
+    group: 'Temel Tanımlar',
+    module: 'students',
+    permissions: ['students.read', 'students.create', 'students.update', 'students.delete'],
+  },
+  {
+    id: 'teachers',
+    label: 'Öğretmenler',
+    group: 'Temel Tanımlar',
+    module: 'teachers',
+    permissions: ['teachers.read', 'teachers.create', 'teachers.update', 'teachers.delete'],
+  },
+  {
+    id: 'subjects',
+    label: 'Dersler',
+    group: 'Temel Tanımlar',
+    module: 'schedule',
+    permissions: ['schedule.read', 'schedule.create', 'schedule.update', 'schedule.delete'],
+  },
+  {
+    id: 'academic_years',
+    label: 'Eğitim Öğretim Yılları',
+    group: 'Temel Tanımlar',
+    module: null,
+    permissions: ['academic_years.read', 'academic_years.create', 'academic_years.update', 'academic_years.delete'],
+  },
+  {
+    id: 'norm_positions',
+    label: 'Norm Kadro',
+    group: 'Personel İşleri',
+    module: 'teachers',
+    permissions: ['norm_positions.read', 'norm_positions.create', 'norm_positions.update', 'norm_positions.delete'],
+  },
+  {
+    id: 'trainings',
+    label: 'Hizmet İçi Eğitim',
+    group: 'Personel İşleri',
+    module: 'teachers',
+    permissions: ['trainings.read', 'trainings.create', 'trainings.update', 'trainings.delete'],
+  },
+  {
+    id: 'teacher_documents',
+    label: 'Öğretmen Evrak Arşivi',
+    group: 'Personel İşleri',
+    module: 'teachers',
+    permissions: [
+      'teacher_documents.read',
+      'teacher_documents.create',
+      'teacher_documents.update',
+      'teacher_documents.delete',
+    ],
+  },
+  {
+    id: 'leaves',
+    label: 'İzin Takibi',
+    group: 'Personel İşleri',
+    module: 'leaves',
+    permissions: ['leaves.read', 'leaves.create', 'leaves.update', 'leaves.delete'],
+  },
+  {
+    id: 'duty',
+    label: 'Nöbet Programı',
+    group: 'Personel İşleri',
+    module: 'duty',
+    permissions: ['duty.read', 'duty.create', 'duty.update', 'duty.delete'],
+  },
+  {
+    id: 'extra_lessons',
+    label: 'Ek Ders Puantajı',
+    group: 'Personel İşleri',
+    module: 'payroll',
+    permissions: ['payroll.read', 'payroll.create', 'payroll.update', 'payroll.delete'],
+  },
+  {
+    id: 'attendance_payroll',
+    label: 'İşçi / TYP Puantaj',
+    group: 'Personel İşleri',
+    module: 'payroll',
+    permissions: ['payroll.read', 'payroll.create', 'payroll.update', 'payroll.delete'],
+  },
+  {
+    id: 'schedule',
+    label: 'Ders Programı',
+    group: 'Programlar',
+    module: 'schedule',
+    permissions: ['schedule.read', 'schedule.create', 'schedule.update', 'schedule.delete'],
+  },
+  {
+    id: 'exams',
+    label: 'Sınav Programı Hazırlama',
+    group: 'Programlar',
+    module: 'exams',
+    permissions: ['exams.read', 'exams.create', 'exams.update', 'exams.delete'],
+  },
+  {
+    id: 'kelebek',
+    label: 'Kelebek Sistemi',
+    group: 'Programlar',
+    module: 'exams',
+    permissions: ['exams.read', 'exams.create', 'exams.update', 'exams.delete'],
+  },
+  {
+    id: 'absences',
+    label: 'DYK Devamsızlık Takibi',
+    group: 'Öğrenci İşleri',
+    module: 'attendance',
+    permissions: ['attendance.read', 'attendance.create', 'attendance.update', 'attendance.delete'],
+  },
+  {
+    id: 'communications',
+    label: 'Veli İletişim',
+    group: 'Öğrenci İşleri',
+    module: 'communications',
+    permissions: [
+      'communications.read',
+      'communications.create',
+      'communications.update',
+      'communications.delete',
+    ],
+  },
+  {
+    id: 'discipline',
+    label: 'Disiplin',
+    group: 'Öğrenci İşleri',
+    module: 'discipline',
+    permissions: ['discipline.read', 'discipline.create', 'discipline.update', 'discipline.delete'],
+  },
+  {
+    id: 'guidance',
+    label: 'Rehberlik',
+    group: 'Rehberlik',
+    module: 'guidance',
+    permissions: ['guidance.read', 'guidance.create', 'guidance.update', 'guidance.delete'],
+  },
+  {
+    id: 'users',
+    label: 'Yetkilendirme',
+    group: 'Sistem',
+    module: 'users',
+    permissions: ['users.read', 'users.create', 'users.update', 'users.delete'],
+  },
+  {
+    id: 'audit',
+    label: 'Denetim Kayıtları',
+    group: 'Sistem',
+    module: 'audit',
+    permissions: ['audit.read'],
+  },
+  {
+    id: 'feedback',
+    label: 'Geri Bildirim',
+    group: 'Sistem',
+    module: null,
+    permissions: ['feedback.read', 'feedback.create'],
+  },
+];
+
+/** Menü path → görünürlük için gereken permission */
+const MENU_PATH_PERMISSION = {
+  '/schools': 'schools.read',
+  '/classrooms': 'classrooms.read',
+  '/students': 'students.read',
+  '/teachers': 'teachers.read',
+  '/subjects': 'schedule.read',
+  '/academic-years': 'academic_years.read',
+  '/norm-positions': 'norm_positions.read',
+  '/trainings': 'trainings.read',
+  '/teacher-documents': 'teacher_documents.read',
+  '/leaves': 'leaves.read',
+  '/duty': 'duty.read',
+  '/extra-lessons': 'payroll.read',
+  '/attendance': 'payroll.read',
+  '/schedule': 'schedule.read',
+  '/exams': 'exams.read',
+  '/kelebek': 'exams.read',
+  '/dyk': 'attendance.read',
+  '/absences': 'attendance.read',
+  '/communications': 'communications.read',
+  '/discipline': 'discipline.read',
+  '/guidance': 'guidance.read',
+  '/users': 'users.read',
+  '/audit-logs': 'audit.read',
+  '/feedback': 'feedback.read',
+};
+
+module.exports = {
+  ACTIONS,
+  MENU_PERMISSION_GROUPS,
+  MENU_PATH_PERMISSION,
+};

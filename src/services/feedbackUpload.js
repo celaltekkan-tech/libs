@@ -18,6 +18,11 @@ const ALLOWED_EXTENSIONS = new Set([
   '.odt',
   '.ods',
   '.odp',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
 ]);
 
 const ALLOWED_MIME_TYPES = new Set([
@@ -31,6 +36,10 @@ const ALLOWED_MIME_TYPES = new Set([
   'application/vnd.oasis.opendocument.text',
   'application/vnd.oasis.opendocument.spreadsheet',
   'application/vnd.oasis.opendocument.presentation',
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
   // bazı istemciler office dosyalarını generic gönderir
   'application/octet-stream',
 ]);
@@ -74,7 +83,7 @@ const upload = multer({
   limits: { fileSize: MAX_FILE_SIZE, files: MAX_FILES },
   fileFilter(_req, file, cb) {
     if (!isAllowedFile(file)) {
-      const err = new Error('Yalnızca PDF ve Ofis dosyaları yüklenebilir (pdf, doc, docx, xls, xlsx, ppt, pptx)');
+      const err = new Error('Yalnızca PDF, Ofis dosyaları veya resim (png, jpg, gif, webp) yüklenebilir');
       err.status = 400;
       err.code = 'INVALID_FILE_TYPE';
       return cb(err);

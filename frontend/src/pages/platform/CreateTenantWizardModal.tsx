@@ -3,7 +3,10 @@ import { App, Divider, Form, Input, Modal, Select } from 'antd'
 import { ApiError, getErrorMessage } from '../../api/client'
 import { createTenant } from '../../api/tenants'
 import { LICENSE_PLANS } from '../../constants/licensePlans'
+import { SCHOOL_TYPE_LABELS } from '../../types/school'
 import type { CreateTenantWizardPayload } from '../../types/tenant'
+
+const SCHOOL_TYPE_OPTIONS = Object.entries(SCHOOL_TYPE_LABELS).map(([value, label]) => ({ value, label }))
 
 interface CreateTenantWizardModalProps {
   open: boolean
@@ -54,7 +57,12 @@ export function CreateTenantWizardModal({ open, onClose, onCreated }: CreateTena
       destroyOnHidden
       width={560}
     >
-      <Form form={form} layout="vertical" requiredMark={false}>
+      <Form
+        form={form}
+        layout="vertical"
+        requiredMark={false}
+        initialValues={{ school: { school_type: 'lise' } }}
+      >
         <Divider titlePlacement="left" plain>
           Hesap
         </Divider>
@@ -81,7 +89,7 @@ export function CreateTenantWizardModal({ open, onClose, onCreated }: CreateTena
           name={['school', 'name']}
           rules={[{ required: true, message: 'Okul adı zorunludur' }]}
         >
-          <Input placeholder="Örn. Atatürk Anadolu Lisesi" />
+          <Input placeholder="Örn. Atatürk Ortaokulu" />
         </Form.Item>
         <Form.Item
           label="Okul kodu"
@@ -89,6 +97,13 @@ export function CreateTenantWizardModal({ open, onClose, onCreated }: CreateTena
           rules={[{ required: true, message: 'Okul kodu zorunludur' }]}
         >
           <Input placeholder="Örn. ATA-001" />
+        </Form.Item>
+        <Form.Item
+          label="Okul kademesi"
+          name={['school', 'school_type']}
+          rules={[{ required: true, message: 'Okul kademesi zorunludur' }]}
+        >
+          <Select options={SCHOOL_TYPE_OPTIONS} placeholder="Kademe seçin" />
         </Form.Item>
 
         <Divider titlePlacement="left" plain>

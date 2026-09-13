@@ -6,9 +6,10 @@ const {
   FeedbackAttachment,
   Tenant,
   User,
+  Notification,
   sequelize,
 } = require('../models');
-const { FEEDBACK_STATUSES, PENDING_FEEDBACK_STATUSES } = require('../validators/feedback.validator');
+const { FEEDBACK_STATUSES, PENDING_FEEDBACK_STATUSES, OPEN_FEEDBACK_STATUSES } = require('../validators/feedback.validator');
 const {
   absolutePath,
   removeStoredFile,
@@ -131,7 +132,7 @@ module.exports = {
           { model: User, attributes: ['id', 'full_name', 'email'] },
           attachmentInclude,
         ],
-        order: [['created_at', 'DESC']],
+        order: [['created_at', 'ASC']],
         limit: 500,
       });
 
@@ -157,16 +158,49 @@ module.exports = {
     }
   },
 
+  async cancelMine(req, res, next) {
+    try {
+      const feedback = await Feedback.findByPk(req.params.id);
+      if (!feedback) return res.status(404).json({ success: false, message: 'Bulunamadı' });
+      if (feedback.tenant_id !== req.user.tenant_id || feedback.user_id !== req.user.user_id) {
+        return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
+      }
+      if (!OPEN_FEEDBACK_STATUSES.includes(feedback.status)) {
+        return res.status(400).json({ success: false, message: 'Bu geri bildirim iptal edilemez' });
+      }
+      const { cancel_reason } = req.validatedBody || req.body;
+      await feedback.update({ status: 'cancelled', cancel_reason });
+      const full = await Feedback.findByPk(feedback.id, {
+        include: [{ model: User, attributes: ['id', 'full_name'] }, attachmentInclude],
+      });
+      res.json({ success: true, data: full });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async update(req, res, next) {
     try {
       const feedback = await Feedback.findByPk(req.params.id);
       if (!feedback) return res.status(404).json({ success: false, message: 'Bulunamadı' });
 
       const payload = req.validatedBody || req.body;
+      const hadReply = Boolean(feedback.reply);
       if (payload.reply !== undefined) {
         payload.replied_at = payload.reply ? new Date() : null;
       }
       await feedback.update(payload);
+
+      if (payload.reply && !hadReply && feedback.user_id) {
+        await Notification.create({
+          recipient_user_id: feedback.user_id,
+          tenant_id: feedback.tenant_id,
+          sender_user_id: req.user.user_id,
+          title: 'Geri bildiriminize yanıt verildi',
+          body: 'Gönderdiğiniz geri bildirime platform tarafından yanıt verildi. Detay için Geri Bildirim sayfasına bakın.',
+        });
+      }
+
       const full = await Feedback.findByPk(feedback.id, {
         include: [
           { model: Tenant, attributes: ['id', 'name'] },

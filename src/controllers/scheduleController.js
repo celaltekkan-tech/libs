@@ -4,6 +4,15 @@ const { Op } = require('sequelize');
 const { ScheduleEntry, Classroom, Subject, Teacher, School, SubjectClassHour } = require('../models');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
+const {
+  previewScheduleWorkbook,
+  getMappedRows,
+  parseDayOfWeek,
+  parsePeriodNo,
+  parseClassroomLabel,
+  splitTeacherName,
+} = require('../services/scheduleImportService');
+const { normalizeHeader } = require('../services/excelImportService');
 
 const DAY_LABELS = {
   1: 'Pazartesi',
@@ -491,6 +500,366 @@ module.exports = {
         title: 'Haftalık Ders Programı',
         headers: allowed.map((key) => COLUMN_LABELS[key]),
         rows: entries.map((row) => allowed.map((key) => formatCell(row, key))),
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  /** Ders programındaki benzersiz öğretmenler (gözetmen / sınav öğretmeni seçimi için). */
+  async teachersFromSchedule(req, res, next) {
+    try {
+      const tenantId = req.user && req.user.tenant_id;
+      const where = { teacher_id: { [Op.ne]: null } };
+      if (tenantId) where.tenant_id = tenantId;
+      if (req.query.classroom_id) where.classroom_id = Number(req.query.classroom_id);
+      if (req.query.subject_id) where.subject_id = Number(req.query.subject_id);
+      if (req.query.day_of_week) where.day_of_week = Number(req.query.day_of_week);
+      if (req.query.academic_year) where.academic_year = req.query.academic_year;
+
+      const entries = await ScheduleEntry.findAll({
+        where,
+        include: [teacherInclude, subjectInclude],
+        attributes: ['teacher_id', 'subject_id', 'classroom_id'],
+        limit: 5000,
+      });
+
+      const byTeacher = new Map();
+      for (const entry of entries) {
+        if (!entry.teacher_id || !entry.Teacher) continue;
+        if (!byTeacher.has(entry.teacher_id)) {
+          byTeacher.set(entry.teacher_id, {
+            id: entry.teacher_id,
+            first_name: entry.Teacher.first_name,
+            last_name: entry.Teacher.last_name,
+            personnel_no: entry.Teacher.personnel_no,
+            subject_ids: new Set(),
+            classroom_ids: new Set(),
+            subject_names: new Set(),
+          });
+        }
+        const bucket = byTeacher.get(entry.teacher_id);
+        if (entry.subject_id) bucket.subject_ids.add(entry.subject_id);
+        if (entry.classroom_id) bucket.classroom_ids.add(entry.classroom_id);
+        if (entry.Subject?.name) bucket.subject_names.add(entry.Subject.name);
+      }
+
+      const data = Array.from(byTeacher.values())
+        .map((row) => ({
+          id: row.id,
+          first_name: row.first_name,
+          last_name: row.last_name,
+          personnel_no: row.personnel_no,
+          subject_ids: Array.from(row.subject_ids),
+          classroom_ids: Array.from(row.classroom_ids),
+          subject_names: Array.from(row.subject_names),
+        }))
+        .sort((a, b) =>
+          `${a.last_name} ${a.first_name}`.localeCompare(`${b.last_name} ${b.first_name}`, 'tr'),
+        );
+
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async previewImport(req, res, next) {
+    try {
+      if (!req.file || !req.file.buffer) {
+        return res.status(400).json({
+          success: false,
+          code: 'FILE_REQUIRED',
+          message: 'Excel dosyası gerekli (.xls veya .xlsx)',
+        });
+      }
+      const headerRow = req.body.header_row ? Number(req.body.header_row) : null;
+      const preview = previewScheduleWorkbook(req.file.buffer, { headerRow });
+      res.json({ success: true, data: preview });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async importExcel(req, res, next) {
+    try {
+      if (!req.file || !req.file.buffer) {
+        return res.status(400).json({
+          success: false,
+          code: 'FILE_REQUIRED',
+          message: 'Excel dosyası gerekli (.xls veya .xlsx)',
+        });
+      }
+
+      const tenantId = req.user.tenant_id;
+      const headerRow = req.body.header_row ? Number(req.body.header_row) : null;
+      const replaceExisting =
+        req.body.replace_existing === true ||
+        req.body.replace_existing === 'true' ||
+        req.body.replace_existing === '1';
+      const defaultAcademicYear = req.body.academic_year
+        ? String(req.body.academic_year).trim() || null
+        : null;
+
+      let columnMapping = null;
+      try {
+        columnMapping =
+          typeof req.body.column_mapping === 'string'
+            ? JSON.parse(req.body.column_mapping)
+            : req.body.column_mapping;
+      } catch {
+        return res.status(400).json({ success: false, message: 'column_mapping geçersiz JSON' });
+      }
+
+      let effectiveHeaderRow = headerRow;
+      let preview = null;
+      if (!columnMapping || Object.keys(columnMapping).length === 0) {
+        preview = previewScheduleWorkbook(req.file.buffer, { headerRow: effectiveHeaderRow });
+        columnMapping = preview.suggested_mapping;
+        if (!effectiveHeaderRow) effectiveHeaderRow = preview.header_row;
+      }
+      if (!effectiveHeaderRow) effectiveHeaderRow = 1;
+
+      const mappedFields = Object.values(columnMapping || {});
+      if (!mappedFields.includes('subject_name') && !mappedFields.includes('subject_code')) {
+        return res.status(400).json({
+          success: false,
+          message: 'Ders veya Ders Kodu sütun eşlemesi zorunludur',
+        });
+      }
+      if (!mappedFields.includes('day_of_week') || !mappedFields.includes('period_no')) {
+        return res.status(400).json({
+          success: false,
+          message: 'Gün ve Ders Saati sütun eşlemesi zorunludur',
+        });
+      }
+      const hasClassroom =
+        mappedFields.includes('classroom_label') ||
+        (mappedFields.includes('class_level') && mappedFields.includes('section'));
+      if (!hasClassroom) {
+        return res.status(400).json({
+          success: false,
+          message: 'Sınıf/Şube (birleşik) veya Sınıf + Şube sütun eşlemesi zorunludur',
+        });
+      }
+
+      const [classrooms, subjects, teachers] = await Promise.all([
+        Classroom.findAll({ where: { tenant_id: tenantId } }),
+        Subject.findAll({ where: { tenant_id: tenantId } }),
+        Teacher.findAll({ where: { tenant_id: tenantId } }),
+      ]);
+
+      const classroomByKey = new Map();
+      classrooms.forEach((c) => {
+        classroomByKey.set(
+          `${String(c.class_level).trim()}|${String(c.section).trim().toLocaleUpperCase('tr-TR')}`,
+          c,
+        );
+      });
+
+      const subjectByName = new Map();
+      const subjectByCode = new Map();
+      subjects.forEach((s) => {
+        subjectByName.set(normalizeHeader(s.name), s);
+        if (s.code) subjectByCode.set(normalizeHeader(s.code), s);
+      });
+
+      const teacherByPersonnel = new Map();
+      const teacherByFullName = new Map();
+      teachers.forEach((t) => {
+        if (t.personnel_no) {
+          teacherByPersonnel.set(String(t.personnel_no).trim().toLocaleLowerCase('tr-TR'), t);
+        }
+        const full = normalizeHeader(`${t.first_name} ${t.last_name}`);
+        teacherByFullName.set(full, t);
+        teacherByFullName.set(normalizeHeader(`${t.last_name} ${t.first_name}`), t);
+      });
+
+      if (replaceExisting) {
+        await ScheduleEntry.destroy({ where: { tenant_id: tenantId } });
+      }
+
+      const rows = getMappedRows(req.file.buffer, {
+        headerRow: effectiveHeaderRow,
+        columnMapping,
+      });
+
+      let created = 0;
+      let updated = 0;
+      let skipped = 0;
+      const errors = [];
+
+      for (const { rowNumber, raw } of rows) {
+        let classLevel = raw.class_level ? String(raw.class_level).trim() : null;
+        let section = raw.section
+          ? String(raw.section).trim().toLocaleUpperCase('tr-TR')
+          : null;
+        if (raw.classroom_label) {
+          const parsed = parseClassroomLabel(raw.classroom_label);
+          if (parsed) {
+            classLevel = classLevel || parsed.class_level;
+            section = section || parsed.section;
+          }
+        }
+        if (!classLevel || !section) {
+          errors.push({ row: rowNumber, message: 'Sınıf/şube okunamadı' });
+          continue;
+        }
+
+        const classroom = classroomByKey.get(`${classLevel}|${section}`);
+        if (!classroom) {
+          errors.push({
+            row: rowNumber,
+            message: `Sınıf bulunamadı: ${classLevel}/${section} (önce Sınıflar modülünden tanımlayın)`,
+          });
+          continue;
+        }
+
+        let subject = null;
+        if (raw.subject_code) {
+          subject = subjectByCode.get(normalizeHeader(raw.subject_code)) || null;
+        }
+        if (!subject && raw.subject_name) {
+          subject = subjectByName.get(normalizeHeader(raw.subject_name)) || null;
+        }
+        if (!subject) {
+          errors.push({
+            row: rowNumber,
+            message: `Ders bulunamadı: ${raw.subject_name || raw.subject_code || '?'} (önce Dersler modülünden tanımlayın)`,
+          });
+          continue;
+        }
+
+        const dayOfWeek = parseDayOfWeek(raw.day_of_week);
+        const periodNo = parsePeriodNo(raw.period_no);
+        if (!dayOfWeek) {
+          errors.push({ row: rowNumber, message: `Gün geçersiz: ${raw.day_of_week}` });
+          continue;
+        }
+        if (!periodNo) {
+          errors.push({ row: rowNumber, message: `Ders saati geçersiz: ${raw.period_no}` });
+          continue;
+        }
+
+        let teacherId = null;
+        if (raw.personnel_no) {
+          const t = teacherByPersonnel.get(String(raw.personnel_no).trim().toLocaleLowerCase('tr-TR'));
+          if (t) teacherId = t.id;
+        }
+        if (!teacherId && raw.teacher_name) {
+          const t = teacherByFullName.get(normalizeHeader(raw.teacher_name));
+          if (t) teacherId = t.id;
+          else {
+            const split = splitTeacherName(raw.teacher_name);
+            if (split) {
+              const alt = teacherByFullName.get(
+                normalizeHeader(`${split.first_name} ${split.last_name}`),
+              );
+              if (alt) teacherId = alt.id;
+            }
+          }
+          if (!teacherId) {
+            errors.push({
+              row: rowNumber,
+              message: `Öğretmen eşleşmedi: ${raw.teacher_name} (kayıt oluşturuldu, öğretmen boş)`,
+            });
+          }
+        }
+
+        const academicYear =
+          (raw.academic_year && String(raw.academic_year).trim()) || defaultAcademicYear || null;
+
+        const existing = await ScheduleEntry.findOne({
+          where: {
+            tenant_id: tenantId,
+            classroom_id: classroom.id,
+            day_of_week: dayOfWeek,
+            period_no: periodNo,
+            academic_year: academicYear,
+          },
+        });
+
+        try {
+          if (existing) {
+            if (teacherId) {
+              const conflict = await findTeacherConflict({
+                tenantId,
+                teacherId,
+                dayOfWeek,
+                periodNo,
+                academicYear,
+                excludeId: existing.id,
+              });
+              if (conflict) {
+                skipped += 1;
+                errors.push({
+                  row: rowNumber,
+                  message: `Öğretmen çakışması: ${DAY_LABELS[dayOfWeek]} ${periodNo}. saat`,
+                });
+                continue;
+              }
+            }
+            await existing.update({
+              subject_id: subject.id,
+              teacher_id: teacherId,
+              school_id: classroom.school_id,
+            });
+            updated += 1;
+          } else {
+            if (teacherId) {
+              const conflict = await findTeacherConflict({
+                tenantId,
+                teacherId,
+                dayOfWeek,
+                periodNo,
+                academicYear,
+              });
+              if (conflict) {
+                teacherId = null;
+                errors.push({
+                  row: rowNumber,
+                  message: `Öğretmen çakışması nedeniyle öğretmen boş bırakıldı: ${DAY_LABELS[dayOfWeek]} ${periodNo}. saat`,
+                });
+              }
+            }
+            await ScheduleEntry.create({
+              tenant_id: tenantId,
+              school_id: classroom.school_id,
+              classroom_id: classroom.id,
+              subject_id: subject.id,
+              teacher_id: teacherId,
+              day_of_week: dayOfWeek,
+              period_no: periodNo,
+              academic_year: academicYear,
+            });
+            created += 1;
+          }
+        } catch (err) {
+          if (err.name === 'SequelizeUniqueConstraintError') {
+            skipped += 1;
+            errors.push({ row: rowNumber, message: 'Çakışan kayıt atlandı' });
+          } else {
+            errors.push({ row: rowNumber, message: err.message || 'Kayıt hatası' });
+          }
+        }
+      }
+
+      await audit.log(req, {
+        action: 'import',
+        entityType: 'schedule_entry',
+        entityId: null,
+        summary: `Ders programı içe aktarıldı: ${created} yeni, ${updated} güncellendi, ${errors.length} uyarı/hata`,
+      });
+
+      res.json({
+        success: true,
+        data: {
+          created,
+          updated,
+          skipped,
+          error_count: errors.length,
+          errors: errors.slice(0, 100),
+        },
       });
     } catch (err) {
       next(err);

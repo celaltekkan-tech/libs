@@ -220,6 +220,7 @@ export function LicensesPage() {
           columns={columns}
           dataSource={licenses}
           pagination={{ pageSize: 20 }}
+          scroll={{ x: 'max-content' }}
         />
       </div>
 

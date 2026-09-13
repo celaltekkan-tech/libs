@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Form, Input, Modal, Space, Table, Typography } from 'antd'
+import { App, Button, Form, Input, Modal, Select, Space, Table, Typography } from 'antd'
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
 import { useAuth } from '../auth/AuthContext'
 import { createSchool, deleteSchool, listSchools, updateSchool } from '../api/schools'
 import { getErrorMessage } from '../api/client'
+import { SCHOOL_TYPE_LABELS } from '../types/school'
 import type { School, SchoolPayload } from '../types/school'
+
+const SCHOOL_TYPE_OPTIONS = Object.entries(SCHOOL_TYPE_LABELS).map(([value, label]) => ({ value, label }))
 
 export function SchoolsPage() {
   const { message, modal } = App.useApp()
@@ -36,12 +39,13 @@ export function SchoolsPage() {
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
+    form.setFieldsValue({ school_type: 'lise' })
     setModalOpen(true)
   }
 
   const openEdit = (school: School) => {
     setEditing(school)
-    form.setFieldsValue({ name: school.name, code: school.code })
+    form.setFieldsValue({ name: school.name, code: school.code, school_type: school.school_type })
     setModalOpen(true)
   }
 
@@ -92,6 +96,11 @@ export function SchoolsPage() {
     { title: 'Ad', dataIndex: 'name' },
     { title: 'Kod', dataIndex: 'code' },
     {
+      title: 'Kademe',
+      dataIndex: 'school_type',
+      render: (value: School['school_type']) => SCHOOL_TYPE_LABELS[value] ?? value,
+    },
+    {
       title: 'Oluşturma',
       dataIndex: 'created_at',
       render: (value: string) => new Date(value).toLocaleDateString('tr-TR'),
@@ -136,7 +145,14 @@ export function SchoolsPage() {
           )}
         </Space>
 
-        <Table rowKey="id" loading={loading} columns={columns} dataSource={schools} pagination={{ pageSize: 20 }} />
+        <Table
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={schools}
+          pagination={{ pageSize: 20 }}
+          scroll={{ x: 'max-content' }}
+        />
       </div>
 
       <Modal
@@ -151,10 +167,17 @@ export function SchoolsPage() {
       >
         <Form form={form} layout="vertical" onFinish={onFinish}>
           <Form.Item name="name" label="Okul adı" rules={[{ required: true, message: 'Okul adı zorunludur' }]}>
-            <Input placeholder="Örn. Atatürk Anadolu Lisesi" />
+            <Input placeholder="Örn. Atatürk Ortaokulu" />
           </Form.Item>
           <Form.Item name="code" label="Okul kodu" rules={[{ required: true, message: 'Okul kodu zorunludur' }]}>
             <Input placeholder="Örn. ATA-001" />
+          </Form.Item>
+          <Form.Item
+            name="school_type"
+            label="Okul kademesi"
+            rules={[{ required: true, message: 'Okul kademesi zorunludur' }]}
+          >
+            <Select options={SCHOOL_TYPE_OPTIONS} placeholder="Kademe seçin" />
           </Form.Item>
         </Form>
       </Modal>

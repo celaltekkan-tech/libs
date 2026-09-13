@@ -43,6 +43,19 @@ module.exports = (sequelize, DataTypes) => {
           allowNull: false,
           defaultValue: false,
         },
+        totp_secret: {
+          type: DataTypes.STRING,
+          allowNull: true,
+        },
+        totp_enabled: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
+        },
+        totp_backup_codes: {
+          type: DataTypes.JSONB,
+          allowNull: true,
+        },
       },
       {
         tableName: "Users",
@@ -51,10 +64,13 @@ module.exports = (sequelize, DataTypes) => {
         createdAt: "created_at",
         updatedAt: "updated_at",
         defaultScope: {
-          attributes: { exclude: ["password_hash"] },
+          attributes: { exclude: ["password_hash", "totp_secret", "totp_backup_codes"] },
         },
         scopes: {
           withPassword: { attributes: { include: ["password_hash"] } },
+          withTotp: {
+            attributes: { include: ["password_hash", "totp_secret", "totp_backup_codes"] },
+          },
         },
       }
     );

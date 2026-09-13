@@ -23,6 +23,7 @@ const createTeacherSchema = Joi.object({
   personnel_type: Joi.string().valid('ogretmen', 'memur', 'isci', 'typ').allow(null),
   contract_start_date: Joi.date().iso().allow(null),
   contract_end_date: Joi.date().iso().allow(null),
+  union_name: Joi.string().trim().allow('', null).max(150),
   meta: Joi.object().optional(),
 });
 
@@ -35,4 +36,39 @@ const exportTeacherSchema = Joi.object({
   }).optional(),
 });
 
-module.exports = { createTeacherSchema, exportTeacherSchema };
+const mebbisImportRowSchema = Joi.object({
+  row_index: Joi.number().integer().optional(),
+  il_ilce: Joi.string().allow('', null),
+  kurum_adi: Joi.string().allow('', null),
+  kurum_kodu: Joi.string().allow('', null),
+  kurum_baslama_tarihi: Joi.date().iso().allow('', null),
+  first_name: Joi.string().required(),
+  last_name: Joi.string().required(),
+  national_id: Joi.string().allow('', null),
+  unvan: Joi.string().allow('', null),
+  gorev: Joi.string().allow('', null),
+  brans: Joi.string().allow('', null),
+  seviye_unvani: Joi.string().allow('', null),
+  personnel_type: Joi.string().valid('ogretmen', 'memur', 'isci', 'typ').allow('', null),
+  ogrenim_durumu: Joi.string().allow('', null),
+  kurum_sicil_no: Joi.string().allow('', null),
+  emekli_sicil_no: Joi.string().allow('', null),
+  arsiv_no: Joi.string().allow('', null),
+  cinsiyet: Joi.string().allow('', null),
+  kan_grubu: Joi.string().allow('', null),
+  dogum_tarihi: Joi.date().iso().allow('', null),
+  ilk_gorev_tarihi: Joi.date().iso().allow('', null),
+  durum: Joi.string().allow('', null),
+  kademe: Joi.number().integer().allow(null),
+  derece: Joi.number().integer().allow(null),
+  matched_teacher_id: Joi.number().integer().allow(null),
+  union_name: Joi.string().trim().allow('', null).max(150),
+  include: Joi.boolean().optional(),
+});
+
+const importMebbisCommitSchema = Joi.object({
+  school_id: Joi.number().integer().required(),
+  rows: Joi.array().items(mebbisImportRowSchema).min(1).required(),
+});
+
+module.exports = { createTeacherSchema, exportTeacherSchema, importMebbisCommitSchema };

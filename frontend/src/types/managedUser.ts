@@ -1,4 +1,4 @@
-export type SchoolRoleName = 'Müdür' | 'Müdür Yardımcısı' | 'Memur' | 'Öğretmen'
+export type SchoolRoleName = string
 
 export interface ManagedUserAssignment {
   id: number
@@ -19,7 +19,7 @@ export interface ManagedUser {
   last_login_at: string | null
   created_at: string
   updated_at: string
-  school_role: SchoolRoleName | string | null
+  school_role: SchoolRoleName | null
   assigned_school_id: number | null
   assigned_school_name: string | null
   school_assignments: ManagedUserAssignment[]
@@ -28,6 +28,7 @@ export interface ManagedUser {
 
 export interface ManagedUserPayload {
   school_id: number
+  role_id?: number
   school_role: SchoolRoleName
   full_name: string
   email: string
@@ -36,14 +37,19 @@ export interface ManagedUserPayload {
 }
 
 export interface UserFormOptions {
-  school_roles: Array<{ id: number; name: SchoolRoleName | string }>
+  school_roles: Array<{
+    id: number
+    name: string
+    is_system?: boolean
+    description?: string | null
+  }>
   schools: Array<{ id: number; name: string; code: string }>
   user_limit: number | null
   user_count: number
   user_remaining: number | null
 }
 
-export const SCHOOL_ROLE_OPTIONS: Array<{ value: SchoolRoleName; label: string; description: string }> = [
+export const SCHOOL_ROLE_OPTIONS: Array<{ value: string; label: string; description: string }> = [
   { value: 'Müdür', label: 'Müdür', description: 'Tüm modüllerde tam yetki' },
   {
     value: 'Müdür Yardımcısı',
@@ -52,4 +58,5 @@ export const SCHOOL_ROLE_OPTIONS: Array<{ value: SchoolRoleName; label: string; 
   },
   { value: 'Memur', label: 'Memur', description: 'Kayıt oluşturma/güncelleme, silme yok' },
   { value: 'Öğretmen', label: 'Öğretmen', description: 'Salt okuma yetkisi' },
+  { value: 'Rehber Öğretmen', label: 'Rehber Öğretmen', description: 'Rehberlik tam yetki' },
 ]

@@ -42,6 +42,25 @@ export async function updateTenant(id: number, payload: UpdateTenantPayload): Pr
   return data.data
 }
 
+export async function resetTenantTwoFactor(
+  id: number,
+): Promise<{ tenant_id: number; two_factor_enabled: boolean; reset_user_count: number }> {
+  const { data } = await client.post<
+    Envelope<{ tenant_id: number; two_factor_enabled: boolean; reset_user_count: number }>
+  >(`/api/tenants/${id}/reset-2fa`)
+  return data.data
+}
+
+export async function resetTenantUserTwoFactor(
+  tenantId: number,
+  userId: number,
+): Promise<{ user_id: number; totp_enabled: boolean }> {
+  const { data } = await client.post<Envelope<{ user_id: number; totp_enabled: boolean }>>(
+    `/api/tenants/${tenantId}/users/${userId}/reset-2fa`,
+  )
+  return data.data
+}
+
 export async function deleteTenant(id: number): Promise<void> {
   await client.delete(`/api/tenants/${id}`)
 }

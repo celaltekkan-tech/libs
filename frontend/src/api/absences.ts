@@ -1,5 +1,5 @@
 import client from './client'
-import type { AbsenceWarningRow, StudentAbsence } from '../types/studentAbsence'
+import type { AbsenceEntry, AbsenceWarningRow, StudentAbsence } from '../types/studentAbsence'
 import type { ExportFormat } from '../utils/download'
 
 interface Envelope<T> {
@@ -18,12 +18,12 @@ export async function listAbsences(params?: {
 
 export async function bulkCreateAbsences(
   tenantId: number,
-  payload: { absence_date: string; student_ids: number[]; is_excused?: boolean; reason?: string | null },
-): Promise<{ processed: number; created: number }> {
-  const { data } = await client.post<Envelope<{ processed: number; created: number }>>('/api/absences/bulk', {
-    tenant_id: tenantId,
-    ...payload,
-  })
+  payload: { absence_date: string; entries: AbsenceEntry[] },
+): Promise<{ processed: number; created: number; updated: number }> {
+  const { data } = await client.post<Envelope<{ processed: number; created: number; updated: number }>>(
+    '/api/absences/bulk',
+    { tenant_id: tenantId, ...payload },
+  )
   return data.data
 }
 
@@ -45,6 +45,38 @@ export async function downloadAbsenceWarningLetter(studentId: number): Promise<B
     timeout: 30000,
   })
   return data as Blob
+}
+
+export interface AbsenceCalendarDayStudent {
+  student_id: number
+  student_name: string | null
+  student_number: string | null
+  absence_type: string
+  reason: string | null
+}
+
+export interface AbsenceCalendarDay {
+  date: string
+  day: number
+  is_holiday: boolean
+  holiday_name: string | null
+  absent_count: number
+  total_students: number
+  absent_ratio: number
+  students: AbsenceCalendarDayStudent[]
+}
+
+export interface AbsenceCalendarResponse {
+  total_students: number
+  student_id: number | null
+  days: AbsenceCalendarDay[]
+}
+
+export async function fetchAbsenceCalendar(year: number, month: number, studentId?: number | null): Promise<AbsenceCalendarResponse> {
+  const { data } = await client.get<Envelope<AbsenceCalendarResponse>>('/api/absences/calendar', {
+    params: { year, month, student_id: studentId ?? undefined },
+  })
+  return data.data
 }
 
 export async function exportAbsences(payload: {

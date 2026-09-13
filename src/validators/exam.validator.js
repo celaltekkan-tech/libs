@@ -13,6 +13,7 @@ const createExamSchema = Joi.object({
   exam_date: Joi.date().iso().required(),
   start_time: Joi.string().allow('', null).max(10),
   duration_minutes: Joi.number().integer().min(1).max(600).allow(null),
+  teacher_id: Joi.number().integer().allow(null),
   notes: Joi.string().allow('', null).max(255),
 });
 

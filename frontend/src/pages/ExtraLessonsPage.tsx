@@ -190,7 +190,14 @@ export function ExtraLessonsPage() {
         </Space>
       </Space>
 
-      <Table rowKey="id" loading={loading} columns={columns} dataSource={rows} pagination={{ pageSize: 20 }} />
+      <Table
+        rowKey="id"
+        loading={loading}
+        columns={columns}
+        dataSource={rows}
+        pagination={{ pageSize: 20 }}
+        scroll={{ x: 'max-content' }}
+      />
 
       <Typography.Title level={4} style={{ marginTop: 32 }}>
         Aylık Özet
@@ -214,6 +221,7 @@ export function ExtraLessonsPage() {
                 { title: 'Kategori', dataIndex: 'name', render: (v: string) => EXTRA_LESSON_CATEGORY_LABELS[v] || v },
                 { title: 'Saat', dataIndex: 'hours' },
               ]}
+              scroll={{ x: 'max-content' }}
             />
           ),
         }))}

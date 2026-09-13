@@ -24,6 +24,11 @@ export async function createExamRoom(tenantId: number, payload: ExamRoomPayload)
   return data.data
 }
 
+export async function updateExamRoom(id: number, payload: Partial<ExamRoomPayload>): Promise<ExamRoom> {
+  const { data } = await client.put<Envelope<ExamRoom>>(`/api/kelebek/rooms/${id}`, payload)
+  return data.data
+}
+
 export async function deleteExamRoom(id: number): Promise<void> {
   await client.delete(`/api/kelebek/rooms/${id}`)
 }

@@ -11,6 +11,7 @@ import {
   fetchMe,
   login as loginRequest,
   logout as logoutRequest,
+  verify2fa as verify2faRequest,
 } from '../api/auth'
 import {
   clearSession,
@@ -19,12 +20,18 @@ import {
   isTokenExpired,
   setUnauthorizedHandler,
 } from '../api/client'
-import type { LoginFormValues, SessionPayload } from '../types/auth'
+import {
+  isLoginChallenge2fa,
+  type LoginFormValues,
+  type LoginResult,
+  type SessionPayload,
+} from '../types/auth'
 
 interface AuthContextValue {
   session: SessionPayload | null
   ready: boolean
-  login: (values: LoginFormValues) => Promise<SessionPayload>
+  login: (values: LoginFormValues) => Promise<LoginResult>
+  complete2fa: (tempToken: string, code: string) => Promise<SessionPayload>
   logout: () => Promise<void>
   refreshSession: () => Promise<void>
   setSessionPayload: (payload: SessionPayload) => void
@@ -34,6 +41,21 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
+
+function toSessionPayload(payload: SessionPayload & { token?: string; expires_at?: string }): SessionPayload {
+  return {
+    user: payload.user,
+    roles: payload.roles,
+    permissions: payload.permissions,
+    schools: payload.schools,
+    is_global_admin: payload.is_global_admin,
+    is_platform_admin: payload.is_platform_admin,
+    license_status: payload.license_status,
+    license: payload.license,
+    modules: payload.modules,
+    tenant_two_factor_enabled: payload.tenant_two_factor_enabled,
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SessionPayload | null>(null)
@@ -67,18 +89,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = useCallback(async (values: LoginFormValues) => {
-    const payload = await loginRequest(values)
-    const sessionPayload: SessionPayload = {
-      user: payload.user,
-      roles: payload.roles,
-      permissions: payload.permissions,
-      schools: payload.schools,
-      is_global_admin: payload.is_global_admin,
-      is_platform_admin: payload.is_platform_admin,
-      license_status: payload.license_status,
-      license: payload.license,
-      modules: payload.modules,
+    const result = await loginRequest(values)
+    if (isLoginChallenge2fa(result)) {
+      return result
     }
+    const sessionPayload = toSessionPayload(result)
+    setSession(sessionPayload)
+    return result
+  }, [])
+
+  const complete2fa = useCallback(async (tempToken: string, code: string) => {
+    const payload = await verify2faRequest(tempToken, code)
+    const sessionPayload = toSessionPayload(payload)
     setSession(sessionPayload)
     return sessionPayload
   }, [])
@@ -122,6 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       ready,
       login,
+      complete2fa,
       logout,
       refreshSession,
       setSessionPayload,
@@ -129,7 +152,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hasModule,
       hasRole,
     }),
-    [session, ready, login, logout, refreshSession, setSessionPayload, hasPermission, hasModule, hasRole],
+    [
+      session,
+      ready,
+      login,
+      complete2fa,
+      logout,
+      refreshSession,
+      setSessionPayload,
+      hasPermission,
+      hasModule,
+      hasRole,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -1,10 +1,14 @@
 'use strict';
 
-const ExcelJS = require('exceljs');
 const PDFDocument = require('pdfkit');
 const { Student, Classroom, School } = require('../models');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
+const {
+  IMPORTABLE_FIELDS,
+  previewWorkbook,
+  getMappedRows,
+} = require('../services/excelImportService');
 
 const CERTIFICATE_TITLES = {
   ogrenci_belgesi: 'ÖĞRENCİ BELGESİ',
@@ -29,44 +33,37 @@ const COLUMN_LABELS = {
   school_id: 'Okul ID',
 };
 
-const IMPORT_HEADER_MAP = {
-  't.c. kimlik no': 'national_id',
-  'tc kimlik no': 'national_id',
-  'tc kimlik': 'national_id',
-  'kimlik no': 'national_id',
-  'öğrenci no': 'student_number',
-  'ogrenci no': 'student_number',
-  'öğrenci numarası': 'student_number',
-  'ogrenci numarasi': 'student_number',
-  adı: 'first_name',
-  adi: 'first_name',
-  ad: 'first_name',
-  soyadı: 'last_name',
-  soyadi: 'last_name',
-  soyad: 'last_name',
-  sınıfı: 'class_level',
-  sinifi: 'class_level',
-  sınıf: 'class_level',
-  sinif: 'class_level',
-  şubesi: 'section',
-  subesi: 'section',
-  şube: 'section',
-  sube: 'section',
-  cinsiyeti: 'gender',
-  cinsiyet: 'gender',
-  'doğum tarihi': 'birth_date',
-  'dogum tarihi': 'birth_date',
-  'kayıt durumu': 'registration_status',
-  'kayit durumu': 'registration_status',
-  'veli adı': 'parent_name',
-  'veli adi': 'parent_name',
-  'veli telefon': 'parent_phone',
-  'veli telefonu': 'parent_phone',
-  kaynaştırma: 'is_inclusion',
-  kaynastirma: 'is_inclusion',
-  'yabancı uyruklu': 'is_foreign',
-  'yabanci uyruklu': 'is_foreign',
-};
+const IMPORTABLE_FIELD_KEYS = new Set(IMPORTABLE_FIELDS.map((f) => f.key));
+
+function parseColumnMapping(raw) {
+  if (raw == null || raw === '') return null;
+  let parsed = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      const err = new Error('Sütun eşlemesi (column_mapping) geçerli JSON olmalıdır');
+      err.status = 400;
+      throw err;
+    }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    const err = new Error('Sütun eşlemesi geçersiz');
+    err.status = 400;
+    throw err;
+  }
+  const mapping = {};
+  Object.entries(parsed).forEach(([col, field]) => {
+    if (field == null || field === '' || field === '__skip') return;
+    if (!IMPORTABLE_FIELD_KEYS.has(field)) {
+      const err = new Error(`Geçersiz alan: ${field}`);
+      err.status = 400;
+      throw err;
+    }
+    mapping[String(col)] = field;
+  });
+  return mapping;
+}
 
 function buildWhere(tenantId, filters = {}) {
   const where = {};
@@ -104,14 +101,50 @@ async function applyClassroomToPayload(payload, tenantId) {
 
 async function findClassroomForImport(tenantId, classLevel, section, schoolId) {
   if (!classLevel || !section) return null;
+  const normalizedSection = String(section).trim().toLocaleUpperCase('tr-TR');
   const where = {
     tenant_id: tenantId,
-    class_level: classLevel,
-    section,
+    class_level: String(classLevel).trim(),
+    section: normalizedSection,
     is_active: true,
   };
   if (schoolId) where.school_id = schoolId;
-  return Classroom.findOne({ where });
+  let classroom = await Classroom.findOne({ where });
+  if (classroom) return classroom;
+
+  // Şube büyük/küçük harf farkı için ikinci deneme
+  const looseWhere = {
+    tenant_id: tenantId,
+    class_level: String(classLevel).trim(),
+    is_active: true,
+  };
+  if (schoolId) looseWhere.school_id = schoolId;
+  const candidates = await Classroom.findAll({ where: looseWhere });
+  classroom = candidates.find(
+    (c) => String(c.section || '').toLocaleUpperCase('tr-TR') === normalizedSection
+  );
+  return classroom || null;
+}
+
+async function resolveOrCreateClassroomForImport(tenantId, classLevel, section, schoolId) {
+  if (!classLevel || !section) return null;
+  const normalizedLevel = String(classLevel).trim();
+  const normalizedSection = String(section).trim().toLocaleUpperCase('tr-TR');
+  const existing = await findClassroomForImport(
+    tenantId,
+    normalizedLevel,
+    normalizedSection,
+    schoolId
+  );
+  if (existing) return existing;
+
+  return Classroom.create({
+    tenant_id: tenantId,
+    school_id: schoolId || null,
+    class_level: normalizedLevel,
+    section: normalizedSection,
+    is_active: true,
+  });
 }
 
 function uniqueConstraintMessage(err) {
@@ -142,21 +175,6 @@ function normalizeBool(value) {
   if (typeof value === 'boolean') return value;
   const raw = String(value).trim().toLocaleLowerCase('tr-TR');
   return ['1', 'true', 'evet', 'e', 'x', 'var'].includes(raw);
-}
-
-function normalizeHeader(header) {
-  return String(header || '')
-    .trim()
-    .toLocaleLowerCase('tr-TR')
-    .replace(/\s+/g, ' ');
-}
-
-function cellToString(value) {
-  if (value == null) return null;
-  if (typeof value === 'object' && value.text) return String(value.text).trim() || null;
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
-  const str = String(value).trim();
-  return str || null;
 }
 
 function parseBirthDate(value) {
@@ -456,57 +474,119 @@ module.exports = {
     }
   },
 
+  async previewImport(req, res, next) {
+    try {
+      if (!req.file || !req.file.buffer) {
+        return res.status(400).json({
+          success: false,
+          code: 'FILE_REQUIRED',
+          message: 'Excel dosyası gerekli (.xls veya .xlsx)',
+        });
+      }
+
+      const headerRow = req.body.header_row ? Number(req.body.header_row) : null;
+      const preview = previewWorkbook(req.file.buffer, { headerRow });
+      res.json({ success: true, data: preview });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async importExcel(req, res, next) {
     try {
       if (!req.file || !req.file.buffer) {
         return res.status(400).json({
           success: false,
           code: 'FILE_REQUIRED',
-          message: 'Excel dosyası gerekli (.xlsx)',
+          message: 'Excel dosyası gerekli (.xls veya .xlsx)',
         });
       }
 
       const tenantId = req.user.tenant_id;
       const schoolId = req.body.school_id ? Number(req.body.school_id) : null;
+      const classroomId = req.body.classroom_id ? Number(req.body.classroom_id) : null;
+      const headerRow = req.body.header_row ? Number(req.body.header_row) : null;
+      const bodyClassLevel = req.body.class_level ? String(req.body.class_level).trim() : null;
+      const bodySection = req.body.section
+        ? String(req.body.section).trim().toLocaleUpperCase('tr-TR')
+        : null;
 
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(req.file.buffer);
-      const sheet = workbook.worksheets[0];
-      if (!sheet) {
+      let columnMapping = parseColumnMapping(req.body.column_mapping);
+      let effectiveHeaderRow = headerRow;
+      let preview = null;
+
+      if (!columnMapping || Object.keys(columnMapping).length === 0) {
+        preview = previewWorkbook(req.file.buffer, { headerRow: effectiveHeaderRow });
+        columnMapping = preview.suggested_mapping;
+        if (!effectiveHeaderRow) effectiveHeaderRow = preview.header_row;
+      }
+      if (!effectiveHeaderRow) effectiveHeaderRow = 1;
+      if (!preview) {
+        preview = previewWorkbook(req.file.buffer, { headerRow: effectiveHeaderRow });
+      }
+
+      const mappedFields = Object.values(columnMapping);
+      if (!mappedFields.includes('first_name') || !mappedFields.includes('last_name')) {
         return res.status(400).json({
           success: false,
-          message: 'Excel dosyasında sayfa bulunamadı',
+          message: 'Ad ve Soyad sütun eşlemesi zorunludur',
+        });
+      }
+      if (!mappedFields.includes('student_number')) {
+        return res.status(400).json({
+          success: false,
+          message: 'Öğrenci No sütun eşlemesi zorunludur',
         });
       }
 
-      const headerRow = sheet.getRow(1);
-      const columnMap = {};
-      headerRow.eachCell((cell, colNumber) => {
-        const key = IMPORT_HEADER_MAP[normalizeHeader(cell.value)];
-        if (key) columnMap[colNumber] = key;
+      let defaultClassroom = null;
+      if (classroomId) {
+        defaultClassroom = await Classroom.findByPk(classroomId);
+        if (!defaultClassroom || defaultClassroom.tenant_id !== tenantId) {
+          return res.status(400).json({
+            success: false,
+            message: 'Seçilen sınıf/şube bulunamadı',
+          });
+        }
+      }
+
+      const detected = preview.detected_class;
+      const defaultClassLevel = bodyClassLevel || (detected && detected.class_level) || null;
+      const defaultSection =
+        bodySection || (detected && detected.section) || null;
+
+      const hasClassColumns =
+        mappedFields.includes('class_level') && mappedFields.includes('section');
+
+      if (!hasClassColumns && !defaultClassroom) {
+        if (!defaultClassLevel || !defaultSection) {
+          return res.status(400).json({
+            success: false,
+            message:
+              'Excelde Sınıf/Şube sütunu yoksa varsayılan sınıf/şube seçimi veya dosyadan algılanan sınıf bilgisi zorunludur',
+          });
+        }
+        defaultClassroom = await resolveOrCreateClassroomForImport(
+          tenantId,
+          defaultClassLevel,
+          defaultSection,
+          schoolId
+        );
+      }
+
+      const rows = getMappedRows(req.file.buffer, {
+        headerRow: effectiveHeaderRow,
+        columnMapping,
       });
-
-      if (!Object.values(columnMap).includes('first_name') || !Object.values(columnMap).includes('last_name')) {
-        return res.status(400).json({
-          success: false,
-          message: 'Excel başlıklarında Ad ve Soyad sütunları zorunludur',
-        });
-      }
 
       let created = 0;
       let updated = 0;
       const errors = [];
 
-      for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber += 1) {
-        const row = sheet.getRow(rowNumber);
-        if (!row || row.cellCount === 0) continue;
-
-        const raw = {};
-        Object.entries(columnMap).forEach(([col, key]) => {
-          raw[key] = cellToString(row.getCell(Number(col)).value);
-        });
-
-        if (!raw.first_name && !raw.last_name && !raw.national_id) continue;
+      for (const { rowNumber, raw } of rows) {
+        if (!raw.first_name && !raw.last_name && !raw.national_id && !raw.student_number) {
+          continue;
+        }
 
         if (!raw.first_name || !raw.last_name) {
           errors.push({ row: rowNumber, message: 'Ad ve soyad zorunludur' });
@@ -517,12 +597,17 @@ module.exports = {
           continue;
         }
 
-        const classroom = await findClassroomForImport(
-          tenantId,
-          raw.class_level,
-          raw.section,
-          schoolId
-        );
+        let classroom = defaultClassroom;
+        if (hasClassColumns) {
+          classroom = await findClassroomForImport(
+            tenantId,
+            raw.class_level,
+            raw.section,
+            schoolId || (defaultClassroom && defaultClassroom.school_id) || null
+          );
+          if (!classroom && defaultClassroom) classroom = defaultClassroom;
+        }
+
         if (!classroom) {
           errors.push({
             row: rowNumber,

@@ -70,6 +70,7 @@ export function TenantsListPage() {
           columns={columns}
           dataSource={tenants}
           pagination={{ pageSize: 20 }}
+          scroll={{ x: 'max-content' }}
         />
       </div>
 

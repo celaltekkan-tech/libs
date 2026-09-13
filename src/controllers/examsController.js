@@ -1,7 +1,7 @@
 'use strict';
 
 const { Op } = require('sequelize');
-const { Exam, Classroom, Subject } = require('../models');
+const { Exam, Classroom, Subject, Teacher, ScheduleEntry } = require('../models');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
 
@@ -29,6 +29,28 @@ const subjectInclude = {
   required: false,
 };
 
+const teacherInclude = {
+  model: Teacher,
+  as: 'Teacher',
+  attributes: ['id', 'first_name', 'last_name', 'personnel_no'],
+  required: false,
+};
+
+const examIncludes = [classroomInclude, subjectInclude, teacherInclude];
+
+async function resolveTeacherFromSchedule(tenantId, classroomId, subjectId) {
+  const entry = await ScheduleEntry.findOne({
+    where: {
+      tenant_id: tenantId,
+      classroom_id: classroomId,
+      subject_id: subjectId,
+      teacher_id: { [Op.ne]: null },
+    },
+    order: [['id', 'ASC']],
+  });
+  return entry?.teacher_id || null;
+}
+
 function addDays(dateStr, days) {
   const d = new Date(dateStr);
   d.setDate(d.getDate() + days);
@@ -50,7 +72,7 @@ module.exports = {
 
       const rows = await Exam.findAll({
         where,
-        include: [classroomInclude, subjectInclude],
+        include: examIncludes,
         order: [['exam_date', 'ASC']],
         limit: 2000,
       });
@@ -75,6 +97,19 @@ module.exports = {
         return res.status(400).json({ success: false, message: 'Seçilen ders bulunamadı' });
       }
 
+      if (payload.teacher_id) {
+        const teacher = await Teacher.findByPk(payload.teacher_id);
+        if (!teacher || (tenantId && teacher.tenant_id !== tenantId)) {
+          return res.status(400).json({ success: false, message: 'Seçilen öğretmen bulunamadı' });
+        }
+      } else if (payload.teacher_id == null && tenantId) {
+        payload.teacher_id = await resolveTeacherFromSchedule(
+          tenantId,
+          payload.classroom_id,
+          payload.subject_id,
+        );
+      }
+
       const row = await Exam.create(payload);
 
       // Ardışık gün zor ders uyarısı: engelleyici değil, bilgilendirici (soft warning).
@@ -95,7 +130,7 @@ module.exports = {
         }
       }
 
-      const full = await Exam.findByPk(row.id, { include: [classroomInclude, subjectInclude] });
+      const full = await Exam.findByPk(row.id, { include: examIncludes });
       await audit.log(req, {
         action: 'create',
         entityType: 'exam',
@@ -121,8 +156,15 @@ module.exports = {
       if (!row) return res.status(404).json({ success: false, message: 'Bulunamadı' });
       if (!assertTenantAccess(req, row)) return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
       const payload = { ...(req.validatedBody || req.body) };
+      const tenantId = req.user && req.user.tenant_id;
+      if (payload.teacher_id) {
+        const teacher = await Teacher.findByPk(payload.teacher_id);
+        if (!teacher || (tenantId && teacher.tenant_id !== tenantId)) {
+          return res.status(400).json({ success: false, message: 'Seçilen öğretmen bulunamadı' });
+        }
+      }
       await row.update(payload);
-      const full = await Exam.findByPk(row.id, { include: [classroomInclude, subjectInclude] });
+      const full = await Exam.findByPk(row.id, { include: examIncludes });
       await audit.log(req, {
         action: 'update',
         entityType: 'exam',
@@ -171,7 +213,7 @@ module.exports = {
 
       const rows = await Exam.findAll({
         where,
-        include: [classroomInclude, subjectInclude],
+        include: examIncludes,
         order: [['exam_date', 'ASC']],
         limit: 5000,
       });
@@ -180,12 +222,13 @@ module.exports = {
         format,
         filename: 'sinav-programi',
         title: 'Sınav Programı',
-        headers: ['Tarih', 'Saat', 'Sınıf', 'Ders', 'Tür', 'Süre (dk)'],
+        headers: ['Tarih', 'Saat', 'Sınıf', 'Ders', 'Öğretmen', 'Tür', 'Süre (dk)'],
         rows: rows.map((r) => [
           r.exam_date,
           r.start_time || '',
           r.Classroom ? `${r.Classroom.class_level}/${r.Classroom.section}` : '',
           r.Subject?.name || '',
+          r.Teacher ? `${r.Teacher.first_name} ${r.Teacher.last_name}` : '',
           EXAM_TYPE_LABELS[r.exam_type] || r.exam_type,
           r.duration_minutes || '',
         ]),

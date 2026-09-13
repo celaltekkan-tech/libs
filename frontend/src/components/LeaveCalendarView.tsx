@@ -1,5 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Button, Calendar, Form, Input, InputNumber, List, Modal, Select, Space, Tag, Typography } from 'antd'
+import {
+  App,
+  Button,
+  Calendar,
+  Checkbox,
+  DatePicker,
+  Form,
+  Input,
+  InputNumber,
+  List,
+  Modal,
+  Select,
+  Space,
+  Tag,
+  Typography,
+} from 'antd'
 import type { CalendarProps } from 'antd'
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import dayjs, { type Dayjs } from 'dayjs'
@@ -9,12 +24,18 @@ import { getErrorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { LEAVE_TYPE_LABELS } from '../types/leaveRecord'
 import type { LeaveCalendarDay } from '../types/leaveCalendar'
-import type { Holiday, HolidayPayload } from '../types/holiday'
+import type { Holiday } from '../types/holiday'
 
 const MONTH_NAMES = [
   'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
   'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
 ]
+
+interface HolidayFormValues {
+  name: string
+  date_range: [Dayjs, Dayjs]
+  recurring?: boolean
+}
 
 // İzinli personel oranına göre gün hücresinin taban rengi hesaplanır: oran
 // arttıkça renk koyulaşır (0 => renksiz, 1 => en koyu ton).
@@ -37,7 +58,9 @@ export function LeaveCalendarView() {
   const [holidayModalOpen, setHolidayModalOpen] = useState(false)
   const [holidays, setHolidays] = useState<Holiday[]>([])
   const [submitting, setSubmitting] = useState(false)
-  const [form] = Form.useForm<HolidayPayload>()
+  const [form] = Form.useForm<HolidayFormValues>()
+  const dateRange = Form.useWatch('date_range', form)
+  const isSingleDay = !!(dateRange?.[0] && dateRange?.[1] && dateRange[0].isSame(dateRange[1], 'day'))
 
   const canManageHolidays = hasPermission('leaves.create')
 
@@ -84,7 +107,7 @@ export function LeaveCalendarView() {
     setSubmitting(true)
     try {
       await seedDefaultHolidays()
-      message.success('Varsayılan resmi tatiller tanımlandı')
+      message.success('Varsayılan resmi tatiller tanımlandı (mevcut kayıtlar tekrar eklenmez)')
       void loadHolidays()
       void loadMonth(panelDate)
     } catch (err) {
@@ -94,12 +117,24 @@ export function LeaveCalendarView() {
     }
   }
 
-  const onAddHoliday = async (values: HolidayPayload) => {
+  const onAddHoliday = async (values: HolidayFormValues) => {
     if (!session) return
+    const [start, end] = values.date_range
     setSubmitting(true)
     try {
-      await createHoliday(session.user.tenant_id, { ...values, year: values.year || null })
-      message.success('Resmi tatil eklendi')
+      const result = await createHoliday(session.user.tenant_id, {
+        name: values.name,
+        start_date: start.format('YYYY-MM-DD'),
+        end_date: end.format('YYYY-MM-DD'),
+        recurring: isSingleDay ? !!values.recurring : false,
+      })
+      const created = result.meta?.created ?? (Array.isArray(result.data) ? result.data.length : 1)
+      const skipped = result.meta?.skipped ?? 0
+      if (skipped > 0) {
+        message.success(`${created} gün eklendi, ${skipped} gün zaten tanımlı olduğu için atlandı`)
+      } else {
+        message.success(created > 1 ? `${created} gün resmi tatil olarak eklendi` : 'Resmi tatil eklendi')
+      }
       form.resetFields()
       void loadHolidays()
       void loadMonth(panelDate)
@@ -254,21 +289,27 @@ export function LeaveCalendarView() {
             )}
           />
           {canManageHolidays && (
-            <Form form={form} layout="inline" onFinish={onAddHoliday} style={{ marginTop: 12, flexWrap: 'wrap', gap: 8 }}>
-              <Form.Item name="name" rules={[{ required: true, message: 'Ad zorunludur' }]}>
-                <Input placeholder="Tatil adı" style={{ width: 180 }} />
+            <Form form={form} layout="vertical" onFinish={onAddHoliday} style={{ marginTop: 12 }}>
+              <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+                Bayram gibi çok günlük tatiller için tarih aralığı seçin; tek gün de seçebilirsiniz.
+              </Typography.Text>
+              <Form.Item name="name" label="Tatil adı" rules={[{ required: true, message: 'Ad zorunludur' }]}>
+                <Input placeholder="ör. Kurban Bayramı" />
               </Form.Item>
-              <Form.Item name="day" rules={[{ required: true, message: 'Gün zorunludur' }]}>
-                <InputNumber min={1} max={31} placeholder="Gün" style={{ width: 80 }} />
+              <Form.Item
+                name="date_range"
+                label="Tarih / aralık"
+                rules={[{ required: true, message: 'Tarih seçin' }]}
+              >
+                <DatePicker.RangePicker format="DD.MM.YYYY" style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item name="month" rules={[{ required: true, message: 'Ay zorunludur' }]}>
-                <Select placeholder="Ay" style={{ width: 110 }} options={MONTH_NAMES.map((n, i) => ({ value: i + 1, label: n }))} />
-              </Form.Item>
-              <Form.Item name="year">
-                <InputNumber placeholder="Yıl (boşsa her yıl)" style={{ width: 160 }} />
-              </Form.Item>
+              {isSingleDay && (
+                <Form.Item name="recurring" valuePropName="checked" initialValue={false}>
+                  <Checkbox>Her yıl tekrarla (yılbaşı, 23 Nisan vb.)</Checkbox>
+                </Form.Item>
+              )}
               <Form.Item>
-                <Button htmlType="submit" icon={<PlusOutlined />} loading={submitting}>
+                <Button type="primary" htmlType="submit" icon={<PlusOutlined />} loading={submitting} block>
                   Ekle
                 </Button>
               </Form.Item>

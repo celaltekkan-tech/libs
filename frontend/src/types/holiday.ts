@@ -9,9 +9,18 @@ export interface Holiday {
   updated_at: string
 }
 
-export interface HolidayPayload {
-  name: string
-  month: number
-  day: number
-  year?: number | null
-}
+/** Tek gün (ay/gün/yıl) veya tarih aralığı ile ekleme. */
+export type HolidayPayload =
+  | {
+      name: string
+      month: number
+      day: number
+      year?: number | null
+    }
+  | {
+      name: string
+      start_date: string
+      end_date: string
+      /** Yalnızca tek gün için: year=null (her yıl). */
+      recurring?: boolean
+    }

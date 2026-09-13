@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/feedbackController');
 const validate = require('../middlewares/validate');
-const { createFeedbackSchema, updateFeedbackSchema } = require('../validators/feedback.validator');
+const { createFeedbackSchema, updateFeedbackSchema, cancelFeedbackSchema } = require('../validators/feedback.validator');
 const auth = require('../middlewares/auth');
 const platformAdmin = require('../middlewares/platformAdmin');
 const { upload } = require('../services/feedbackUpload');
@@ -45,6 +45,9 @@ router.post(
 );
 
 router.get('/mine', auth, ctrl.listMine);
+
+// Kullanıcı kendi (henüz sonuçlanmamış) geri bildirimini açıklama yazarak iptal edebilir
+router.put('/:id/cancel', auth, validate(cancelFeedbackSchema), ctrl.cancelMine);
 
 // Ek indirme: platform admin veya ilgili tenant kullanıcısı
 router.get('/attachments/:attachmentId/download', auth, ctrl.downloadAttachment);

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   App,
+  Alert,
   Button,
   Checkbox,
   Col,
@@ -8,10 +9,12 @@ import {
   Dropdown,
   Form,
   Input,
+  InputNumber,
   Modal,
   Row,
   Select,
   Space,
+  Steps,
   Table,
   Typography,
   Upload,
@@ -21,6 +24,7 @@ import {
   DownloadOutlined,
   EditOutlined,
   FileTextOutlined,
+  InboxOutlined,
   MinusCircleOutlined,
   PlusOutlined,
   SearchOutlined,
@@ -38,6 +42,7 @@ import {
   exportStudents,
   importStudents,
   listStudents,
+  previewStudentImport,
   updateStudent,
 } from '../api/students'
 import type { StudentCertificateType } from '../api/students'
@@ -55,9 +60,14 @@ import type {
   StudentExtraContact,
   StudentFilters,
   StudentGender,
+  StudentImportPreview,
   StudentPayload,
 } from '../types/student'
-import { REGISTRATION_STATUS_OPTIONS, STUDENT_COLUMN_OPTIONS } from '../types/student'
+import {
+  REGISTRATION_STATUS_OPTIONS,
+  STUDENT_COLUMN_OPTIONS,
+  STUDENT_IMPORT_FIELD_OPTIONS,
+} from '../types/student'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
 
 interface StudentFormValues {
@@ -96,8 +106,14 @@ export function StudentsPage() {
   const [exportOpen, setExportOpen] = useState(false)
   const [editing, setEditing] = useState<Student | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [importStep, setImportStep] = useState(0)
   const [importFile, setImportFile] = useState<UploadFile | null>(null)
   const [importSchoolId, setImportSchoolId] = useState<number | null>(null)
+  const [importClassroomId, setImportClassroomId] = useState<number | null>(null)
+  const [importPreview, setImportPreview] = useState<StudentImportPreview | null>(null)
+  const [importHeaderRow, setImportHeaderRow] = useState<number>(1)
+  const [importMapping, setImportMapping] = useState<Record<string, string>>({})
+  const [previewLoading, setPreviewLoading] = useState(false)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx')
   const [exportColumns, setExportColumns] = useState<string[]>([
     'student_number',
@@ -260,15 +276,100 @@ export function StudentsPage() {
     })
   }
 
+  const resetImportState = () => {
+    setImportStep(0)
+    setImportFile(null)
+    setImportSchoolId(null)
+    setImportClassroomId(null)
+    setImportPreview(null)
+    setImportHeaderRow(1)
+    setImportMapping({})
+    setPreviewLoading(false)
+  }
+
+  const importClassroomOptions = useMemo(() => {
+    const list = importSchoolId
+      ? classrooms.filter((c) => c.school_id === importSchoolId || c.school_id == null)
+      : classrooms
+    return list.map((c) => ({ value: c.id, label: classroomLabel(c) }))
+  }, [classrooms, importSchoolId])
+
+  const mappingHasClassColumns = useMemo(() => {
+    const fields = Object.values(importMapping)
+    return fields.includes('class_level') && fields.includes('section')
+  }, [importMapping])
+
+  const usedImportFields = useMemo(() => new Set(Object.values(importMapping).filter(Boolean)), [importMapping])
+
+  const applyImportPreview = async (headerRow?: number | null) => {
+    const file = importFile?.originFileObj
+    if (!file) {
+      message.warning('Lütfen bir .xls veya .xlsx dosyası seçin')
+      return
+    }
+    setPreviewLoading(true)
+    try {
+      const preview = await previewStudentImport(file, { headerRow })
+      setImportPreview(preview)
+      setImportHeaderRow(preview.header_row)
+      setImportMapping({ ...preview.suggested_mapping })
+
+      if (preview.detected_class) {
+        const match = classrooms.find(
+          (c) =>
+            String(c.class_level) === String(preview.detected_class?.class_level) &&
+            String(c.section).toLocaleUpperCase('tr-TR') ===
+              String(preview.detected_class?.section).toLocaleUpperCase('tr-TR') &&
+            (!importSchoolId || c.school_id === importSchoolId),
+        )
+        if (match) setImportClassroomId(match.id)
+      }
+      setImportStep(1)
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
+  const onPreviewImport = async () => {
+    await applyImportPreview(null)
+  }
+
   const onImport = async () => {
     const file = importFile?.originFileObj
     if (!file) {
-      message.warning('Lütfen bir .xlsx dosyası seçin')
+      message.warning('Lütfen bir .xls veya .xlsx dosyası seçin')
       return
     }
+    const fields = Object.values(importMapping)
+    if (!fields.includes('first_name') || !fields.includes('last_name')) {
+      message.warning('Ad ve Soyad sütunlarını eşleştirin')
+      return
+    }
+    if (!fields.includes('student_number')) {
+      message.warning('Öğrenci No sütununu eşleştirin')
+      return
+    }
+    if (
+      !mappingHasClassColumns &&
+      !importClassroomId &&
+      !importPreview?.detected_class?.class_level
+    ) {
+      message.warning('Excelde sınıf/şube yoksa varsayılan sınıf/şube seçin')
+      return
+    }
+
     setSubmitting(true)
     try {
-      const result = await importStudents(file, importSchoolId)
+      const result = await importStudents(file, {
+        schoolId: importSchoolId,
+        classroomId: importClassroomId,
+        headerRow: importHeaderRow,
+        columnMapping: importMapping,
+        classLevel: importPreview?.detected_class?.class_level ?? null,
+        section: importPreview?.detected_class?.section ?? null,
+      })
       message.success(
         `İçe aktarma tamamlandı: ${result.created} yeni, ${result.updated} güncellendi` +
           (result.errors.length ? `, ${result.errors.length} hata` : ''),
@@ -288,7 +389,7 @@ export function StudentsPage() {
         })
       }
       setImportOpen(false)
-      setImportFile(null)
+      resetImportState()
       void load()
     } catch (err) {
       message.error(getErrorMessage(err))
@@ -436,8 +537,14 @@ export function StudentsPage() {
               Dışa Aktar
             </Button>
             {canCreate && (
-              <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)}>
-                e-Okul İçe Aktar
+              <Button
+                icon={<UploadOutlined />}
+                onClick={() => {
+                  resetImportState()
+                  setImportOpen(true)
+                }}
+              >
+                Excel İçe Aktar
               </Button>
             )}
             {canCreate && (
@@ -496,7 +603,14 @@ export function StudentsPage() {
           />
         </Space>
 
-        <Table rowKey="id" loading={loading} columns={columns} dataSource={filteredStudents} pagination={{ pageSize: 20 }} />
+        <Table
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={filteredStudents}
+          pagination={{ pageSize: 20 }}
+          scroll={{ x: 'max-content' }}
+        />
       </div>
 
       <Modal
@@ -695,45 +809,248 @@ export function StudentsPage() {
       </Modal>
 
       <Modal
-        title="e-Okul Excel İçe Aktar"
+        title="Öğrenci Excel İçe Aktar"
         open={importOpen}
-        onCancel={() => setImportOpen(false)}
-        onOk={() => void onImport()}
-        confirmLoading={submitting}
-        okText="Aktar"
-        cancelText="Vazgeç"
+        onCancel={() => {
+          setImportOpen(false)
+          resetImportState()
+        }}
+        width={820}
         destroyOnHidden
-      >
-        <Typography.Paragraph type="secondary">
-          İlk satırda Türkçe başlıklar olmalı (Ad, Soyad, Öğrenci No, T.C. Kimlik No, Sınıf, Şube
-          vb.). Sınıf/şube sistemde önceden tanımlı olmalıdır. Aynı T.C. veya öğrenci no varsa kayıt
-          güncellenir.
-        </Typography.Paragraph>
-        <Form layout="vertical">
-          <Form.Item label="Okul (tüm satırlara uygulanır)">
-            <Select
-              allowClear
-              placeholder="Okul seçin"
-              options={schools.map((s) => ({ value: s.id, label: s.name }))}
-              value={importSchoolId ?? undefined}
-              onChange={(v) => setImportSchoolId(v ?? null)}
-            />
-          </Form.Item>
-          <Form.Item label="Excel dosyası (.xlsx)" required>
-            <Upload
-              accept=".xlsx"
-              maxCount={1}
-              beforeUpload={(file) => {
-                setImportFile({ uid: file.uid, name: file.name, originFileObj: file })
-                return false
-              }}
-              onRemove={() => setImportFile(null)}
-              fileList={importFile ? [importFile] : []}
+        footer={
+          <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+            <Button
+              disabled={importStep === 0 || submitting}
+              onClick={() => setImportStep((s) => Math.max(0, s - 1))}
             >
-              <Button icon={<UploadOutlined />}>Dosya seç</Button>
-            </Upload>
-          </Form.Item>
-        </Form>
+              Geri
+            </Button>
+            <Space>
+              <Button
+                onClick={() => {
+                  setImportOpen(false)
+                  resetImportState()
+                }}
+              >
+                Vazgeç
+              </Button>
+              {importStep === 0 ? (
+                <Button
+                  type="primary"
+                  loading={previewLoading}
+                  onClick={() => void onPreviewImport()}
+                >
+                  Devam — Sütun Eşle
+                </Button>
+              ) : (
+                <Button type="primary" loading={submitting} onClick={() => void onImport()}>
+                  İçe Aktar
+                </Button>
+              )}
+            </Space>
+          </Space>
+        }
+      >
+        <Steps
+          size="small"
+          current={importStep}
+          style={{ marginBottom: 20 }}
+          items={[{ title: 'Dosya' }, { title: 'Sütun eşleme' }]}
+        />
+
+        {importStep === 0 && (
+          <>
+            <Typography.Paragraph type="secondary">
+              e-Okul sınıf listesi (.xls) veya düz başlıklı (.xlsx) dosyalar desteklenir. Farklı
+              şablonlarda bir sonraki adımda Excel sütunlarını sistem alanlarıyla eşleştirirsiniz.
+            </Typography.Paragraph>
+            <Form layout="vertical">
+              <Form.Item label="Okul (tüm satırlara uygulanır)">
+                <Select
+                  allowClear
+                  placeholder="Okul seçin"
+                  options={schools.map((s) => ({ value: s.id, label: s.name }))}
+                  value={importSchoolId ?? undefined}
+                  onChange={(v) => {
+                    setImportSchoolId(v ?? null)
+                    setImportClassroomId(null)
+                  }}
+                />
+              </Form.Item>
+              <Form.Item label="Excel dosyası (.xls / .xlsx)" required>
+                <Upload.Dragger
+                  accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  maxCount={1}
+                  beforeUpload={(file) => {
+                    setImportFile({ uid: file.uid, name: file.name, originFileObj: file })
+                    setImportPreview(null)
+                    return false
+                  }}
+                  onRemove={() => {
+                    setImportFile(null)
+                    setImportPreview(null)
+                  }}
+                  fileList={importFile ? [importFile] : []}
+                >
+                  <p className="ant-upload-drag-icon">
+                    <InboxOutlined />
+                  </p>
+                  <p className="ant-upload-text">Dosyayı buraya sürükleyin veya tıklayarak seçin</p>
+                  <p className="ant-upload-hint">Excel (.xls, .xlsx)</p>
+                </Upload.Dragger>
+              </Form.Item>
+            </Form>
+          </>
+        )}
+
+        {importStep === 1 && importPreview && (
+          <>
+            {importPreview.detected_class && (
+              <Alert
+                type="success"
+                showIcon
+                style={{ marginBottom: 12 }}
+                message={`Dosyadan sınıf algılandı: ${importPreview.detected_class.class_level}. Sınıf / ${importPreview.detected_class.section} Şube`}
+                description="İçe aktarmada bu sınıf/şube otomatik kullanılır. Sistemde yoksa oluşturulur. İsterseniz aşağıdan farklı bir sınıf seçerek üzerine yazabilirsiniz."
+              />
+            )}
+
+            <Form layout="vertical">
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Form.Item label="Başlık satırı" help="Yanlışsa değiştirip yeniden oku">
+                    <Space.Compact style={{ width: '100%' }}>
+                      <InputNumber
+                        min={1}
+                        max={Math.max(1, importPreview.total_rows)}
+                        value={importHeaderRow}
+                        onChange={(v) => setImportHeaderRow(Number(v) || 1)}
+                        style={{ width: '100%' }}
+                      />
+                      <Button
+                        loading={previewLoading}
+                        onClick={() => void applyImportPreview(importHeaderRow)}
+                      >
+                        Yeniden oku
+                      </Button>
+                    </Space.Compact>
+                  </Form.Item>
+                </Col>
+                <Col span={16}>
+                  <Form.Item
+                    label="Sınıf / şube (isteğe bağlı)"
+                    required={!mappingHasClassColumns && !importPreview.detected_class}
+                    help={
+                      mappingHasClassColumns
+                        ? 'Sınıf ve şube sütunları eşlendi; satır bazında kullanılır.'
+                        : importPreview.detected_class
+                          ? `Algılanan: ${importPreview.detected_class.class_level}/${importPreview.detected_class.section} — boş bırakırsanız bu kullanılır.`
+                          : 'Excelde sınıf bilgisi bulunamadı; seçim zorunlu.'
+                    }
+                  >
+                    <Select
+                      allowClear
+                      showSearch
+                      optionFilterProp="label"
+                      placeholder={
+                        importPreview.detected_class
+                          ? `${importPreview.detected_class.class_level}/${importPreview.detected_class.section} (otomatik)`
+                          : 'Sınıf / şube seçin'
+                      }
+                      options={importClassroomOptions}
+                      value={importClassroomId ?? undefined}
+                      onChange={(v) => setImportClassroomId(v ?? null)}
+                      notFoundContent={
+                        importPreview.detected_class
+                          ? 'Kayıtlı sınıf yok — algılanan sınıf otomatik oluşturulacak'
+                          : 'Veri Yok'
+                      }
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+            </Form>
+
+            <Typography.Text strong>Sütun → alan eşlemesi</Typography.Text>
+            <Typography.Paragraph type="secondary" style={{ marginTop: 4 }}>
+              Her Excel başlığını bir öğrenci alanına bağlayın. Kullanılmayan sütunları boş bırakın.
+            </Typography.Paragraph>
+
+            <Table
+              size="small"
+              pagination={false}
+              scroll={{ x: 'max-content' }}
+              rowKey={(r) => String(r.index)}
+              dataSource={importPreview.headers}
+              columns={[
+                {
+                  title: 'Excel sütunu',
+                  dataIndex: 'label',
+                  width: 200,
+                },
+                {
+                  title: 'Örnek değer',
+                  width: 160,
+                  render: (_, row) => {
+                    const sample = importPreview.sample_rows[0]?.values?.[row.label]
+                    return sample ?? '—'
+                  },
+                },
+                {
+                  title: 'Sistem alanı',
+                  render: (_, row) => (
+                    <Select
+                      allowClear
+                      placeholder="Eşleme yok (atla)"
+                      style={{ width: '100%' }}
+                      value={importMapping[String(row.index)] || undefined}
+                      options={STUDENT_IMPORT_FIELD_OPTIONS.map((opt) => ({
+                        value: opt.value,
+                        label: opt.label,
+                        disabled:
+                          usedImportFields.has(opt.value) &&
+                          importMapping[String(row.index)] !== opt.value,
+                      }))}
+                      onChange={(v) => {
+                        setImportMapping((prev) => {
+                          const next = { ...prev }
+                          if (!v) delete next[String(row.index)]
+                          else next[String(row.index)] = v
+                          return next
+                        })
+                      }}
+                    />
+                  ),
+                },
+              ]}
+            />
+
+            {importPreview.sample_rows.length > 0 && (
+              <>
+                <Typography.Text strong style={{ display: 'block', marginTop: 16 }}>
+                  Önizleme (ilk satırlar)
+                </Typography.Text>
+                <Table
+                  size="small"
+                  style={{ marginTop: 8 }}
+                  pagination={false}
+                  scroll={{ x: true }}
+                  rowKey={(r) => String(r.row)}
+                  dataSource={importPreview.sample_rows}
+                  columns={[
+                    { title: 'Satır', dataIndex: 'row', width: 70, fixed: 'left' },
+                    ...importPreview.headers.map((h) => ({
+                      title: h.label,
+                      dataIndex: ['values', h.label] as unknown as string,
+                      render: (_: unknown, record: (typeof importPreview.sample_rows)[number]) =>
+                        record.values[h.label] ?? '—',
+                    })),
+                  ]}
+                />
+              </>
+            )}
+          </>
+        )}
       </Modal>
 
       <Modal

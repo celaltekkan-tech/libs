@@ -11,6 +11,7 @@ const moduleGuard = requireModule('attendance');
 
 router.get('/', auth, moduleGuard, permission('attendance.read'), ctrl.list);
 router.get('/warnings', auth, moduleGuard, permission('attendance.read'), ctrl.warnings);
+router.get('/calendar', auth, moduleGuard, permission('attendance.read'), ctrl.calendar);
 router.get('/warning-letter/:studentId', auth, moduleGuard, permission('attendance.read'), ctrl.warningLetter);
 router.post('/export', auth, moduleGuard, permission('attendance.read'), validate(exportAbsenceSchema), ctrl.exportFile);
 router.post('/bulk', auth, moduleGuard, permission('attendance.create'), validate(bulkAbsenceSchema), ctrl.bulkCreate);

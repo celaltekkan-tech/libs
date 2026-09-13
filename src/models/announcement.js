@@ -32,6 +32,7 @@ module.exports = (sequelize, DataTypes) => {
   Announcement.associate = function (models) {
     Announcement.belongsTo(models.Tenant, { foreignKey: 'tenant_id' });
     Announcement.belongsTo(models.User, { foreignKey: 'created_by' });
+    Announcement.hasMany(models.AnnouncementRecipient, { foreignKey: 'announcement_id', as: 'Recipients' });
   };
 
   return Announcement;

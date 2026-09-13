@@ -247,7 +247,14 @@ export function CommunicationsPage() {
                   kayıt altına alınır ve "gönderildi" olarak işaretlenebilir; fiili gönderim için bir sağlayıcı
                   entegrasyonu gerekir.
                 </Typography.Paragraph>
-                <Table rowKey="id" loading={loading} columns={announcementColumns} dataSource={announcements} pagination={{ pageSize: 20 }} />
+                <Table
+                  rowKey="id"
+                  loading={loading}
+                  columns={announcementColumns}
+                  dataSource={announcements}
+                  pagination={{ pageSize: 20 }}
+                  scroll={{ x: 'max-content' }}
+                />
               </>
             ),
           },
@@ -269,6 +276,7 @@ export function CommunicationsPage() {
                   <Table
                     rowKey="value"
                     pagination={false}
+                    scroll={{ x: 'max-content' }}
                     dataSource={CONSENT_TYPE_OPTIONS}
                     columns={[
                       { title: 'Rıza Türü', dataIndex: 'label' },

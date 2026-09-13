@@ -16,6 +16,11 @@ module.exports = (sequelize, DataTypes) => {
           allowNull: false,
           unique: true,
         },
+        school_type: {
+          type: DataTypes.ENUM('ilkokul', 'ortaokul', 'lise'),
+          allowNull: false,
+          defaultValue: 'lise',
+        },
         meta: {
           type: DataTypes.JSONB,
           allowNull: true,
