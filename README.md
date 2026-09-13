@@ -571,8 +571,11 @@ Notlar:
   (`docker/backend-entrypoint.sh`).
 - `db` ve `backend` yalnızca dahili (`internal`) network'te yer alır; dışarıya port
   açılmaz. Dışarıdan tek erişim noktası NPM üzerinden `frontend` container'ıdır.
-- Postgres verisi `db_data`, yüklenen dosyalar (`uploads/feedback`) `backend_uploads`
-  adlı Docker volume'lerinde kalıcı olarak saklanır.
+- Veriler Docker'ın kendi iç volume'lerinde değil, doğrudan host makinede tutulur:
+  Postgres verisi `./data/postgres`, yüklenen dosyalar `./uploads` klasöründedir.
+  `docker compose down`, `up -d --build`, container silme/yeniden oluşturma gibi
+  işlemler bu klasörlere dokunmaz; veri kaybı yaşamamak için tek şart bu klasörleri
+  **silmemek** ve düzenli yedeklemektir (`data/postgres` ve `uploads`).
 - Ayrı bir API subdomain'i (örn. `api.example.com`) kullanmak isterseniz `.env` içindeki
   `VITE_API_URL` değerini doldurup frontend'i yeniden build edin; bu durumda `CORS_ORIGIN`
   değerini de gerçek frontend domaininize göre güncelleyin.

@@ -7,5 +7,6 @@ dist/
 build/
 coverage/
 uploads/
+data/
 .DS_Store
 Thumbs.db

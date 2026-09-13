@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASS}
       POSTGRES_DB: ${DB_NAME}
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
@@ -30,7 +30,7 @@ services:
       PORT: 4000
       NODE_ENV: production
     volumes:
-      - backend_uploads:/app/uploads
+      - ./uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -58,7 +58,3 @@ networks:
   proxy:
     external: true
     name: ${NPM_NETWORK_NAME:-npm_default}
-
-volumes:
-  db_data:
-  backend_uploads:
