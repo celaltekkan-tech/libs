@@ -610,9 +610,10 @@ docker compose up -d --build
 chmod +x scripts/deploy-watch.sh
 
 # 4) Cron'a ekleyin (her 2 dakikada bir kontrol eder, log dosyasına yazar)
+mkdir -p logs
 crontab -e
 # aşağıdaki satırı ekleyin:
-*/2 * * * * /opt/libs/scripts/deploy-watch.sh >> /var/log/libs-deploy.log 2>&1
+*/2 * * * * /opt/libs/scripts/deploy-watch.sh >> /opt/libs/logs/deploy.log 2>&1
 ```
 
 Notlar:
@@ -639,7 +640,7 @@ chmod +x scripts/db-backup.sh
 
 crontab -e
 # her gece 03:30'da yedek al:
-30 3 * * * /opt/libs/scripts/db-backup.sh >> /var/log/libs-backup.log 2>&1
+30 3 * * * /opt/libs/scripts/db-backup.sh >> /opt/libs/logs/backup.log 2>&1
 ```
 
 Notlar:
