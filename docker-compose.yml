@@ -37,6 +37,7 @@ services:
         condition: service_healthy
     networks:
       - internal
+      - proxy
 
   frontend:
     build:
@@ -58,4 +59,4 @@ networks:
   # docker network ls | grep -i proxy   (veya npm compose dosyasındaki network adı)
   proxy:
     external: true
-    name: ${NPM_NETWORK_NAME:-npm_default}
+    name: ${NPM_NETWORK_NAME:-nginx-proxy-manager_default}
