@@ -541,23 +541,31 @@ Tenant (Kiracı)
 ## Docker ile Çalıştırma (Production)
 
 Proje, biri veritabanı (`db`), biri backend (`backend`), biri de frontend (`frontend`)
-olmak üzere üç ayrı container olarak çalışacak şekilde yapılandırılmıştır. `frontend`
-container'ı statik dosyaları Nginx ile sunar ve `/api`, `/health` isteklerini kendi
-içinde `backend` container'ına proxy'ler; böylece tarayıcı tek bir origin görür ve
-CORS ayarına ihtiyaç kalmaz.
+olmak üzere üç ayrı container olarak çalışacak şekilde yapılandırılmıştır.
 
-Sunucuda zaten çalışan **Nginx Proxy Manager (NPM)** ile entegre olması için `frontend`
-container'ı NPM'in Docker network'üne de katılır. NPM tarafında yapmanız gereken tek şey
-domaininizi `frontend` container adına (port `80`) yönlendiren bir Proxy Host oluşturmak.
+**Kullanılan kurulum: ayrı subdomain'ler** (`app.oids.com.tr` → frontend, `api.oids.com.tr`
+→ backend). Bu yüzden hem `frontend` hem `backend` NPM'in Docker network'üne katılır ve
+`.env` içindeki `VITE_API_URL=https://api.oids.com.tr` ile frontend build'i API isteklerini
+doğrudan API subdomain'ine gönderir. Bu, gerçek bir cross-origin istektir; bu yüzden
+`CORS_ORIGIN` içine `https://app.oids.com.tr` mutlaka eklenmelidir (aksi halde tarayıcı
+istekleri backend tarafından reddedilir).
+
+NPM'de oluşturulacak iki Proxy Host:
+- `app.oids.com.tr` → Forward Hostname/IP: `frontend`, Port: `80`
+- `api.oids.com.tr` → Forward Hostname/IP: `backend`, Port: `4000`
+
+(Frontend'in kendi nginx'i `/api` ve `/health`'i `backend`'e proxy'lemeye devam eder;
+`VITE_API_URL` boş bırakılırsa bu tek-domain/same-origin kurulum da desteklenir, o
+durumda `backend`'in `proxy` network'üne katılmasına gerek yoktur.)
 
 ```bash
 # 1) .env dosyasını oluşturun (yoksa)
 cp .env.example .env
-# DB_USER / DB_PASS / DB_NAME, JWT_SECRET vb. değerleri doldurun.
+# DB_USER / DB_PASS / DB_NAME, JWT_SECRET, VITE_API_URL, CORS_ORIGIN vb. değerleri doldurun.
 
 # 2) NPM'in kullandığı network adını bulun
 docker network ls
-# .env içine NPM_NETWORK_NAME=<bulduğunuz-ad> yazın (örn. npm_default)
+# .env içine NPM_NETWORK_NAME=<bulduğunuz-ad> yazın (örn. nginx-proxy-manager_default)
 
 # 3) Build edip ayağa kaldırın
 docker compose up -d --build
@@ -569,16 +577,14 @@ docker compose exec backend npm run seed
 Notlar:
 - Migration'lar `backend` container'ı her başladığında otomatik çalışır
   (`docker/backend-entrypoint.sh`).
-- `db` ve `backend` yalnızca dahili (`internal`) network'te yer alır; dışarıya port
-  açılmaz. Dışarıdan tek erişim noktası NPM üzerinden `frontend` container'ıdır.
+- `db` yalnızca dahili (`internal`) network'te yer alır, dışarıya hiç port açmaz.
+  `backend` ve `frontend` NPM'in network'üne katılır ama kendi başlarına host'a port
+  açmazlar; dışarıdan erişim yalnızca NPM üzerinden mümkündür.
 - Veriler Docker'ın kendi iç volume'lerinde değil, doğrudan host makinede tutulur:
   Postgres verisi `./data/postgres`, yüklenen dosyalar `./uploads` klasöründedir.
   `docker compose down`, `up -d --build`, container silme/yeniden oluşturma gibi
   işlemler bu klasörlere dokunmaz; veri kaybı yaşamamak için tek şart bu klasörleri
   **silmemek** ve düzenli yedeklemektir (`data/postgres` ve `uploads`).
-- Ayrı bir API subdomain'i (örn. `api.example.com`) kullanmak isterseniz `.env` içindeki
-  `VITE_API_URL` değerini doldurup frontend'i yeniden build edin; bu durumda `CORS_ORIGIN`
-  değerini de gerçek frontend domaininize göre güncelleyin.
 - Landing sayfası bu compose dosyasının kapsamında değildir; ayrı bir servis/proje olarak
   eklenmek istendiğinde aynı `proxy` network'üne katılacak şekilde entegre edilebilir.
 
