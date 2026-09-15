@@ -8,6 +8,7 @@ import { listTenants } from '../../api/tenants'
 import { getErrorMessage } from '../../api/client'
 import type { TenantListItem } from '../../types/tenant'
 import { CreateTenantWizardModal } from './CreateTenantWizardModal'
+import { tablePagination } from '../../utils/tablePagination'
 
 export function TenantsListPage() {
   const { message } = App.useApp()
@@ -69,7 +70,7 @@ export function TenantsListPage() {
           loading={loading}
           columns={columns}
           dataSource={tenants}
-          pagination={{ pageSize: 20 }}
+          pagination={tablePagination(20)}
           scroll={{ x: 'max-content' }}
         />
       </div>

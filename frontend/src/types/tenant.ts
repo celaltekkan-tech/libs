@@ -59,3 +59,8 @@ export interface UpdateTenantPayload {
   is_active?: boolean
   two_factor_enabled?: boolean
 }
+
+export interface UpdateTenantUserPayload {
+  full_name?: string
+  email?: string
+}

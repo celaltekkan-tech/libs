@@ -3,11 +3,9 @@ import {
   Alert,
   App,
   Card,
-  Col,
   Descriptions,
   Form,
   Input,
-  Row,
   Segmented,
   Space,
   Switch,
@@ -17,6 +15,7 @@ import {
 } from 'antd'
 import { MoonOutlined, SunOutlined } from '@ant-design/icons'
 import { AppLayout } from '../components/AppLayout'
+import { SortableDashboard } from '../components/SortableDashboard'
 import { useAuth } from '../auth/AuthContext'
 import { useThemeMode } from '../theme/ThemeContext'
 import {
@@ -187,7 +186,7 @@ export function ProfilePage() {
 
   return (
     <AppLayout title="Profilim">
-      <div style={{ maxWidth: 880 }}>
+      <div style={{ maxWidth: 1100 }}>
         <Typography.Title level={3} style={{ marginBottom: 4 }}>
           Profilim
         </Typography.Title>
@@ -195,239 +194,271 @@ export function ProfilePage() {
           Hesap bilgilerinizi görüntüleyin, adınızı güncelleyin veya şifrenizi değiştirin.
         </Typography.Paragraph>
 
-        <Row gutter={[16, 16]}>
-          <Col xs={24} md={12}>
-            <Card title="Hesap özeti">
-              <Descriptions column={1} size="small">
-                <Descriptions.Item label="Ad soyad">{user?.full_name}</Descriptions.Item>
-                <Descriptions.Item label="E-posta">{user?.email}</Descriptions.Item>
-                <Descriptions.Item label="Global rol">{user?.role}</Descriptions.Item>
-                <Descriptions.Item label="Okul rolleri">
-                  <Space wrap>
-                    {(session?.roles || []).length === 0
-                      ? '—'
-                      : session!.roles.map((role) => (
-                          <Tag key={role} color="blue">
-                            {role}
-                          </Tag>
-                        ))}
-                  </Space>
-                </Descriptions.Item>
-                <Descriptions.Item label="Bağlı okullar">
-                  {(session?.schools || [])
-                    .map((school) => `${school.name}${school.role ? ` (${school.role})` : ''}`)
-                    .join(', ') || '—'}
-                </Descriptions.Item>
-                <Descriptions.Item label="Lisans">
-                  {session?.license?.plan || (session?.license_status === 'exempt' ? 'Muaf' : '—')}
-                </Descriptions.Item>
-                <Descriptions.Item label="Lisans bitiş tarihi">
-                  {session?.license_status === 'exempt'
-                    ? '—'
-                    : session?.license?.ends_at
-                      ? new Date(session.license.ends_at).toLocaleDateString('tr-TR')
-                      : session?.license
-                        ? 'Süresiz'
-                        : '—'}
-                </Descriptions.Item>
-                <Descriptions.Item label="Son giriş">
-                  {user?.last_login_at
-                    ? new Date(user.last_login_at).toLocaleString('tr-TR')
-                    : '—'}
-                </Descriptions.Item>
-                <Descriptions.Item label="2FA">
-                  {userTotpEnabled ? <Tag color="green">Açık</Tag> : <Tag>Kapalı</Tag>}
-                </Descriptions.Item>
-              </Descriptions>
-            </Card>
-          </Col>
-
-          <Col xs={24} md={12}>
-            <Space direction="vertical" size={16} style={{ width: '100%' }}>
-              <Card title="Görünüm">
-                <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-                  Arayüz temasını açık veya koyu moda alın. Tercih bu cihazda saklanır.
-                </Typography.Paragraph>
-                <Segmented
-                  value={mode}
-                  onChange={(value) => setMode(value as 'light' | 'dark')}
-                  options={[
-                    { label: 'Açık', value: 'light', icon: <SunOutlined /> },
-                    { label: 'Koyu', value: 'dark', icon: <MoonOutlined /> },
-                  ]}
-                />
-              </Card>
-
-              <Card title="Ad soyad güncelle">
-                <Form
-                  form={profileForm}
-                  layout="vertical"
-                  initialValues={{ full_name: user?.full_name }}
-                  onFinish={onSaveProfile}
-                >
-                  <Form.Item
-                    name="full_name"
-                    label="Ad soyad"
-                    rules={[
-                      { required: true, message: 'Ad soyad zorunludur' },
-                      { min: 2, message: 'En az 2 karakter' },
-                    ]}
-                  >
-                    <Input />
-                  </Form.Item>
-                  <Button type="primary" htmlType="submit" loading={profileSubmitting}>
-                    Kaydet
-                  </Button>
-                </Form>
-              </Card>
-
-              <Card title="Şifre değiştir">
-                <Form form={passwordForm} layout="vertical" onFinish={onChangePassword}>
-                  <Form.Item
-                    name="current_password"
-                    label="Mevcut şifre"
-                    rules={[{ required: true, message: 'Mevcut şifre zorunludur' }]}
-                  >
-                    <Input.Password autoComplete="current-password" />
-                  </Form.Item>
-                  <Form.Item
-                    name="new_password"
-                    label="Yeni şifre"
-                    rules={[
-                      { required: true, message: 'Yeni şifre zorunludur' },
-                      { min: 8, message: 'En az 8 karakter' },
-                    ]}
-                  >
-                    <Input.Password autoComplete="new-password" />
-                  </Form.Item>
-                  <Form.Item
-                    name="confirm_password"
-                    label="Yeni şifre (tekrar)"
-                    dependencies={['new_password']}
-                    rules={[
-                      { required: true, message: 'Şifre tekrarı zorunludur' },
-                      ({ getFieldValue }) => ({
-                        validator(_, value) {
-                          if (!value || getFieldValue('new_password') === value) {
-                            return Promise.resolve()
-                          }
-                          return Promise.reject(new Error('Şifreler eşleşmiyor'))
-                        },
-                      }),
-                    ]}
-                  >
-                    <Input.Password autoComplete="new-password" />
-                  </Form.Item>
-                  <Button type="primary" htmlType="submit" loading={passwordSubmitting}>
-                    Şifreyi güncelle
-                  </Button>
-                </Form>
-              </Card>
-
-              {canManageTenant2fa ? (
-                <Card title="Hesap güvenliği (yönetici)">
-                  <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-                    Açıldığında kullanıcılar profilinden iki adımlı doğrulama kurabilir. Kapatılırsa
-                    tüm kullanıcıların 2FA ayarları sıfırlanır.
-                  </Typography.Paragraph>
-                  <Space>
-                    <Switch
-                      checked={tenantTwoFactorEnabled}
-                      loading={tenant2faSaving}
-                      onChange={(checked) => void onToggleTenant2fa(checked)}
-                    />
-                    <span>{tenantTwoFactorEnabled ? '2FA hesapta açık' : '2FA hesapta kapalı'}</span>
-                  </Space>
-                </Card>
-              ) : null}
-
-              <Card title="İki adımlı doğrulama (2FA)">
-                {!tenantTwoFactorEnabled ? (
-                  <Alert
-                    type="info"
-                    showIcon
-                    message="Hesabınızda 2FA henüz açılmamış. Yönetici Profilim üzerinden açabilir."
-                  />
-                ) : userTotpEnabled ? (
-                  <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                    <Alert type="success" showIcon message="Authenticator ile 2FA aktif." />
-                    {backupCodes ? (
-                      <Alert
-                        type="warning"
-                        showIcon
-                        message="Yedek kodları güvenli bir yere kaydedin (bir kez gösterilir)."
-                        description={
-                          <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
-                            {backupCodes.map((code) => (
-                              <li key={code}>
-                                <code>{code}</code>
-                              </li>
+        <SortableDashboard
+          layoutKey={`profile:${session?.user.id ?? 0}`}
+          widgets={[
+            {
+              id: 'profile-summary',
+              span: { xs: 24, md: 12 },
+              node: (
+                <Card title="Hesap özeti">
+                  <Descriptions column={1} size="small">
+                    <Descriptions.Item label="Ad soyad">{user?.full_name}</Descriptions.Item>
+                    <Descriptions.Item label="E-posta">{user?.email}</Descriptions.Item>
+                    <Descriptions.Item label="Global rol">{user?.role}</Descriptions.Item>
+                    <Descriptions.Item label="Okul rolleri">
+                      <Space wrap>
+                        {(session?.roles || []).length === 0
+                          ? '—'
+                          : session!.roles.map((role) => (
+                              <Tag key={role} color="blue">
+                                {role}
+                              </Tag>
                             ))}
-                          </ul>
-                        }
-                      />
-                    ) : null}
-                    <Form form={disable2faForm} layout="vertical" onFinish={onDisable2fa}>
-                      <Form.Item
-                        name="password"
-                        label="Şifre"
-                        rules={[{ required: true, message: 'Şifre zorunludur' }]}
-                      >
-                        <Input.Password autoComplete="current-password" />
-                      </Form.Item>
-                      <Form.Item
-                        name="code"
-                        label="Doğrulama kodu"
-                        rules={[{ required: true, message: 'Kod zorunludur' }]}
-                      >
-                        <Input placeholder="6 haneli kod veya yedek kod" />
-                      </Form.Item>
-                      <Button danger htmlType="submit" loading={twoFactorLoading}>
-                        2FA’yı kapat
-                      </Button>
-                    </Form>
-                  </Space>
-                ) : (
-                  <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                    <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-                      Google Authenticator veya benzeri bir uygulama ile girişlerde ek kod isteyin.
-                    </Typography.Paragraph>
-                    {!setupData ? (
-                      <Button type="primary" loading={twoFactorLoading} onClick={() => void onStart2faSetup()}>
-                        2FA kurulumunu başlat
-                      </Button>
-                    ) : (
-                      <>
-                        <img
-                          src={setupData.qr_data_url}
-                          alt="2FA QR kodu"
-                          width={180}
-                          height={180}
-                          style={{ borderRadius: 8 }}
+                      </Space>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Bağlı okullar">
+                      {(session?.schools || [])
+                        .map((school) => `${school.name}${school.role ? ` (${school.role})` : ''}`)
+                        .join(', ') || '—'}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Lisans">
+                      {session?.license?.plan || (session?.license_status === 'exempt' ? 'Muaf' : '—')}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Lisans bitiş tarihi">
+                      {session?.license_status === 'exempt'
+                        ? '—'
+                        : session?.license?.ends_at
+                          ? new Date(session.license.ends_at).toLocaleDateString('tr-TR')
+                          : session?.license
+                            ? 'Süresiz'
+                            : '—'}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Son giriş">
+                      {user?.last_login_at
+                        ? new Date(user.last_login_at).toLocaleString('tr-TR')
+                        : '—'}
+                    </Descriptions.Item>
+                    <Descriptions.Item label="2FA">
+                      {userTotpEnabled ? <Tag color="green">Açık</Tag> : <Tag>Kapalı</Tag>}
+                    </Descriptions.Item>
+                  </Descriptions>
+                </Card>
+              ),
+            },
+            {
+              id: 'profile-appearance',
+              span: { xs: 24, md: 12 },
+              node: (
+                <Card title="Görünüm">
+                  <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+                    Arayüz temasını açık veya koyu moda alın. Tercih bu cihazda saklanır.
+                  </Typography.Paragraph>
+                  <Segmented
+                    value={mode}
+                    onChange={(value) => setMode(value as 'light' | 'dark')}
+                    options={[
+                      { label: 'Açık', value: 'light', icon: <SunOutlined /> },
+                      { label: 'Koyu', value: 'dark', icon: <MoonOutlined /> },
+                    ]}
+                  />
+                </Card>
+              ),
+            },
+            {
+              id: 'profile-name',
+              span: { xs: 24, md: 12 },
+              node: (
+                <Card title="Ad soyad güncelle">
+                  <Form
+                    form={profileForm}
+                    layout="vertical"
+                    initialValues={{ full_name: user?.full_name }}
+                    onFinish={onSaveProfile}
+                  >
+                    <Form.Item
+                      name="full_name"
+                      label="Ad soyad"
+                      rules={[
+                        { required: true, message: 'Ad soyad zorunludur' },
+                        { min: 2, message: 'En az 2 karakter' },
+                      ]}
+                    >
+                      <Input />
+                    </Form.Item>
+                    <Button type="primary" htmlType="submit" loading={profileSubmitting}>
+                      Kaydet
+                    </Button>
+                  </Form>
+                </Card>
+              ),
+            },
+            {
+              id: 'profile-password',
+              span: { xs: 24, md: 12 },
+              node: (
+                <Card title="Şifre değiştir">
+                  <Form form={passwordForm} layout="vertical" onFinish={onChangePassword}>
+                    <Form.Item
+                      name="current_password"
+                      label="Mevcut şifre"
+                      rules={[{ required: true, message: 'Mevcut şifre zorunludur' }]}
+                    >
+                      <Input.Password autoComplete="current-password" />
+                    </Form.Item>
+                    <Form.Item
+                      name="new_password"
+                      label="Yeni şifre"
+                      rules={[
+                        { required: true, message: 'Yeni şifre zorunludur' },
+                        { min: 8, message: 'En az 8 karakter' },
+                      ]}
+                    >
+                      <Input.Password autoComplete="new-password" />
+                    </Form.Item>
+                    <Form.Item
+                      name="confirm_password"
+                      label="Yeni şifre (tekrar)"
+                      dependencies={['new_password']}
+                      rules={[
+                        { required: true, message: 'Şifre tekrarı zorunludur' },
+                        ({ getFieldValue }) => ({
+                          validator(_, value) {
+                            if (!value || getFieldValue('new_password') === value) {
+                              return Promise.resolve()
+                            }
+                            return Promise.reject(new Error('Şifreler eşleşmiyor'))
+                          },
+                        }),
+                      ]}
+                    >
+                      <Input.Password autoComplete="new-password" />
+                    </Form.Item>
+                    <Button type="primary" htmlType="submit" loading={passwordSubmitting}>
+                      Şifreyi güncelle
+                    </Button>
+                  </Form>
+                </Card>
+              ),
+            },
+            ...(canManageTenant2fa
+              ? [
+                  {
+                    id: 'profile-tenant-2fa',
+                    span: { xs: 24, md: 12 },
+                    node: (
+                      <Card title="Hesap güvenliği (yönetici)">
+                        <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+                          Açıldığında kullanıcılar profilinden iki adımlı doğrulama kurabilir. Kapatılırsa
+                          tüm kullanıcıların 2FA ayarları sıfırlanır.
+                        </Typography.Paragraph>
+                        <Space>
+                          <Switch
+                            checked={tenantTwoFactorEnabled}
+                            loading={tenant2faSaving}
+                            onChange={(checked) => void onToggleTenant2fa(checked)}
+                          />
+                          <span>
+                            {tenantTwoFactorEnabled ? '2FA hesapta açık' : '2FA hesapta kapalı'}
+                          </span>
+                        </Space>
+                      </Card>
+                    ),
+                  },
+                ]
+              : []),
+            {
+              id: 'profile-2fa',
+              span: { xs: 24, md: 12 },
+              node: (
+                <Card title="İki adımlı doğrulama (2FA)">
+                  {!tenantTwoFactorEnabled ? (
+                    <Alert
+                      type="info"
+                      showIcon
+                      message="Hesabınızda 2FA henüz açılmamış. Yönetici Profilim üzerinden açabilir."
+                    />
+                  ) : userTotpEnabled ? (
+                    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                      <Alert type="success" showIcon message="Authenticator ile 2FA aktif." />
+                      {backupCodes ? (
+                        <Alert
+                          type="warning"
+                          showIcon
+                          message="Yedek kodları güvenli bir yere kaydedin (bir kez gösterilir)."
+                          description={
+                            <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+                              {backupCodes.map((code) => (
+                                <li key={code}>
+                                  <code>{code}</code>
+                                </li>
+                              ))}
+                            </ul>
+                          }
                         />
-                        <Typography.Text type="secondary">
-                          Manuel anahtar: <code>{setupData.secret}</code>
-                        </Typography.Text>
-                        <Form form={confirm2faForm} layout="vertical" onFinish={onConfirm2fa}>
-                          <Form.Item
-                            name="code"
-                            label="Uygulamadaki kod"
-                            rules={[{ required: true, message: 'Kod zorunludur' }]}
-                          >
-                            <Input placeholder="6 haneli kod" autoComplete="one-time-code" />
-                          </Form.Item>
-                          <Button type="primary" htmlType="submit" loading={twoFactorLoading}>
-                            Doğrula ve etkinleştir
-                          </Button>
-                        </Form>
-                      </>
-                    )}
-                  </Space>
-                )}
-              </Card>
-            </Space>
-          </Col>
-        </Row>
+                      ) : null}
+                      <Form form={disable2faForm} layout="vertical" onFinish={onDisable2fa}>
+                        <Form.Item
+                          name="password"
+                          label="Şifre"
+                          rules={[{ required: true, message: 'Şifre zorunludur' }]}
+                        >
+                          <Input.Password autoComplete="current-password" />
+                        </Form.Item>
+                        <Form.Item
+                          name="code"
+                          label="Doğrulama kodu"
+                          rules={[{ required: true, message: 'Kod zorunludur' }]}
+                        >
+                          <Input placeholder="6 haneli kod veya yedek kod" />
+                        </Form.Item>
+                        <Button danger htmlType="submit" loading={twoFactorLoading}>
+                          2FA’yı kapat
+                        </Button>
+                      </Form>
+                    </Space>
+                  ) : (
+                    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                      <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+                        Google Authenticator veya benzeri bir uygulama ile girişlerde ek kod isteyin.
+                      </Typography.Paragraph>
+                      {!setupData ? (
+                        <Button type="primary" loading={twoFactorLoading} onClick={() => void onStart2faSetup()}>
+                          2FA kurulumunu başlat
+                        </Button>
+                      ) : (
+                        <>
+                          <img
+                            src={setupData.qr_data_url}
+                            alt="2FA QR kodu"
+                            width={180}
+                            height={180}
+                            style={{ borderRadius: 8 }}
+                          />
+                          <Typography.Text type="secondary">
+                            Manuel anahtar: <code>{setupData.secret}</code>
+                          </Typography.Text>
+                          <Form form={confirm2faForm} layout="vertical" onFinish={onConfirm2fa}>
+                            <Form.Item
+                              name="code"
+                              label="Uygulamadaki kod"
+                              rules={[{ required: true, message: 'Kod zorunludur' }]}
+                            >
+                              <Input placeholder="6 haneli kod" autoComplete="one-time-code" />
+                            </Form.Item>
+                            <Button type="primary" htmlType="submit" loading={twoFactorLoading}>
+                              Doğrula ve etkinleştir
+                            </Button>
+                          </Form>
+                        </>
+                      )}
+                    </Space>
+                  )}
+                </Card>
+              ),
+            },
+          ]}
+        />
       </div>
     </AppLayout>
   )

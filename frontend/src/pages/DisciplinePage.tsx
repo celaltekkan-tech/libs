@@ -3,6 +3,7 @@ import { App, Button, Dropdown, Form, Input, Modal, Select, Space, Table, Tag, T
 import { DeleteOutlined, FileTextOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import {
   createDisciplinaryCase,
@@ -24,6 +25,8 @@ import {
 import type { DisciplinaryCase, DisciplinaryCasePayload, DisciplinaryStats } from '../types/disciplinaryCase'
 import type { Student } from '../types/student'
 import { downloadBlob } from '../utils/download'
+import { tablePagination } from '../utils/tablePagination'
+import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 export function DisciplinePage() {
   const { message, modal } = App.useApp()
@@ -64,6 +67,14 @@ export function DisciplinePage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
+    getIds: () => cases.map((c) => c.id),
+    deleteOne: (id) => deleteDisciplinaryCase(Number(id)),
+    noun: 'disiplin dosyası',
+    reload: () => void load(),
+    message,
+  })
 
   const onCreate = async (values: DisciplinaryCasePayload) => {
     if (!session) return
@@ -200,7 +211,12 @@ export function DisciplinePage() {
         </Space>
       )}
 
-      <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 16 }}>
+      <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 16 }} wrap>
+        {canDelete && cases.length > 0 && (
+          <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+            Toplu sil ({cases.length})
+          </Button>
+        )}
         {canCreate && (
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
             Yeni Disiplin Dosyası
@@ -213,7 +229,7 @@ export function DisciplinePage() {
         loading={loading}
         columns={columns}
         dataSource={cases}
-        pagination={{ pageSize: 20 }}
+        pagination={tablePagination(20)}
         scroll={{ x: 'max-content' }}
       />
 
@@ -272,6 +288,14 @@ export function DisciplinePage() {
           </Form.Item>
         </Form>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Disiplin dosyalarını toplu sil"
+        description={`Listedeki ${cases.length} disiplin dosyası silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

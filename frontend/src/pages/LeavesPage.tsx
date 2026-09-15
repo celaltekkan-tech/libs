@@ -19,6 +19,7 @@ import { DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined } from '@a
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { AppLayout } from '../components/AppLayout'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import {
   createLeaveRecord,
@@ -35,6 +36,8 @@ import { LEAVE_QUOTA_SOURCE_LABELS, LEAVE_TYPE_LABELS, LEAVE_TYPE_OPTIONS } from
 import type { LeaveRecord, LeaveSummary } from '../types/leaveRecord'
 import type { Teacher } from '../types/teacher'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+import { tablePagination } from '../utils/tablePagination'
+import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 interface LeaveFormValues {
   teacher_id: number
@@ -108,6 +111,14 @@ export function LeavesPage() {
   useEffect(() => {
     void loadForTeacher()
   }, [loadForTeacher])
+
+  const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
+    getIds: () => rows.map((r) => r.id),
+    deleteOne: (id) => deleteLeaveRecord(Number(id)),
+    noun: 'izin kaydı',
+    reload: () => void loadForTeacher(),
+    message,
+  })
 
   const selectedTeacher = useMemo(
     () => teachers.find((t) => t.id === selectedTeacherId) || null,
@@ -254,6 +265,11 @@ export function LeavesPage() {
           <InputNumber value={year} onChange={(v) => setYear(Number(v) || year)} style={{ width: 100 }} />
         </Space>
         <Space wrap>
+          {canDelete && rows.length > 0 && (
+            <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+              Toplu sil ({rows.length})
+            </Button>
+          )}
           <Button icon={<DownloadOutlined />} onClick={() => setExportOpen(true)}>
             Dışa Aktar
           </Button>
@@ -313,7 +329,7 @@ export function LeavesPage() {
         loading={rowsLoading}
         columns={columns}
         dataSource={rows}
-        pagination={{ pageSize: 20 }}
+        pagination={tablePagination(20)}
         scroll={{ x: 'max-content' }}
       />
     </>
@@ -382,6 +398,14 @@ export function LeavesPage() {
           </Form.Item>
         </Form>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="İzin kayıtlarını toplu sil"
+        description={`Seçili filtreye uyan ${rows.length} izin kaydı silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

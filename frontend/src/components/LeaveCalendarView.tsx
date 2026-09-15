@@ -25,6 +25,8 @@ import { useAuth } from '../auth/AuthContext'
 import { LEAVE_TYPE_LABELS } from '../types/leaveRecord'
 import type { LeaveCalendarDay } from '../types/leaveCalendar'
 import type { Holiday } from '../types/holiday'
+import { TypedPhraseConfirmModal } from './TypedPhraseConfirmModal'
+import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 const MONTH_NAMES = [
   'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
@@ -47,7 +49,7 @@ function leaveBackgroundColor(ratio: number): string | undefined {
 }
 
 export function LeaveCalendarView() {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const { session, hasPermission } = useAuth()
 
   const [panelDate, setPanelDate] = useState<Dayjs>(dayjs())
@@ -98,6 +100,17 @@ export function LeaveCalendarView() {
     void loadHolidays()
   }, [loadHolidays])
 
+  const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
+    getIds: () => holidays.map((h) => h.id),
+    deleteOne: (id) => deleteHoliday(Number(id)),
+    noun: 'tatil',
+    reload: () => {
+      void loadHolidays()
+      void loadMonth(panelDate)
+    },
+    message,
+  })
+
   const onSelect = (date: Dayjs) => {
     const info = days.get(date.format('YYYY-MM-DD'))
     setSelectedDay(info || { date: date.format('YYYY-MM-DD'), day: date.date(), is_holiday: false, holiday_name: null, leave_count: 0, leave_ratio: 0, teachers: [] })
@@ -145,15 +158,24 @@ export function LeaveCalendarView() {
     }
   }
 
-  const onDeleteHoliday = async (holiday: Holiday) => {
-    try {
-      await deleteHoliday(holiday.id)
-      message.success('Silindi')
-      void loadHolidays()
-      void loadMonth(panelDate)
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    }
+  const onDeleteHoliday = (holiday: Holiday) => {
+    modal.confirm({
+      title: 'Tatili sil',
+      content: `"${holiday.name}" tatilini silmek istediğinize emin misiniz?`,
+      okText: 'Sil',
+      okButtonProps: { danger: true },
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        try {
+          await deleteHoliday(holiday.id)
+          message.success('Silindi')
+          void loadHolidays()
+          void loadMonth(panelDate)
+        } catch (err) {
+          message.error(getErrorMessage(err))
+        }
+      },
+    })
   }
 
   const cellRender: CalendarProps<Dayjs>['cellRender'] = (current, info) => {
@@ -269,16 +291,23 @@ export function LeaveCalendarView() {
         footer={null}
       >
         <Space direction="vertical" style={{ width: '100%' }}>
-          <Button size="small" onClick={() => void onSeedDefaults()} loading={submitting}>
-            Varsayılan Resmi Tatilleri Tanımla
-          </Button>
+          <Space wrap>
+            <Button size="small" onClick={() => void onSeedDefaults()} loading={submitting}>
+              Varsayılan Resmi Tatilleri Tanımla
+            </Button>
+            {canManageHolidays && holidays.length > 0 && (
+              <Button size="small" danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+                Toplu sil ({holidays.length})
+              </Button>
+            )}
+          </Space>
           <List
             dataSource={holidays}
             renderItem={(h) => (
               <List.Item
                 actions={
                   canManageHolidays
-                    ? [<Button key="del" size="small" danger icon={<DeleteOutlined />} onClick={() => void onDeleteHoliday(h)} />]
+                    ? [<Button key="del" size="small" danger icon={<DeleteOutlined />} onClick={() => onDeleteHoliday(h)} />]
                     : []
                 }
               >
@@ -317,6 +346,14 @@ export function LeaveCalendarView() {
           )}
         </Space>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Resmi tatilleri toplu sil"
+        description={`Listedeki ${holidays.length} resmi tatil kaydı silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </div>
   )
 }

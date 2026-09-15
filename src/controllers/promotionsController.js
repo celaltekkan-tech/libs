@@ -4,6 +4,7 @@ const { Op } = require('sequelize');
 const { Teacher, PromotionHistory, School, sequelize } = require('../models');
 const audit = require('../services/auditService');
 const { fillPromotionForm, fillSalaryChangeForm } = require('../services/promotionFormService');
+const { getSalaryPeriodRange } = require('../utils/salaryPeriod');
 
 function assertTenantAccess(req, row) {
   return !(req.user && req.user.tenant_id && row.tenant_id !== req.user.tenant_id);
@@ -118,33 +119,43 @@ module.exports = {
         return res.status(400).json({ success: false, message: 'Geçerli bir ay ve yıl belirtmelisiniz' });
       }
 
-      const rangeStart = new Date(Date.UTC(year, month - 1, 1));
-      const rangeEnd = new Date(Date.UTC(year, month, 1));
+      // İlgili ay formu: önceki ayın 15'i – seçilen ayın 14'ü (ör. Ekim → 15 Eyl–14 Eki)
+      const period = getSalaryPeriodRange(month, year);
 
       const histories = await PromotionHistory.findAll({
         where: {
           tenant_id: tenantId,
-          new_degree_rank_date: { [Op.gte]: rangeStart, [Op.lt]: rangeEnd },
+          new_degree_rank_date: { [Op.gte]: period.start, [Op.lt]: period.endExclusive },
         },
         include: [{ model: Teacher, include: [{ model: School, required: false }] }],
         order: [['new_degree_rank_date', 'ASC']],
       });
 
       const entries = histories.filter((h) => h.Teacher).map((h) => ({ history: h, teacher: h.Teacher }));
-      const institutionName = entries[0]?.teacher.School?.name || entries[0]?.teacher.working_institution || null;
+      const institutionName =
+        entries[0]?.teacher.School?.name || entries[0]?.teacher.working_institution || null;
 
-      const { buffer, truncated } = await fillSalaryChangeForm(entries, { month, year, institutionName });
+      const { buffer, truncated } = await fillSalaryChangeForm(entries, {
+        month,
+        year,
+        institutionName,
+      });
 
       await audit.log(req, {
         action: 'export',
         entityType: 'salary_change_form',
         entityId: null,
-        summary: `Maaş değişikliği formu (terfi bölümü) indirildi: ${month}/${year}, ${entries.length} kayıt`,
+        summary: `Maaş değişikliği formu (terfi bölümü) indirildi: ${period.startLabel}–${period.endLabel}, ${entries.length} kayıt`,
       });
 
       if (truncated) res.setHeader('X-Promotion-Rows-Truncated', 'true');
+      res.setHeader('X-Salary-Period-Start', period.startLabel);
+      res.setHeader('X-Salary-Period-End', period.endLabel);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="maas-degisiklik-${year}-${String(month).padStart(2, '0')}.xlsx"`);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="maas-degisiklik-${year}-${String(month).padStart(2, '0')}.xlsx"`,
+      );
       res.send(buffer);
     } catch (err) {
       next(err);

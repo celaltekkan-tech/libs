@@ -24,13 +24,14 @@ import {
   FileTextOutlined,
   ImportOutlined,
   PlusOutlined,
-  RiseOutlined,
   SearchOutlined,
+  SwapOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { AppLayout } from '../components/AppLayout'
 import { MebbisImportModal } from '../components/MebbisImportModal'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import { useActiveSchool } from '../auth/ActiveSchoolContext'
 import {
@@ -38,7 +39,6 @@ import {
   createTeacher,
   deleteTeacher,
   downloadPromotionForm,
-  downloadSalaryChangeForm,
   downloadTeacherDocument,
   exportTeachers,
   fetchUpcomingPromotions,
@@ -49,6 +49,10 @@ import type { TeacherDocumentType, UpcomingPromotion } from '../api/teachers'
 import { getErrorMessage } from '../api/client'
 import type { ApplyPromotionPayload, Teacher, TeacherPayload } from '../types/teacher'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+import { listPersonnelCategories } from '../api/personnelCategories'
+import type { PersonnelCategory } from '../types/personnelCategory'
+import { tablePagination } from '../utils/tablePagination'
+import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
 
 interface PromotionFormValues {
   new_degree: string
@@ -76,7 +80,6 @@ interface TeacherFormValues {
   school_principal?: string
   service_start_date?: Dayjs | null
   annual_leave_quota?: number | null
-  personnel_type?: string
   union_name?: string
 }
 
@@ -99,15 +102,18 @@ export function TeachersPage() {
   const [promotionTarget, setPromotionTarget] = useState<UpcomingPromotion | null>(null)
   const [promotionSubmitting, setPromotionSubmitting] = useState(false)
   const [promotionForm] = Form.useForm<PromotionFormValues>()
-  const [salaryFormOpen, setSalaryFormOpen] = useState(false)
-  const [salaryFormPeriod, setSalaryFormPeriod] = useState<Dayjs>(dayjs())
-  const [salaryFormSubmitting, setSalaryFormSubmitting] = useState(false)
+  const [moveTarget, setMoveTarget] = useState<Teacher | null>(null)
+  const [moveCategoryId, setMoveCategoryId] = useState<number | null>(null)
+  const [categories, setCategories] = useState<PersonnelCategory[]>([])
+  const [moving, setMoving] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const [teacherData, promotionData] = await Promise.all([
-        listTeachers(),
+        listTeachers({ scope: 'teachers' }),
         fetchUpcomingPromotions(90).catch(() => []),
       ])
       setTeachers(teacherData)
@@ -145,7 +151,6 @@ export function TeachersPage() {
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
-    form.setFieldsValue({ personnel_type: 'ogretmen' })
     setModalOpen(true)
   }
 
@@ -170,7 +175,6 @@ export function TeachersPage() {
       school_principal: teacher.school_principal || undefined,
       service_start_date: teacher.service_start_date ? dayjs(teacher.service_start_date) : null,
       annual_leave_quota: teacher.annual_leave_quota,
-      personnel_type: teacher.personnel_type,
       union_name: teacher.union_name || undefined,
     })
     setModalOpen(true)
@@ -182,6 +186,8 @@ export function TeachersPage() {
     try {
       const payload: TeacherPayload = {
         ...values,
+        personnel_type: 'ogretmen',
+        personnel_category_id: null,
         degree_rank_date: values.degree_rank_date ? values.degree_rank_date.toISOString() : null,
         service_start_date: values.service_start_date ? values.service_start_date.format('YYYY-MM-DD') : null,
       }
@@ -221,12 +227,32 @@ export function TeachersPage() {
     })
   }
 
+  const onBulkDelete = async () => {
+    setBulkLoading(true)
+    try {
+      const result = await bulkDeleteByIds(
+        filteredTeachers.map((t) => t.id),
+        (id) => deleteTeacher(Number(id)),
+      )
+      const text = bulkDeleteResultMessage(result, 'öğretmen')
+      if (result.failed === 0) message.success(text)
+      else message.warning(text)
+      setBulkOpen(false)
+      void load()
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   const onExport = async () => {
     setSubmitting(true)
     try {
       const blob = await exportTeachers({
         format: exportFormat,
-        filters: search.trim() ? { q: search.trim() } : undefined,
+        filters: {
+          scope: 'teachers',
+          ...(search.trim() ? { q: search.trim() } : {}),
+        },
       })
       downloadBlob(blob, exportFilename('ogretmenler', exportFormat))
       message.success('Dışa aktarma indirildi')
@@ -241,6 +267,35 @@ export function TeachersPage() {
   const canCreate = hasPermission('teachers.create')
   const canUpdate = hasPermission('teachers.update')
   const canDelete = hasPermission('teachers.delete')
+
+  const openMove = async (teacher: Teacher) => {
+    try {
+      const rows = await listPersonnelCategories()
+      setCategories(rows)
+      setMoveTarget(teacher)
+      setMoveCategoryId(rows[0]?.id ?? null)
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    }
+  }
+
+  const onMove = async () => {
+    if (!moveTarget || !moveCategoryId) {
+      message.warning('Kategori seçin')
+      return
+    }
+    setMoving(true)
+    try {
+      await updateTeacher(moveTarget.id, { personnel_category_id: moveCategoryId })
+      message.success('Personel Diğer Personeller listesine taşındı')
+      setMoveTarget(null)
+      void load()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setMoving(false)
+    }
+  }
 
   const onDownloadDocument = async (teacher: Teacher, type: TeacherDocumentType) => {
     try {
@@ -289,22 +344,6 @@ export function TeachersPage() {
     }
   }
 
-  const onDownloadSalaryForm = async () => {
-    setSalaryFormSubmitting(true)
-    try {
-      const month = salaryFormPeriod.month() + 1
-      const year = salaryFormPeriod.year()
-      const blob = await downloadSalaryChangeForm(month, year)
-      downloadBlob(blob, `maas-degisiklik-${year}-${String(month).padStart(2, '0')}.xlsx`)
-      message.success('Maaş değişikliği formu indirildi')
-      setSalaryFormOpen(false)
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    } finally {
-      setSalaryFormSubmitting(false)
-    }
-  }
-
   const columns: ColumnsType<Teacher> = [
     {
       title: 'Ad soyad',
@@ -312,12 +351,6 @@ export function TeachersPage() {
     },
     { title: 'Sicil No', dataIndex: 'personnel_no', render: (v: string | null) => v || '—' },
     { title: 'Unvan / Branş', dataIndex: 'title_branch', render: (v: string | null) => v || '—' },
-    {
-      title: 'Personel Tipi',
-      dataIndex: 'personnel_type',
-      render: (v: string) =>
-        ({ ogretmen: 'Öğretmen', memur: 'Memur', isci: 'İşçi', typ: 'TYP Personeli' })[v] || v,
-    },
     { title: 'Okul', render: (_: unknown, record) => schoolName(record.school_id) },
     { title: 'Şehir', dataIndex: 'city', render: (v: string | null) => v || '—' },
     { title: 'Sendika', dataIndex: 'union_name', render: (v: string | null) => v || '—' },
@@ -339,6 +372,14 @@ export function TeachersPage() {
             <Button size="small" icon={<FileTextOutlined />} title="Evrak indir" />
           </Dropdown>
           {canUpdate && (
+            <Button
+              size="small"
+              icon={<SwapOutlined />}
+              onClick={() => void openMove(record)}
+              title="Diğer personele taşı"
+            />
+          )}
+          {canUpdate && (
             <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)} title="Düzenle" />
           )}
           {canDelete && (
@@ -351,20 +392,20 @@ export function TeachersPage() {
 
   return (
     <AppLayout title="Öğretmenler">
-      <div style={{ maxWidth: 1100 }}>
+      <div>
         <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }} wrap>
           <Typography.Title level={3} style={{ margin: 0 }}>
             Öğretmenler
           </Typography.Title>
           <Space wrap>
+            {canDelete && filteredTeachers.length > 0 && (
+              <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+                Toplu sil ({filteredTeachers.length})
+              </Button>
+            )}
             <Button icon={<DownloadOutlined />} onClick={() => setExportOpen(true)}>
               Dışa Aktar
             </Button>
-            {canUpdate && (
-              <Button icon={<RiseOutlined />} onClick={() => setSalaryFormOpen(true)}>
-                Maaş Değişikliği Formu
-              </Button>
-            )}
             {canCreate && (
               <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>
                 MEBBİS'ten İçe Aktar
@@ -392,7 +433,7 @@ export function TeachersPage() {
           loading={loading}
           columns={columns}
           dataSource={filteredTeachers}
-          pagination={{ pageSize: 20 }}
+          pagination={tablePagination(20)}
           scroll={{ x: 'max-content' }}
         />
 
@@ -470,24 +511,12 @@ export function TeachersPage() {
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col span={12}>
+            <Col span={24}>
               <Form.Item name="school_id" label="Okul">
                 <Select
                   allowClear
                   placeholder="Okul seçin"
                   options={schools.map((school) => ({ value: school.id, label: school.name }))}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="personnel_type" label="Personel Tipi" rules={[{ required: true }]}>
-                <Select
-                  options={[
-                    { value: 'ogretmen', label: 'Öğretmen' },
-                    { value: 'memur', label: 'Memur' },
-                    { value: 'isci', label: 'İşçi' },
-                    { value: 'typ', label: 'TYP Personeli' },
-                  ]}
                 />
               </Form.Item>
             </Col>
@@ -675,34 +704,35 @@ export function TeachersPage() {
           </Form.Item>
         </Form>
       </Modal>
-
       <Modal
-        title="Maaş Değişikliği Formu (Terfi Bölümü)"
-        open={salaryFormOpen}
-        onCancel={() => setSalaryFormOpen(false)}
-        onOk={() => void onDownloadSalaryForm()}
-        confirmLoading={salaryFormSubmitting}
-        okText="İndir"
-        cancelText="Vazgeç"
-        destroyOnHidden
+        title="Diğer personele taşı"
+        open={Boolean(moveTarget)}
+        onCancel={() => setMoveTarget(null)}
+        onOk={() => void onMove()}
+        confirmLoading={moving}
+        okText="Taşı"
       >
-        <Form layout="vertical">
-          <Form.Item label="Ay / Yıl">
-            <DatePicker
-              picker="month"
-              value={salaryFormPeriod}
-              onChange={(v) => v && setSalaryFormPeriod(v)}
-              format="MMMM YYYY"
-              style={{ width: '100%' }}
-              allowClear={false}
-            />
-          </Form.Item>
-          <Typography.Text type="secondary">
-            Seçilen aya ait onaylanmış terfi kayıtları formun "D) Terfi Edecek Personelin" bölümüne işlenir; formun
-            diğer bölümleri (banka şubesi, personel sayıları vb.) elle doldurulmak üzere boş bırakılır.
-          </Typography.Text>
-        </Form>
+        <Typography.Paragraph>
+          {moveTarget
+            ? `"${moveTarget.first_name} ${moveTarget.last_name}" öğretmen listesinden çıkarılıp seçilen kategoriye alınacak.`
+            : null}
+        </Typography.Paragraph>
+        <Select
+          style={{ width: '100%' }}
+          placeholder="Kategori seçin"
+          options={categories.map((c) => ({ value: c.id, label: c.name }))}
+          value={moveCategoryId ?? undefined}
+          onChange={(v) => setMoveCategoryId(v)}
+        />
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Öğretmenleri toplu sil"
+        description={`Filtreye uyan ${filteredTeachers.length} öğretmen kaydı silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

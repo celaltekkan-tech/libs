@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { App, Card, Col, List, Progress, Row, Space, Spin, Statistic, Table, Tag, Typography } from 'antd'
+import { App, Card, List, Progress, Space, Spin, Statistic, Table, Tag, Typography } from 'antd'
 import {
   ApartmentOutlined,
   BankOutlined,
@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { SortableDashboard } from '../components/SortableDashboard'
 import { useAuth } from '../auth/AuthContext'
 import { listSchools } from '../api/schools'
 import { listTeachers } from '../api/teachers'
@@ -55,6 +56,7 @@ function isLicenseExpired(license: License): boolean {
 
 function PlatformAdminDashboard() {
   const { message } = App.useApp()
+  const { session } = useAuth()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [tenants, setTenants] = useState<TenantListItem[]>([])
@@ -221,10 +223,13 @@ function PlatformAdminDashboard() {
               <Spin size="large" />
             </div>
           ) : (
-            <>
-              <Row gutter={[16, 16]}>
-                {cards.map((card) => (
-                  <Col xs={24} sm={12} lg={8} key={card.key}>
+            <SortableDashboard
+              layoutKey={`platform:${session?.user.id ?? 0}`}
+              widgets={[
+                ...cards.map((card) => ({
+                  id: card.key,
+                  span: { xs: 24, sm: 12, lg: 8 },
+                  node: (
                     <Card
                       hoverable
                       onClick={() => navigate(card.path)}
@@ -263,63 +268,67 @@ function PlatformAdminDashboard() {
                         Detaya git <RightOutlined />
                       </Typography.Link>
                     </Card>
-                  </Col>
-                ))}
-              </Row>
-
-              <Row gutter={[16, 16]}>
-                <Col xs={24} md={10}>
-                  <Card title="Lisans özeti">
-                    <Space direction="vertical" style={{ width: '100%' }} size="middle">
-                      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-                        <Typography.Text>Aktif</Typography.Text>
-                        <Tag color="green">{summary.activeLicenses}</Tag>
+                  ),
+                })),
+                {
+                  id: 'license-summary',
+                  span: { xs: 24, md: 10 },
+                  node: (
+                    <Card title="Lisans özeti">
+                      <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+                          <Typography.Text>Aktif</Typography.Text>
+                          <Tag color="green">{summary.activeLicenses}</Tag>
+                        </Space>
+                        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+                          <Typography.Text>Süresi dolmuş</Typography.Text>
+                          <Tag color="orange">{summary.expiredLicenses}</Tag>
+                        </Space>
+                        <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+                          <Typography.Text>İptal</Typography.Text>
+                          <Tag>{summary.cancelledLicenses}</Tag>
+                        </Space>
+                        {summary.planCounts.length > 0 && (
+                          <>
+                            <Typography.Text type="secondary">Aktif plan dağılımı</Typography.Text>
+                            {summary.planCounts.map((row) => (
+                              <Space key={row.plan} style={{ width: '100%', justifyContent: 'space-between' }}>
+                                <Typography.Text>{row.plan}</Typography.Text>
+                                <Typography.Text strong>{row.count}</Typography.Text>
+                              </Space>
+                            ))}
+                          </>
+                        )}
                       </Space>
-                      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-                        <Typography.Text>Süresi dolmuş</Typography.Text>
-                        <Tag color="orange">{summary.expiredLicenses}</Tag>
-                      </Space>
-                      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-                        <Typography.Text>İptal</Typography.Text>
-                        <Tag>{summary.cancelledLicenses}</Tag>
-                      </Space>
-                      {summary.planCounts.length > 0 && (
-                        <>
-                          <Typography.Text type="secondary">Aktif plan dağılımı</Typography.Text>
-                          {summary.planCounts.map((row) => (
-                            <Space key={row.plan} style={{ width: '100%', justifyContent: 'space-between' }}>
-                              <Typography.Text>{row.plan}</Typography.Text>
-                              <Typography.Text strong>{row.count}</Typography.Text>
-                            </Space>
-                          ))}
-                        </>
-                      )}
-                    </Space>
-                  </Card>
-                </Col>
-
-                <Col xs={24} md={14}>
-                  <Card
-                    title="Son hesaplar"
-                    extra={
-                      <Typography.Link onClick={() => navigate('/platform/tenants')}>
-                        Tümü
-                      </Typography.Link>
-                    }
-                  >
-                    <Table
-                      rowKey="id"
-                      size="small"
-                      pagination={false}
-                      columns={tenantColumns}
-                      dataSource={recentTenants}
-                      locale={{ emptyText: 'Henüz hesap yok' }}
-                      scroll={{ x: 'max-content' }}
-                    />
-                  </Card>
-                </Col>
-              </Row>
-            </>
+                    </Card>
+                  ),
+                },
+                {
+                  id: 'recent-tenants',
+                  span: { xs: 24, md: 14 },
+                  node: (
+                    <Card
+                      title="Son hesaplar"
+                      extra={
+                        <Typography.Link onClick={() => navigate('/platform/tenants')}>
+                          Tümü
+                        </Typography.Link>
+                      }
+                    >
+                      <Table
+                        rowKey="id"
+                        size="small"
+                        pagination={false}
+                        columns={tenantColumns}
+                        dataSource={recentTenants}
+                        locale={{ emptyText: 'Henüz hesap yok' }}
+                        scroll={{ x: 'max-content' }}
+                      />
+                    </Card>
+                  ),
+                },
+              ]}
+            />
           )}
         </Space>
       </div>
@@ -345,7 +354,7 @@ export function DashboardPage() {
     try {
       const [schoolCount, teacherCount, studentRows] = await Promise.all([
         safeCount(listSchools(), canSchools),
-        safeCount(listTeachers(), canTeachers),
+        safeCount(listTeachers({ scope: 'teachers' }), canTeachers),
         canStudents ? listStudents().catch(() => null) : Promise.resolve(null),
       ])
 
@@ -443,10 +452,13 @@ export function DashboardPage() {
               <Spin size="large" />
             </div>
           ) : (
-            <>
-              <Row gutter={[16, 16]}>
-                {cards.map((card) => (
-                  <Col xs={24} sm={12} md={8} key={card.key}>
+            <SortableDashboard
+              layoutKey={`tenant:${session?.user.id ?? 0}`}
+              widgets={[
+                ...cards.map((card) => ({
+                  id: card.key,
+                  span: { xs: 24, sm: 12, md: 8 },
+                  node: (
                     <Card
                       hoverable={Boolean(card.path)}
                       onClick={() => card.path && navigate(card.path)}
@@ -481,74 +493,83 @@ export function DashboardPage() {
                         </Typography.Link>
                       )}
                     </Card>
-                  </Col>
-                ))}
-              </Row>
-
-              <Row gutter={[16, 16]}>
-                {canStudents && (
-                  <Col xs={24} md={12}>
-                    <Card title="Öğrenci kayıt durumu">
-                      {students.length === 0 ? (
-                        <Typography.Text type="secondary">Henüz öğrenci kaydı yok.</Typography.Text>
-                      ) : (
-                        <Space direction="vertical" style={{ width: '100%' }} size="middle">
-                          {REGISTRATION_STATUS_OPTIONS.map((opt) => {
-                            const count = stats.studentsByStatus[opt.value] || 0
-                            const pct = Math.round((count / statusTotal) * 100)
-                            return (
-                              <div key={opt.value}>
-                                <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-                                  <Typography.Text>{opt.label}</Typography.Text>
-                                  <Typography.Text strong>{count}</Typography.Text>
-                                </Space>
-                                <Progress percent={pct} showInfo={false} strokeColor="#1d4e89" size="small" />
-                              </div>
-                            )
-                          })}
-                        </Space>
-                      )}
-                    </Card>
-                  </Col>
-                )}
-
-                {canStudents && (
-                  <Col xs={24} md={12}>
-                    <Card title="Sınıflara göre öğrenci">
-                      {stats.studentsByClass.length === 0 ? (
-                        <Typography.Text type="secondary">Sınıf bilgisi bulunamadı.</Typography.Text>
-                      ) : (
-                        <List
-                          size="small"
-                          dataSource={stats.studentsByClass}
-                          renderItem={(item) => (
-                            <List.Item>
-                              <Typography.Text>{item.label}</Typography.Text>
-                              <Tag color="blue">{item.count}</Tag>
-                            </List.Item>
-                          )}
-                        />
-                      )}
-                    </Card>
-                  </Col>
-                )}
-
-                {(session?.schools.length ?? 0) > 0 && (
-                  <Col xs={24} md={canStudents ? 24 : 12}>
-                    <Card title="Bağlı okullarınız">
-                      <Space wrap>
-                        {session!.schools.map((school) => (
-                          <Tag key={school.id} color="geekblue">
-                            {school.name}
-                            {school.role ? ` · ${school.role}` : ''}
-                          </Tag>
-                        ))}
-                      </Space>
-                    </Card>
-                  </Col>
-                )}
-              </Row>
-            </>
+                  ),
+                })),
+                ...(canStudents
+                  ? [
+                      {
+                        id: 'students-status',
+                        span: { xs: 24, md: 12 },
+                        node: (
+                          <Card title="Öğrenci kayıt durumu">
+                            {students.length === 0 ? (
+                              <Typography.Text type="secondary">Henüz öğrenci kaydı yok.</Typography.Text>
+                            ) : (
+                              <Space direction="vertical" style={{ width: '100%' }} size="middle">
+                                {REGISTRATION_STATUS_OPTIONS.map((opt) => {
+                                  const count = stats.studentsByStatus[opt.value] || 0
+                                  const pct = Math.round((count / statusTotal) * 100)
+                                  return (
+                                    <div key={opt.value}>
+                                      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+                                        <Typography.Text>{opt.label}</Typography.Text>
+                                        <Typography.Text strong>{count}</Typography.Text>
+                                      </Space>
+                                      <Progress percent={pct} showInfo={false} strokeColor="#1d4e89" size="small" />
+                                    </div>
+                                  )
+                                })}
+                              </Space>
+                            )}
+                          </Card>
+                        ),
+                      },
+                      {
+                        id: 'students-by-class',
+                        span: { xs: 24, md: 12 },
+                        node: (
+                          <Card title="Sınıflara göre öğrenci">
+                            {stats.studentsByClass.length === 0 ? (
+                              <Typography.Text type="secondary">Sınıf bilgisi bulunamadı.</Typography.Text>
+                            ) : (
+                              <List
+                                size="small"
+                                dataSource={stats.studentsByClass}
+                                renderItem={(item) => (
+                                  <List.Item>
+                                    <Typography.Text>{item.label}</Typography.Text>
+                                    <Tag color="blue">{item.count}</Tag>
+                                  </List.Item>
+                                )}
+                              />
+                            )}
+                          </Card>
+                        ),
+                      },
+                    ]
+                  : []),
+                ...((session?.schools.length ?? 0) > 0
+                  ? [
+                      {
+                        id: 'linked-schools',
+                        span: { xs: 24, md: canStudents ? 24 : 12 },
+                        node: (
+                          <Card title="Bağlı okullarınız">
+                            <Space wrap>
+                              {session!.schools.map((school) => (
+                                <Tag key={school.id} color="geekblue">
+                                  {school.name}
+                                  {school.role ? ` · ${school.role}` : ''}
+                                </Tag>
+                              ))}
+                            </Space>
+                          </Card>
+                        ),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
           )}
         </Space>
       </div>

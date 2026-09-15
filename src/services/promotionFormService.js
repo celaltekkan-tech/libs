@@ -2,11 +2,11 @@
 
 const path = require('path');
 const ExcelJS = require('exceljs');
+const salaryFormMapping = require('../config/salaryFormMapping');
+const promotionFormMapping = require('../config/promotionFormMapping');
 
 const PROMOTION_FORM_TEMPLATE = path.join(__dirname, '..', 'templates', 'terfi_kademe_derece_formu.xlsx');
 const SALARY_FORM_TEMPLATE = path.join(__dirname, '..', 'templates', 'maas_degisiklik_bildirim_formu.xlsx');
-
-const SALARY_FORM_PROMOTION_ROWS = { start: 28, end: 36 };
 
 const MONTH_NAMES_TR = [
   'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
@@ -22,87 +22,183 @@ function formatDateTR(value) {
   return `${dd}.${mm}.${d.getFullYear()}`;
 }
 
-/**
- * Bir terfi/kademe-derece kaydını FORM:1 (Kademe Terfi Formu) şablonuna doldurur.
- * @param {{previous_degree, previous_rank, previous_degree_rank_date, new_degree, new_rank, new_degree_rank_date, note}} history
- * @param {object} teacher Sequelize Teacher instance
- * @returns {Promise<Buffer>}
- */
+function writeMapped(ws, cell, value) {
+  if (!cell) return;
+  ws.getCell(cell).value = value == null || value === '' ? '' : value;
+}
+
+function writeRowBlock(ws, block, rows, mapRow) {
+  if (!block || !block.startRow || !block.endRow || !block.columns) return false;
+  const capacity = block.endRow - block.startRow + 1;
+  const list = Array.isArray(rows) ? rows.slice(0, capacity) : [];
+  list.forEach((item, idx) => {
+    const row = block.startRow + idx;
+    const values = mapRow(item) || {};
+    Object.entries(block.columns).forEach(([field, col]) => {
+      if (!col) return;
+      writeMapped(ws, `${col}${row}`, values[field]);
+    });
+  });
+  return Array.isArray(rows) && rows.length > capacity;
+}
+
 async function fillPromotionForm(history, teacher) {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(PROMOTION_FORM_TEMPLATE);
   const ws = wb.worksheets[0];
+  const { cells } = promotionFormMapping;
 
-  ws.getCell('G1').value = formatDateTR(history.new_degree_rank_date);
-  ws.getCell('B3').value = teacher.city || '';
-  ws.getCell('E3').value = teacher.district || '';
+  const values = {
+    promotion_date: formatDateTR(history.new_degree_rank_date),
+    city: teacher.city || '',
+    district: teacher.district || '',
+    personnel_no: teacher.personnel_no || '',
+    national_id: teacher.national_id || '',
+    full_name: `${teacher.first_name || ''} ${teacher.last_name || ''}`.trim(),
+    last_graduated_school: teacher.last_graduated_school || '',
+    class_level: teacher.class_level || '',
+    title_branch: teacher.title_branch || '',
+    working_institution: teacher.working_institution || '',
+    previous_degree: history.previous_degree || '',
+    pension_degree: teacher.pension_degree || '',
+    previous_rank: history.previous_rank || '',
+    previous_degree_rank_date: formatDateTR(history.previous_degree_rank_date),
+    new_degree: history.new_degree || '',
+    pension_degree_new: teacher.pension_degree || '',
+    new_rank: history.new_rank || '',
+    new_degree_rank_date: formatDateTR(history.new_degree_rank_date),
+    note: history.note || '',
+    school_principal: teacher.school_principal || '',
+  };
 
-  ws.getCell('A14').value = teacher.personnel_no || '';
-  ws.getCell('B14').value = teacher.national_id || '';
-  ws.getCell('C14').value = `${teacher.first_name} ${teacher.last_name}`;
-  ws.getCell('D14').value = teacher.last_graduated_school || '';
-  ws.getCell('E14').value = teacher.class_level || '';
-  ws.getCell('F14').value = teacher.title_branch || '';
-  ws.getCell('G14').value = teacher.working_institution || '';
-
-  ws.getCell('H14').value = history.previous_degree || '';
-  ws.getCell('I14').value = teacher.pension_degree || '';
-  ws.getCell('J14').value = history.previous_rank || '';
-  ws.getCell('K14').value = formatDateTR(history.previous_degree_rank_date);
-
-  ws.getCell('L14').value = history.new_degree || '';
-  ws.getCell('M14').value = teacher.pension_degree || '';
-  ws.getCell('N14').value = history.new_rank || '';
-  ws.getCell('O14').value = formatDateTR(history.new_degree_rank_date);
-
-  if (history.note) ws.getCell('P14').value = history.note;
-
-  ws.getCell('M18').value = teacher.school_principal || '';
+  Object.entries(cells || {}).forEach(([field, cell]) => {
+    if (cell == null) return;
+    writeMapped(ws, cell, values[field]);
+  });
 
   return wb.xlsx.writeBuffer();
 }
 
 /**
- * Bir aya ait onaylanmış terfi kayıtlarını Maaş Değişikliği Bildirim Formu'nun
- * "D) Terfi Edecek Personelin" bölümüne satır satır işler. Formun geri kalanı
- * (banka şubesi, saymanlık kodu, personel sayıları, diğer bölümler) elimizde
- * veri olmadığından şablondaki haliyle bırakılır.
- * @param {Array<{history: object, teacher: object}>} entries
- * @param {{ month: number, year: number, institutionName?: string }} period
- * @returns {Promise<{ buffer: Buffer, truncated: boolean }>}
+ * @param {Array<{history: object, teacher: object}>} promotionEntries DB terfi kayıtları
+ * @param {{ month, year, draft?: object }} options draft = SalaryFormDraft.payload
  */
-async function fillSalaryChangeForm(entries, period) {
+async function fillSalaryChangeForm(promotionEntries, options) {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(SALARY_FORM_TEMPLATE);
   const ws = wb.worksheets[0];
+  const mapping = salaryFormMapping;
+  const draft = options.draft || {};
 
-  if (period.institutionName) ws.getCell('C3').value = period.institutionName;
-  ws.getCell('I3').value = MONTH_NAMES_TR[period.month - 1] || '';
-  ws.getCell('J3').value = String(period.year);
-  ws.getCell('I77').value = formatDateTR(new Date());
+  const headerValues = {
+    institution_name: draft.institution_name || options.institutionName || '',
+    bank_branch: draft.bank_branch || '',
+    month_name: MONTH_NAMES_TR[options.month - 1] || '',
+    year: String(options.year),
+    accounting_code: draft.accounting_code || '',
+    previous_month: draft.previous_month_count ?? '',
+    started: draft.started_count ?? '',
+    left: draft.left_count ?? '',
+    payable: draft.payable_count ?? '',
+    form_date: draft.form_date || formatDateTR(new Date()),
+    principal:
+      draft.principal ||
+      promotionEntries.find((e) => e.teacher.school_principal)?.teacher.school_principal ||
+      '',
+  };
 
-  const principal = entries.find((e) => e.teacher.school_principal)?.teacher.school_principal;
-  if (principal) ws.getCell('I79').value = principal;
-
-  const capacity = SALARY_FORM_PROMOTION_ROWS.end - SALARY_FORM_PROMOTION_ROWS.start + 1;
-  const truncated = entries.length > capacity;
-  const toWrite = entries.slice(0, capacity);
-
-  toWrite.forEach(({ history, teacher }, idx) => {
-    const row = SALARY_FORM_PROMOTION_ROWS.start + idx;
-    ws.getCell(`A${row}`).value = teacher.personnel_no || '';
-    ws.getCell(`B${row}`).value = `${teacher.first_name} ${teacher.last_name}`;
-    ws.getCell(`D${row}`).value = teacher.national_id || '';
-    ws.getCell(`E${row}`).value = history.previous_degree || '';
-    ws.getCell(`F${row}`).value = history.previous_rank || '';
-    ws.getCell(`G${row}`).value = history.new_degree || '';
-    ws.getCell(`H${row}`).value = history.new_rank || '';
-    ws.getCell(`I${row}`).value = formatDateTR(history.new_degree_rank_date);
-    if (history.note) ws.getCell(`J${row}`).value = history.note;
+  Object.entries(mapping.header || {}).forEach(([field, cell]) => {
+    if (cell == null) return;
+    writeMapped(ws, cell, headerValues[field]);
   });
+
+  let truncated = false;
+
+  truncated =
+    writeRowBlock(ws, mapping.departureRows, draft.departures, (r) => ({
+      personnel_no: r.personnel_no,
+      full_name: r.full_name,
+      national_id: r.national_id,
+      leave_date: r.leave_date,
+      leave_reason: r.leave_reason,
+      documents: r.documents,
+    })) || truncated;
+
+  truncated =
+    writeRowBlock(ws, mapping.starterRows, draft.starters, (r) => ({
+      personnel_no: r.personnel_no,
+      full_name: r.full_name,
+      national_id: r.national_id,
+      iban: r.iban,
+      start_reason: r.start_reason,
+      start_date: r.start_date,
+      documents: r.documents,
+    })) || truncated;
+
+  truncated =
+    writeRowBlock(
+      ws,
+      mapping.promotionRows,
+      promotionEntries.map(({ history, teacher }) => ({ history, teacher })),
+      ({ history, teacher }) => ({
+        personnel_no: teacher.personnel_no || '',
+        full_name: `${teacher.first_name || ''} ${teacher.last_name || ''}`.trim(),
+        national_id: teacher.national_id || '',
+        previous_degree: history.previous_degree || '',
+        previous_rank: history.previous_rank || '',
+        new_degree: history.new_degree || '',
+        new_rank: history.new_rank || '',
+        promotion_date: formatDateTR(history.new_degree_rank_date),
+        documents: history.note || '',
+      })
+    ) || truncated;
+
+  truncated =
+    writeRowBlock(ws, mapping.otherChangeRows, draft.other_changes, (r) => ({
+      personnel_no: r.personnel_no,
+      full_name: r.full_name,
+      national_id: r.national_id,
+      previous_status: r.previous_status,
+      new_status: r.new_status,
+      documents: r.documents,
+    })) || truncated;
+
+  truncated =
+    writeRowBlock(ws, mapping.deductionRows, draft.deductions, (r) => ({
+      personnel_no: r.personnel_no,
+      full_name: r.full_name,
+      national_id: r.national_id,
+      reason: r.reason,
+      amount: r.amount,
+      documents: r.documents,
+    })) || truncated;
+
+  truncated =
+    writeRowBlock(ws, mapping.reportDayRows, draft.report_days, (r) => ({
+      personnel_no: r.personnel_no,
+      full_name: r.full_name,
+      national_id: r.national_id,
+      start_date: r.start_date,
+      days_after_7: r.days_after_7,
+      documents: r.documents,
+    })) || truncated;
+
+  truncated =
+    writeRowBlock(ws, mapping.unionChangeRows, draft.union_changes, (r) => ({
+      personnel_no: r.personnel_no,
+      full_name: r.full_name,
+      national_id: r.national_id,
+      left_union: r.left_union,
+      joined_union: r.joined_union,
+      documents: r.documents,
+    })) || truncated;
 
   const buffer = await wb.xlsx.writeBuffer();
   return { buffer, truncated };
 }
 
-module.exports = { fillPromotionForm, fillSalaryChangeForm, formatDateTR };
+module.exports = {
+  fillPromotionForm,
+  fillSalaryChangeForm,
+  formatDateTR,
+};

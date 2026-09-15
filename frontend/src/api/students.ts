@@ -106,17 +106,3 @@ export async function exportStudents(payload: {
   })
   return data as Blob
 }
-
-export type StudentCertificateType = 'ogrenci_belgesi' | 'ogrenim_durumu'
-
-export async function downloadStudentCertificate(
-  id: number,
-  type: StudentCertificateType,
-): Promise<Blob> {
-  const { data } = await client.get(`/api/students/${id}/certificate`, {
-    params: { type },
-    responseType: 'blob',
-    timeout: 30000,
-  })
-  return data as Blob
-}

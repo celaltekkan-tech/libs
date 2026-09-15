@@ -5,6 +5,7 @@ import type { ColumnsType } from 'antd/es/table'
 import type { RcFile } from 'antd/es/upload/interface'
 import { commitMebbisImport, previewMebbisImport, type MebbisImportRow } from '../api/teachers'
 import { getErrorMessage } from '../api/client'
+import { tablePagination } from '../utils/tablePagination'
 
 const PERSONNEL_TYPE_OPTIONS = [
   { value: 'ogretmen', label: 'Öğretmen' },
@@ -227,7 +228,7 @@ export function MebbisImportModal({ open, schoolId, schoolName, onCancel, onImpo
             size="small"
             columns={columns}
             dataSource={rows}
-            pagination={{ pageSize: 10 }}
+            pagination={tablePagination(10)}
             scroll={{ x: 900 }}
           />
         </>

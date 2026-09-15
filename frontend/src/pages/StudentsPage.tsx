@@ -6,7 +6,6 @@ import {
   Checkbox,
   Col,
   DatePicker,
-  Dropdown,
   Form,
   Input,
   InputNumber,
@@ -23,7 +22,6 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
-  FileTextOutlined,
   InboxOutlined,
   MinusCircleOutlined,
   PlusOutlined,
@@ -34,18 +32,19 @@ import type { ColumnsType } from 'antd/es/table'
 import type { UploadFile } from 'antd/es/upload/interface'
 import dayjs, { type Dayjs } from 'dayjs'
 import { AppLayout } from '../components/AppLayout'
+import { ClearFiltersButton } from '../components/ClearFiltersButton'
+import { FilterBar } from '../components/FilterBar'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import {
   createStudent,
   deleteStudent,
-  downloadStudentCertificate,
   exportStudents,
   importStudents,
   listStudents,
   previewStudentImport,
   updateStudent,
 } from '../api/students'
-import type { StudentCertificateType } from '../api/students'
 import { createExportTemplate, deleteExportTemplate, listExportTemplates } from '../api/exportTemplates'
 import type { ExportTemplate } from '../api/exportTemplates'
 import { listSchools } from '../api/schools'
@@ -69,6 +68,8 @@ import {
   STUDENT_IMPORT_FIELD_OPTIONS,
 } from '../types/student'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+import { tablePagination } from '../utils/tablePagination'
+import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
 
 interface StudentFormValues {
   first_name: string
@@ -106,6 +107,8 @@ export function StudentsPage() {
   const [exportOpen, setExportOpen] = useState(false)
   const [editing, setEditing] = useState<Student | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
   const [importStep, setImportStep] = useState(0)
   const [importFile, setImportFile] = useState<UploadFile | null>(null)
   const [importSchoolId, setImportSchoolId] = useState<number | null>(null)
@@ -193,6 +196,14 @@ export function StudentsPage() {
     })
   }, [students, search])
 
+  const hasActiveFilters = Boolean(
+    search.trim() ||
+      filters.school_id ||
+      filters.classroom_id ||
+      filters.gender ||
+      filters.registration_status,
+  )
+
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
@@ -276,6 +287,23 @@ export function StudentsPage() {
     })
   }
 
+  const onBulkDelete = async () => {
+    setBulkLoading(true)
+    try {
+      const result = await bulkDeleteByIds(
+        filteredStudents.map((s) => s.id),
+        (id) => deleteStudent(Number(id)),
+      )
+      const text = bulkDeleteResultMessage(result, 'öğrenci')
+      if (result.failed === 0) message.success(text)
+      else message.warning(text)
+      setBulkOpen(false)
+      void load()
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   const resetImportState = () => {
     setImportStep(0)
     setImportFile(null)
@@ -296,7 +324,7 @@ export function StudentsPage() {
 
   const mappingHasClassColumns = useMemo(() => {
     const fields = Object.values(importMapping)
-    return fields.includes('class_level') && fields.includes('section')
+    return fields.includes('class_level') || fields.includes('section')
   }, [importMapping])
 
   const usedImportFields = useMemo(() => new Set(Object.values(importMapping).filter(Boolean)), [importMapping])
@@ -452,23 +480,23 @@ export function StudentsPage() {
     }
   }
 
-  const onDeleteTemplate = async (template: ExportTemplate) => {
-    try {
-      await deleteExportTemplate(template.id)
-      message.success('Şablon silindi')
-      void loadTemplates()
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    }
-  }
-
-  const onDownloadCertificate = async (student: Student, type: StudentCertificateType) => {
-    try {
-      const blob = await downloadStudentCertificate(student.id, type)
-      downloadBlob(blob, `${type}-${student.student_number || student.id}.pdf`)
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    }
+  const onDeleteTemplate = (template: ExportTemplate) => {
+    modal.confirm({
+      title: 'Şablonu sil',
+      content: `"${template.name}" şablonunu silmek istediğinize emin misiniz?`,
+      okText: 'Sil',
+      okButtonProps: { danger: true },
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        try {
+          await deleteExportTemplate(template.id)
+          message.success('Şablon silindi')
+          void loadTemplates()
+        } catch (err) {
+          message.error(getErrorMessage(err))
+        }
+      },
+    })
   }
 
   const canCreate = hasPermission('students.create')
@@ -500,20 +528,9 @@ export function StudentsPage() {
     { title: 'Okul', render: (_: unknown, record) => schoolName(record.school_id) },
     {
       title: 'İşlemler',
-      width: 160,
+      width: 120,
       render: (_: unknown, record: Student) => (
         <Space>
-          <Dropdown
-            menu={{
-              items: [
-                { key: 'ogrenci_belgesi', label: 'Öğrenci Belgesi' },
-                { key: 'ogrenim_durumu', label: 'Öğrenim Durum Belgesi' },
-              ],
-              onClick: ({ key }) => void onDownloadCertificate(record, key as StudentCertificateType),
-            }}
-          >
-            <Button size="small" icon={<FileTextOutlined />} title="Belge indir" />
-          </Dropdown>
           {canUpdate && (
             <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)} title="Düzenle" />
           )}
@@ -527,12 +544,17 @@ export function StudentsPage() {
 
   return (
     <AppLayout title="Öğrenciler">
-      <div style={{ maxWidth: 1200 }}>
+      <div>
         <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }} wrap>
           <Typography.Title level={3} style={{ margin: 0 }}>
             Öğrenciler
           </Typography.Title>
           <Space wrap>
+            {canDelete && filteredStudents.length > 0 && (
+              <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+                Toplu sil ({filteredStudents.length})
+              </Button>
+            )}
             <Button icon={<DownloadOutlined />} onClick={() => setExportOpen(true)}>
               Dışa Aktar
             </Button>
@@ -555,7 +577,7 @@ export function StudentsPage() {
           </Space>
         </Space>
 
-        <Space wrap style={{ marginBottom: 16 }}>
+        <FilterBar>
           <Input
             allowClear
             prefix={<SearchOutlined />}
@@ -601,14 +623,21 @@ export function StudentsPage() {
             value={filters.registration_status}
             onChange={(registration_status) => setFilters((f) => ({ ...f, registration_status }))}
           />
-        </Space>
+          <ClearFiltersButton
+            active={hasActiveFilters}
+            onClick={() => {
+              setSearch('')
+              setFilters({})
+            }}
+          />
+        </FilterBar>
 
         <Table
           rowKey="id"
           loading={loading}
           columns={columns}
           dataSource={filteredStudents}
-          pagination={{ pageSize: 20 }}
+          pagination={tablePagination(20)}
           scroll={{ x: 'max-content' }}
         />
       </div>
@@ -911,7 +940,7 @@ export function StudentsPage() {
                 showIcon
                 style={{ marginBottom: 12 }}
                 message={`Dosyadan sınıf algılandı: ${importPreview.detected_class.class_level}. Sınıf / ${importPreview.detected_class.section} Şube`}
-                description="İçe aktarmada bu sınıf/şube otomatik kullanılır. Sistemde yoksa oluşturulur. İsterseniz aşağıdan farklı bir sınıf seçerek üzerine yazabilirsiniz."
+                description="Bu değer yalnızca satırda sınıf/şube yoksa kullanılır. Excelde 10/B gibi satır bilgisi varsa öğrenci o sınıfa yazılır; mevcut kayıt varsa yeni öğrenci açılmaz, yalnızca değişen alanlar güncellenir."
               />
             )}
 
@@ -942,9 +971,9 @@ export function StudentsPage() {
                     required={!mappingHasClassColumns && !importPreview.detected_class}
                     help={
                       mappingHasClassColumns
-                        ? 'Sınıf ve şube sütunları eşlendi; satır bazında kullanılır.'
+                        ? 'Satırdaki sınıf/şube kullanılır (9/A, 10-B gibi birleşik değerler de okunur). Mevcut öğrenciler T.C. veya öğrenci no ile eşlenir, mükerrer kayıt açılmaz.'
                         : importPreview.detected_class
-                          ? `Algılanan: ${importPreview.detected_class.class_level}/${importPreview.detected_class.section} — boş bırakırsanız bu kullanılır.`
+                          ? `Algılanan: ${importPreview.detected_class.class_level}/${importPreview.detected_class.section} — satırda sınıf yoksa bu kullanılır.`
                           : 'Excelde sınıf bilgisi bulunamadı; seçim zorunlu.'
                     }
                   >
@@ -1077,7 +1106,7 @@ export function StudentsPage() {
                       type="text"
                       danger
                       icon={<DeleteOutlined />}
-                      onClick={() => void onDeleteTemplate(t)}
+                      onClick={() => onDeleteTemplate(t)}
                     />
                   </Space>
                 ))}
@@ -1118,6 +1147,14 @@ export function StudentsPage() {
           </Typography.Text>
         </Form>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Öğrencileri toplu sil"
+        description={`Filtreye uyan ${filteredStudents.length} öğrenci kaydı silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

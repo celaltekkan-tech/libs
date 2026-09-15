@@ -23,6 +23,8 @@ export interface Teacher {
   contract_start_date: string | null
   contract_end_date: string | null
   union_name: string | null
+  personnel_category_id: number | null
+  PersonnelCategory?: { id: number; name: string; code: string | null } | null
   created_at: string
   updated_at: string
 }
@@ -70,6 +72,7 @@ export interface TeacherPayload {
   annual_leave_quota?: number | null
   service_start_date?: string | null
   personnel_type?: string
+  personnel_category_id?: number | null
   contract_start_date?: string | null
   contract_end_date?: string | null
   union_name?: string | null

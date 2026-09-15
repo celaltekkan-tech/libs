@@ -3,11 +3,14 @@ import { App, Button, Form, Input, Modal, Select, Space, Table, Typography } fro
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import { createSchool, deleteSchool, listSchools, updateSchool } from '../api/schools'
 import { getErrorMessage } from '../api/client'
 import { SCHOOL_TYPE_LABELS } from '../types/school'
 import type { School, SchoolPayload } from '../types/school'
+import { tablePagination } from '../utils/tablePagination'
+import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
 
 const SCHOOL_TYPE_OPTIONS = Object.entries(SCHOOL_TYPE_LABELS).map(([value, label]) => ({ value, label }))
 
@@ -19,6 +22,8 @@ export function SchoolsPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<School | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
   const [form] = Form.useForm<SchoolPayload>()
 
   const load = useCallback(async () => {
@@ -88,6 +93,23 @@ export function SchoolsPage() {
     })
   }
 
+  const onBulkDelete = async () => {
+    setBulkLoading(true)
+    try {
+      const result = await bulkDeleteByIds(
+        schools.map((s) => s.id),
+        (id) => deleteSchool(Number(id)),
+      )
+      const text = bulkDeleteResultMessage(result, 'okul')
+      if (result.failed === 0) message.success(text)
+      else message.warning(text)
+      setBulkOpen(false)
+      void load()
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   const canCreate = hasPermission('schools.create')
   const canUpdate = hasPermission('schools.update')
   const canDelete = hasPermission('schools.delete')
@@ -133,16 +155,23 @@ export function SchoolsPage() {
 
   return (
     <AppLayout title="Okullar">
-      <div style={{ maxWidth: 900 }}>
+      <div>
         <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
           <Typography.Title level={3} style={{ margin: 0 }}>
             Okullar
           </Typography.Title>
-          {canCreate && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-              Yeni Okul
-            </Button>
-          )}
+          <Space wrap>
+            {canDelete && schools.length > 0 && (
+              <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+                Toplu sil ({schools.length})
+              </Button>
+            )}
+            {canCreate && (
+              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                Yeni Okul
+              </Button>
+            )}
+          </Space>
         </Space>
 
         <Table
@@ -150,7 +179,7 @@ export function SchoolsPage() {
           loading={loading}
           columns={columns}
           dataSource={schools}
-          pagination={{ pageSize: 20 }}
+          pagination={tablePagination(20)}
           scroll={{ x: 'max-content' }}
         />
       </div>
@@ -181,6 +210,14 @@ export function SchoolsPage() {
           </Form.Item>
         </Form>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Okulları toplu sil"
+        description={`Listedeki ${schools.length} okul kaydı silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

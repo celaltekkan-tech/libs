@@ -20,6 +20,7 @@ import {
 import type { UploadFile } from 'antd/es/upload/interface'
 import { DeleteOutlined, DownloadOutlined, InboxOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons'
 import { AppLayout } from '../components/AppLayout'
+import { FilterBar } from '../components/FilterBar'
 import { useAuth } from '../auth/AuthContext'
 import {
   createScheduleEntry,
@@ -97,7 +98,7 @@ export function SchedulePage() {
     try {
       const [classroomData, teacherData, subjectData, loadData] = await Promise.all([
         listClassrooms(),
-        listTeachers(),
+        listTeachers({ scope: 'teachers' }),
         listSubjects({ is_active: true }),
         fetchTeacherLoad().catch(() => []),
       ])
@@ -268,43 +269,61 @@ export function SchedulePage() {
   const onImport = async () => {
     const file = importFile?.originFileObj
     if (!file) return
-    setSubmitting(true)
-    try {
-      const result = await importSchedule(file, {
-        headerRow: importHeaderRow,
-        columnMapping: importMapping,
-        replaceExisting: importReplace,
-        academicYear: importAcademicYear || null,
-      })
-      message.success(
-        `İçe aktarma tamamlandı: ${result.created} yeni, ${result.updated} güncellendi` +
-          (result.error_count ? `, ${result.error_count} uyarı/hata` : ''),
-      )
-      if (result.errors.length > 0) {
-        modal.warning({
-          title: 'İçe aktarma uyarıları',
-          width: 640,
-          content: (
-            <div style={{ maxHeight: 320, overflow: 'auto' }}>
-              {result.errors.slice(0, 40).map((e) => (
-                <div key={`${e.row}-${e.message}`}>
-                  Satır {e.row}: {e.message}
-                </div>
-              ))}
-            </div>
-          ),
+
+    const runImport = async () => {
+      setSubmitting(true)
+      try {
+        const result = await importSchedule(file, {
+          headerRow: importHeaderRow,
+          columnMapping: importMapping,
+          replaceExisting: importReplace,
+          academicYear: importAcademicYear || null,
         })
+        message.success(
+          `İçe aktarma tamamlandı: ${result.created} yeni, ${result.updated} güncellendi` +
+            (result.error_count ? `, ${result.error_count} uyarı/hata` : ''),
+        )
+        if (result.errors.length > 0) {
+          modal.warning({
+            title: 'İçe aktarma uyarıları',
+            width: 640,
+            content: (
+              <div style={{ maxHeight: 320, overflow: 'auto' }}>
+                {result.errors.slice(0, 40).map((e) => (
+                  <div key={`${e.row}-${e.message}`}>
+                    Satır {e.row}: {e.message}
+                  </div>
+                ))}
+              </div>
+            ),
+          })
+        }
+        setImportOpen(false)
+        resetImportState()
+        void loadLookups()
+        void loadEntries()
+        void loadHoursCheck()
+      } catch (err) {
+        message.error(getErrorMessage(err))
+      } finally {
+        setSubmitting(false)
       }
-      setImportOpen(false)
-      resetImportState()
-      void loadLookups()
-      void loadEntries()
-      void loadHoursCheck()
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    } finally {
-      setSubmitting(false)
     }
+
+    if (importReplace) {
+      modal.confirm({
+        title: 'Mevcut program silinsin mi?',
+        content:
+          'İçe aktarma mevcut ders programını silip yeniden yükleyecek. Bu işlem geri alınamaz. Devam etmek istiyor musunuz?',
+        okText: 'Sil ve içe aktar',
+        okButtonProps: { danger: true },
+        cancelText: 'Vazgeç',
+        onOk: () => runImport(),
+      })
+      return
+    }
+
+    await runImport()
   }
 
   const renderCell = (day: number, period: number) => {
@@ -366,7 +385,7 @@ export function SchedulePage() {
       </Typography.Paragraph>
 
       <Space wrap style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Space wrap>
+        <FilterBar style={{ marginBottom: 0, width: 'auto' }}>
           <Select
             value={viewMode}
             onChange={(v) => setViewMode(v)}
@@ -399,7 +418,7 @@ export function SchedulePage() {
               style={{ width: 220 }}
             />
           )}
-        </Space>
+        </FilterBar>
         <Space wrap>
           {canCreate && (
             <Button

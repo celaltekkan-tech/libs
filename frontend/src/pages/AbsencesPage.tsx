@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { App, Button, Card, DatePicker, Input, Modal, Select, Space, Table, Tabs, Tag, Typography } from 'antd'
-import { DownloadOutlined, FileTextOutlined, HistoryOutlined, SaveOutlined, SearchOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownloadOutlined, FileTextOutlined, HistoryOutlined, SaveOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { AppLayout } from '../components/AppLayout'
+import { ClearFiltersButton } from '../components/ClearFiltersButton'
+import { FilterBar } from '../components/FilterBar'
 import { useAuth } from '../auth/AuthContext'
 import {
   bulkCreateAbsences,
@@ -26,9 +28,12 @@ import { AbsenceCalendarView } from '../components/AbsenceCalendarView'
 import { StudentAbsenceHistory } from '../components/StudentAbsenceHistory'
 import { DykAttendancePanel } from './DykPage'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
+import { tablePagination } from '../utils/tablePagination'
+import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 export function AbsencesPage() {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const { session, hasPermission } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const mainTab = searchParams.get('tab') === 'dyk' ? 'dyk' : 'school'
@@ -97,6 +102,22 @@ export function AbsencesPage() {
     })
   }, [students, search, classroomFilter])
 
+  const filteredAbsenceIds = useMemo(() => {
+    const studentIds = new Set(filteredStudents.map((s) => s.id))
+    return records.filter((r) => studentIds.has(r.student_id)).map((r) => r.id)
+  }, [records, filteredStudents])
+
+  const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
+    getIds: () => filteredAbsenceIds,
+    deleteOne: (id) => deleteAbsence(Number(id)),
+    noun: 'devamsızlık kaydı',
+    reload: () => {
+      setHistoryRefreshKey((k) => k + 1)
+      void load()
+    },
+    message,
+  })
+
   const setStatus = (studentId: number, absenceType: string | null) => {
     setDraft((d) => {
       const next = { ...d }
@@ -133,15 +154,24 @@ export function AbsencesPage() {
     }
   }
 
-  const onRemoveRecord = async (row: StudentAbsence) => {
-    try {
-      await deleteAbsence(row.id)
-      message.success('Kayıt silindi')
-      setHistoryRefreshKey((k) => k + 1)
-      void load()
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    }
+  const onRemoveRecord = (row: StudentAbsence) => {
+    modal.confirm({
+      title: 'Devamsızlık kaydını sil',
+      content: 'Bu devamsızlık kaydını silmek istediğinize emin misiniz?',
+      okText: 'Sil',
+      okButtonProps: { danger: true },
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        try {
+          await deleteAbsence(row.id)
+          message.success('Kayıt silindi')
+          setHistoryRefreshKey((k) => k + 1)
+          void load()
+        } catch (err) {
+          message.error(getErrorMessage(err))
+        }
+      },
+    })
   }
 
   // Arama tek öğrenciye indirgendiğinde geçmiş paneli otomatik açılsın.
@@ -250,7 +280,7 @@ export function AbsencesPage() {
                     children: (
                       <>
                         <Space wrap style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-                          <Space wrap>
+                          <FilterBar style={{ marginBottom: 0, flex: 1 }}>
                             <DatePicker value={date} onChange={(v) => v && setDate(v)} format="DD.MM.YYYY" />
                             <Input
                               allowClear
@@ -268,7 +298,14 @@ export function AbsencesPage() {
                               options={classrooms.map((c) => ({ value: c.id, label: classroomLabel(c) }))}
                               style={{ width: 160 }}
                             />
-                          </Space>
+                            <ClearFiltersButton
+                              active={Boolean(search.trim() || classroomFilter)}
+                              onClick={() => {
+                                setSearch('')
+                                setClassroomFilter(null)
+                              }}
+                            />
+                          </FilterBar>
                           {canCreate && (
                             <Button
                               type="primary"
@@ -294,14 +331,21 @@ export function AbsencesPage() {
                           loading={loading}
                           columns={studentColumns}
                           dataSource={filteredStudents}
-                          pagination={{ pageSize: 20 }}
+                          pagination={tablePagination(20)}
                           scroll={{ x: 'max-content' }}
                         />
                         {records.length > 0 && canDelete && (
                           <>
-                            <Typography.Title level={5} style={{ marginTop: 24 }}>
-                              Bu tarihe ait kayıtlar
-                            </Typography.Title>
+                            <Space style={{ width: '100%', justifyContent: 'space-between', marginTop: 24 }} wrap>
+                              <Typography.Title level={5} style={{ margin: 0 }}>
+                                Bu tarihe ait kayıtlar
+                              </Typography.Title>
+                              {filteredAbsenceIds.length > 0 && (
+                                <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+                                  Toplu sil ({filteredAbsenceIds.length})
+                                </Button>
+                              )}
+                            </Space>
                             <Table
                               size="small"
                               rowKey="id"
@@ -328,7 +372,7 @@ export function AbsencesPage() {
                                   title: '',
                                   width: 80,
                                   render: (_: unknown, r: StudentAbsence) => (
-                                    <Button size="small" danger onClick={() => void onRemoveRecord(r)}>
+                                    <Button size="small" danger onClick={() => onRemoveRecord(r)}>
                                       Sil
                                     </Button>
                                   ),
@@ -348,7 +392,7 @@ export function AbsencesPage() {
                         rowKey="student_id"
                         columns={warningColumns}
                         dataSource={warnings}
-                        pagination={{ pageSize: 20 }}
+                        pagination={tablePagination(20)}
                         scroll={{ x: 'max-content' }}
                       />
                     ),
@@ -403,6 +447,14 @@ export function AbsencesPage() {
           <StudentAbsenceHistory studentId={historyStudent.id} refreshKey={historyRefreshKey} />
         )}
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Devamsızlık kayıtlarını toplu sil"
+        description={`${date.format('DD.MM.YYYY')} tarihinde filtreye uyan ${filteredAbsenceIds.length} devamsızlık kaydı silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

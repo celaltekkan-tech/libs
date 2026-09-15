@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Input, Select, Space, Table, Tag, Typography } from 'antd'
+import { App, Input, Select, Table, Tag, Typography } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { ClearFiltersButton } from '../components/ClearFiltersButton'
+import { FilterBar } from '../components/FilterBar'
 import { listAuditLogs } from '../api/auditLogs'
 import { getErrorMessage } from '../api/client'
 import type { AuditLog } from '../types/auditLog'
+import { tablePagination } from '../utils/tablePagination'
 
 const ACTION_LABEL: Record<string, string> = {
   create: 'Oluşturma',
@@ -118,7 +121,7 @@ export function AuditLogsPage() {
           {total > 0 ? ` · ${total} kayıt` : ''}
         </Typography.Paragraph>
 
-        <Space wrap style={{ marginBottom: 16 }}>
+        <FilterBar>
           <Input
             allowClear
             prefix={<SearchOutlined />}
@@ -143,14 +146,22 @@ export function AuditLogsPage() {
             onChange={setEntityType}
             options={Object.entries(ENTITY_LABEL).map(([value, label]) => ({ value, label }))}
           />
-        </Space>
+          <ClearFiltersButton
+            active={Boolean(search.trim() || action || entityType)}
+            onClick={() => {
+              setSearch('')
+              setAction(undefined)
+              setEntityType(undefined)
+            }}
+          />
+        </FilterBar>
 
         <Table
           rowKey="id"
           loading={loading}
           columns={columns}
           dataSource={rows}
-          pagination={{ pageSize: 25 }}
+          pagination={tablePagination(25)}
           scroll={{ x: 'max-content' }}
         />
       </div>

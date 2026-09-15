@@ -4,6 +4,7 @@ import { DeleteOutlined, EditOutlined, PlusOutlined, SearchOutlined } from '@ant
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
 import { RoleGroupsPanel } from '../components/RoleGroupsPanel'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import {
   createManagedUser,
@@ -14,6 +15,8 @@ import {
 } from '../api/managedUsers'
 import { getErrorMessage } from '../api/client'
 import type { ManagedUser, ManagedUserPayload, UserFormOptions } from '../types/managedUser'
+import { tablePagination } from '../utils/tablePagination'
+import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
 
 interface UserFormValues {
   full_name: string
@@ -40,6 +43,8 @@ export function UsersPage() {
   const [editing, setEditing] = useState<ManagedUser | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [search, setSearch] = useState('')
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
   const [form] = Form.useForm<UserFormValues>()
 
   const load = useCallback(async () => {
@@ -174,6 +179,26 @@ export function UsersPage() {
     })
   }
 
+  const onBulkDelete = async () => {
+    const ids = filteredUsers.filter((u) => u.id !== session?.user.id).map((u) => u.id)
+    if (ids.length === 0) {
+      message.warning('Silinecek kullanıcı yok (kendi hesabınız hariç tutulur)')
+      setBulkOpen(false)
+      return
+    }
+    setBulkLoading(true)
+    try {
+      const result = await bulkDeleteByIds(ids, (id) => deleteManagedUser(Number(id)))
+      const text = bulkDeleteResultMessage(result, 'kullanıcı')
+      if (result.failed === 0) message.success(text)
+      else message.warning(text)
+      setBulkOpen(false)
+      void load()
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   const canCreate = hasPermission('users.create')
   const canUpdate = hasPermission('users.update')
   const canDelete = hasPermission('users.delete')
@@ -257,6 +282,11 @@ export function UsersPage() {
                       onChange={(e) => setSearch(e.target.value)}
                       style={{ maxWidth: 420 }}
                     />
+                    {canDelete && filteredUsers.length > 0 && (
+                      <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+                        Toplu sil ({filteredUsers.length})
+                      </Button>
+                    )}
                     {canCreate && (
                       <Button
                         type="primary"
@@ -285,7 +315,7 @@ export function UsersPage() {
                     loading={loading}
                     columns={columns}
                     dataSource={filteredUsers}
-                    pagination={{ pageSize: 20 }}
+                    pagination={tablePagination(20)}
                     scroll={{ x: 'max-content' }}
                   />
                 </>
@@ -360,6 +390,14 @@ export function UsersPage() {
           </Form.Item>
         </Form>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Kullanıcıları toplu sil"
+        description={`Filtreye uyan ${filteredUsers.length} kullanıcı kaydı silinecek (kendi hesabınız hariç).`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

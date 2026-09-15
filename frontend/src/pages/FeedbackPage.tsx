@@ -26,6 +26,7 @@ import {
 import type { Dayjs } from 'dayjs'
 import type { RcFile, UploadFile } from 'antd/es/upload/interface'
 import { AppLayout } from '../components/AppLayout'
+import { FilterBar } from '../components/FilterBar'
 import { FeedbackMessageHtml, RichTextEditor, sanitizeFeedbackHtml, stripHtml } from '../components/RichTextEditor'
 import {
   cancelFeedback,
@@ -242,7 +243,7 @@ export function FeedbackPage() {
           Gönderdiklerim
         </Typography.Title>
 
-        <Space wrap style={{ marginBottom: 16 }}>
+        <FilterBar>
           <Segmented
             value={statusFilter}
             onChange={(value) => setStatusFilter(value as FeedbackStatusFilter)}
@@ -255,14 +256,14 @@ export function FeedbackPage() {
             onChange={(values) => setDateRange(values as [Dayjs, Dayjs] | null)}
             placeholder={['Başlangıç', 'Bitiş']}
           />
-        </Space>
+        </FilterBar>
 
         <List
           loading={loading}
           dataSource={feedbacks}
           locale={{ emptyText: <Empty description="Bu filtrelere uygun geri bildirim yok" /> }}
           pagination={{
-            pageSize: 10,
+            defaultPageSize: 10,
             showSizeChanger: true,
             pageSizeOptions: [5, 10, 20, 50],
             showTotal: (total) => `Toplam ${total} kayıt`,
@@ -274,6 +275,10 @@ export function FeedbackPage() {
                 <Space direction="vertical" style={{ width: '100%' }} size="small">
                   <Space style={{ justifyContent: 'space-between', width: '100%' }}>
                     <Typography.Text type="secondary">
+                      <Typography.Text type="secondary" copyable={{ text: String(item.id) }}>
+                        #{item.id}
+                      </Typography.Text>
+                      {' · '}
                       {item.User?.full_name ? `${item.User.full_name} — ` : ''}
                       {new Date(item.created_at).toLocaleString('tr-TR')}
                     </Typography.Text>

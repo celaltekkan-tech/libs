@@ -251,6 +251,57 @@ module.exports = {
     }
   },
 
+  async updateUser(req, res, next) {
+    try {
+      const tenant = await Tenant.findByPk(req.params.id);
+      if (!tenant) {
+        return res.status(404).json({ success: false, message: 'Hesap bulunamadı' });
+      }
+
+      const user = await User.findOne({
+        where: { id: req.params.userId, tenant_id: tenant.id },
+      });
+      if (!user || user.is_platform_admin) {
+        return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı' });
+      }
+
+      const payload = req.validatedBody || req.body;
+      const nextEmail =
+        payload.email !== undefined ? String(payload.email).toLowerCase().trim() : user.email;
+      const nextFullName =
+        payload.full_name !== undefined ? String(payload.full_name).trim() : user.full_name;
+
+      if (nextEmail !== user.email) {
+        const existingUser = await User.findOne({ where: { email: nextEmail } });
+        if (existingUser) {
+          return res.status(409).json({
+            success: false,
+            code: 'EMAIL_IN_USE',
+            message: 'Bu e-posta zaten kullanılıyor',
+          });
+        }
+      }
+
+      await user.update({
+        full_name: nextFullName,
+        email: nextEmail,
+      });
+
+      const data = user.toJSON();
+      delete data.password_hash;
+      delete data.totp_secret;
+      delete data.totp_backup_codes;
+
+      res.json({
+        success: true,
+        message: 'Kullanıcı bilgileri güncellendi',
+        data,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async remove(req, res, next) {
     try {
       const tenant = await Tenant.findByPk(req.params.id);

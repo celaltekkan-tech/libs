@@ -10,10 +10,15 @@ interface Envelope<T> {
 export interface TeacherFilters {
   q?: string
   school_id?: number
+  scope?: 'teachers' | 'staff' | 'all'
 }
 
-export async function listTeachers(): Promise<Teacher[]> {
-  const { data } = await client.get<Envelope<Teacher[]>>('/api/teachers')
+export async function listTeachers(params?: {
+  scope?: 'teachers' | 'staff' | 'all'
+  category_id?: number
+  school_id?: number
+}): Promise<Teacher[]> {
+  const { data } = await client.get<Envelope<Teacher[]>>('/api/teachers', { params })
   return data.data
 }
 

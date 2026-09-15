@@ -24,6 +24,8 @@ import { getErrorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { ACTION_LABELS } from '../constants/menuPermissions'
 import type { PermissionCatalog, TenantRole } from '../types/role'
+import { TypedPhraseConfirmModal } from './TypedPhraseConfirmModal'
+import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 export function RoleGroupsPanel() {
   const { message, modal } = App.useApp()
@@ -58,6 +60,16 @@ export function RoleGroupsPanel() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const deletableRoles = useMemo(() => roles.filter((r) => !r.is_system), [roles])
+
+  const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
+    getIds: () => deletableRoles.map((r) => r.id),
+    deleteOne: (id) => deleteRole(Number(id)),
+    noun: 'yetki grubu',
+    reload: () => void load(),
+    message,
+  })
 
   const openCreate = () => {
     setEditing(null)
@@ -208,11 +220,18 @@ export function RoleGroupsPanel() {
           İstediğiniz yetki grubunu tanımlayın; her menü için görüntüle / ekle / düzenle / sil yetkilerini
           ayrı ayrı verin. Sistem rolleri sabittir — kopyalayarak özelleştirin.
         </Typography.Paragraph>
-        {canCreate && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            Yeni Yetki Grubu
-          </Button>
-        )}
+        <Space wrap>
+          {canDelete && deletableRoles.length > 0 && (
+            <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+              Toplu sil ({deletableRoles.length})
+            </Button>
+          )}
+          {canCreate && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              Yeni Yetki Grubu
+            </Button>
+          )}
+        </Space>
       </Space>
 
       <Table rowKey="id" loading={loading} columns={columns} dataSource={roles} pagination={false} />
@@ -283,6 +302,14 @@ export function RoleGroupsPanel() {
           ))}
         </div>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Yetki gruplarını toplu sil"
+        description={`${deletableRoles.length} özel yetki grubu silinecek (sistem rolleri hariç).`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </div>
   )
 }

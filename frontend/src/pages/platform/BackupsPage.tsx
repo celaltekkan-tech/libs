@@ -6,6 +6,9 @@ import { AppLayout } from '../../components/AppLayout'
 import { deleteBackup, getBackupSettings, listBackups, updateBackupSettings } from '../../api/backups'
 import { getErrorMessage } from '../../api/client'
 import type { BackupFile } from '../../types/backup'
+import { tablePagination } from '../../utils/tablePagination'
+import { TypedPhraseConfirmModal } from '../../components/TypedPhraseConfirmModal'
+import { useBulkTypedDelete } from '../../hooks/useBulkTypedDelete'
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -42,6 +45,14 @@ export function BackupsPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
+    getIds: () => backups.map((b) => b.filename),
+    deleteOne: (filename) => deleteBackup(String(filename)),
+    noun: 'yedek',
+    reload: () => void load(),
+    message,
+  })
 
   const onSaveSettings = async (values: { retention_days: number }) => {
     setSavingSettings(true)
@@ -121,7 +132,12 @@ export function BackupsPage() {
           </Form>
         </Card>
 
-        <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 16 }}>
+        <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 16 }} wrap>
+          {backups.length > 0 && (
+            <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+              Toplu sil ({backups.length})
+            </Button>
+          )}
           <Button onClick={() => void load()}>Yenile</Button>
         </Space>
 
@@ -130,10 +146,18 @@ export function BackupsPage() {
           loading={loading}
           columns={columns}
           dataSource={backups}
-          pagination={{ pageSize: 20 }}
+          pagination={tablePagination(20)}
           scroll={{ x: 'max-content' }}
         />
       </div>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Yedekleri toplu sil"
+        description={`Listedeki ${backups.length} yedek dosyası silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

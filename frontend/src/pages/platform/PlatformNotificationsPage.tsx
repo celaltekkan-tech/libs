@@ -8,6 +8,7 @@ import { listTenants } from '../../api/tenants'
 import { getErrorMessage } from '../../api/client'
 import type { AppNotification, CreateNotificationPayload, NotificationTargetType } from '../../types/notification'
 import type { TenantListItem } from '../../types/tenant'
+import { tablePagination } from '../../utils/tablePagination'
 
 interface ManagedUserOption {
   id: number
@@ -125,7 +126,7 @@ export function PlatformNotificationsPage() {
         loading={loading}
         columns={columns}
         dataSource={sent}
-        pagination={{ pageSize: 20 }}
+        pagination={tablePagination(20)}
         scroll={{ x: 'max-content' }}
       />
 

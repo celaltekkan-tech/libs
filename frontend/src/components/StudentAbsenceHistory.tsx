@@ -10,6 +10,7 @@ import {
   ABSENCE_TYPE_WEIGHTS,
 } from '../types/studentAbsence'
 import type { StudentAbsence } from '../types/studentAbsence'
+import { tablePagination } from '../utils/tablePagination'
 
 function formatTotalDays(total: number): string {
   const text = Number.isInteger(total) ? String(total) : total.toLocaleString('tr-TR', { maximumFractionDigits: 1 })
@@ -102,7 +103,7 @@ export function StudentAbsenceHistory({ studentId, studentName, refreshKey = 0 }
         loading={loading}
         columns={columns}
         dataSource={records}
-        pagination={records.length > 10 ? { pageSize: 10 } : false}
+        pagination={records.length > 10 ? tablePagination(10) : false}
         locale={{ emptyText: 'Bu öğrenci için devamsızlık kaydı yok.' }}
       />
     </div>

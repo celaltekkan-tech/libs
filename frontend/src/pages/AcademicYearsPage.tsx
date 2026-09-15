@@ -4,6 +4,7 @@ import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { AppLayout } from '../components/AppLayout'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import {
   createAcademicYear,
@@ -13,6 +14,8 @@ import {
 } from '../api/academicYears'
 import { getErrorMessage } from '../api/client'
 import type { AcademicYear } from '../types/academicYear'
+import { tablePagination } from '../utils/tablePagination'
+import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 interface FormValues {
   label: string
@@ -48,6 +51,14 @@ export function AcademicYearsPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
+    getIds: () => rows.map((r) => r.id),
+    deleteOne: (id) => deleteAcademicYear(Number(id)),
+    noun: 'eğitim öğretim yılı',
+    reload: () => void load(),
+    message,
+  })
 
   const openCreate = () => {
     setEditing(null)
@@ -163,11 +174,18 @@ export function AcademicYearsPage() {
         <Typography.Title level={3} style={{ margin: 0 }}>
           Eğitim Öğretim Yılları
         </Typography.Title>
-        {canCreate && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            Yeni Yıl
-          </Button>
-        )}
+        <Space wrap>
+          {canDelete && rows.length > 0 && (
+            <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+              Toplu sil ({rows.length})
+            </Button>
+          )}
+          {canCreate && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              Yeni Yıl
+            </Button>
+          )}
+        </Space>
       </Space>
 
       <Table
@@ -175,7 +193,7 @@ export function AcademicYearsPage() {
         loading={loading}
         columns={columns}
         dataSource={rows}
-        pagination={{ pageSize: 20 }}
+        pagination={tablePagination(20)}
         scroll={{ x: 'max-content' }}
       />
 
@@ -198,6 +216,14 @@ export function AcademicYearsPage() {
           </Form.Item>
         </Form>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Eğitim öğretim yıllarını toplu sil"
+        description={`Listedeki ${rows.length} eğitim öğretim yılı kaydı silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

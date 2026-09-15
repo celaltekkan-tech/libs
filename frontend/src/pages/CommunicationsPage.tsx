@@ -16,6 +16,7 @@ import {
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import {
   createAnnouncement,
@@ -35,6 +36,8 @@ import type { ParentConsent } from '../types/parentConsent'
 import type { Student } from '../types/student'
 import type { Classroom } from '../types/classroom'
 import { classroomLabel } from '../types/classroom'
+import { tablePagination } from '../utils/tablePagination'
+import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 interface AnnouncementFormValues extends AnnouncementPayload {
   target_class_level?: string
@@ -82,6 +85,14 @@ export function CommunicationsPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
+    getIds: () => announcements.map((a) => a.id),
+    deleteOne: (id) => deleteAnnouncement(Number(id)),
+    noun: 'duyuru',
+    reload: () => void load(),
+    message,
+  })
 
   const loadConsents = useCallback(async () => {
     if (!selectedStudentId) {
@@ -235,7 +246,12 @@ export function CommunicationsPage() {
             label: 'Duyurular',
             children: (
               <>
-                <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 16 }}>
+                <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 16 }} wrap>
+                  {canDelete && announcements.length > 0 && (
+                    <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+                      Toplu sil ({announcements.length})
+                    </Button>
+                  )}
                   {canCreate && (
                     <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
                       Yeni Duyuru
@@ -252,7 +268,7 @@ export function CommunicationsPage() {
                   loading={loading}
                   columns={announcementColumns}
                   dataSource={announcements}
-                  pagination={{ pageSize: 20 }}
+                  pagination={tablePagination(20)}
                   scroll={{ x: 'max-content' }}
                 />
               </>
@@ -363,6 +379,14 @@ export function CommunicationsPage() {
           </Space>
         </Form>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Duyuruları toplu sil"
+        description={`Listedeki ${announcements.length} duyuru kaydı silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

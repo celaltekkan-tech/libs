@@ -37,6 +37,8 @@ import type { DykAttendanceSummaryRow, DykCourse, DykCoursePayload, DykEnrollmen
 import type { Student } from '../types/student'
 import type { Subject } from '../types/subject'
 import type { Teacher } from '../types/teacher'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
+import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 /** DYK kurs yoklaması — birleşik Devamsızlık sayfasında sekme olarak kullanılır. */
 export function DykAttendancePanel() {
@@ -69,7 +71,7 @@ export function DykAttendancePanel() {
         listDykCourses(),
         listStudents(),
         listSubjects({ is_active: true }),
-        listTeachers(),
+        listTeachers({ scope: 'teachers' }),
       ])
       setCourses(courseData)
       setStudents(studentData)
@@ -107,6 +109,17 @@ export function DykAttendancePanel() {
   useEffect(() => {
     void loadCourseDetail()
   }, [loadCourseDetail])
+
+  const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
+    getIds: () => enrollments.map((e) => e.student_id),
+    deleteOne: async (studentId) => {
+      if (!selectedCourseId) throw new Error('Kurs seçili değil')
+      await unenrollDykStudent(selectedCourseId, Number(studentId))
+    },
+    noun: 'kurs kaydı',
+    reload: () => void loadCourseDetail(),
+    message,
+  })
 
   const onCreateCourse = async (values: DykCoursePayload) => {
     if (!session) return
@@ -157,15 +170,24 @@ export function DykAttendancePanel() {
     }
   }
 
-  const onUnenroll = async (studentId: number) => {
+  const onUnenroll = (studentId: number) => {
     if (!selectedCourseId) return
-    try {
-      await unenrollDykStudent(selectedCourseId, studentId)
-      message.success('Öğrenci kurstan çıkarıldı')
-      void loadCourseDetail()
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    }
+    modal.confirm({
+      title: 'Öğrenciyi kurstan çıkar',
+      content: 'Bu öğrenciyi DYK kursundan çıkarmak istediğinize emin misiniz?',
+      okText: 'Çıkar',
+      okButtonProps: { danger: true },
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        try {
+          await unenrollDykStudent(selectedCourseId, studentId)
+          message.success('Öğrenci kurstan çıkarıldı')
+          void loadCourseDetail()
+        } catch (err) {
+          message.error(getErrorMessage(err))
+        }
+      },
+    })
   }
 
   const onSaveAttendance = async () => {
@@ -229,7 +251,7 @@ export function DykAttendancePanel() {
                 size="small"
                 danger
                 icon={<DeleteOutlined />}
-                onClick={() => void onUnenroll(e.student_id)}
+                onClick={() => onUnenroll(e.student_id)}
               />
             ),
           },
@@ -306,6 +328,11 @@ export function DykAttendancePanel() {
             {canCreate && (
               <Button icon={<PlusOutlined />} onClick={() => setEnrollModalOpen(true)}>
                 Öğrenci Ekle
+              </Button>
+            )}
+            {canDelete && enrollments.length > 0 && (
+              <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+                Toplu sil ({enrollments.length})
               </Button>
             )}
           </Space>
@@ -399,6 +426,14 @@ export function DykAttendancePanel() {
           onChange={(ids: number[]) => void onEnroll(ids)}
         />
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Kurs kayıtlarını toplu sil"
+        description={`Seçili kurstaki ${enrollments.length} öğrenci kaydı silinecek (kurstan çıkarılacak).`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </>
   )
 }

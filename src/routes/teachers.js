@@ -6,6 +6,7 @@ const promotionsCtrl = require('../controllers/promotionsController');
 const validate = require('../middlewares/validate');
 const {
   createTeacherSchema,
+  updateTeacherSchema,
   exportTeacherSchema,
   importMebbisCommitSchema,
 } = require('../validators/teacher.validator');
@@ -27,7 +28,7 @@ router.get(
   '/promotions/salary-form/export',
   auth,
   moduleGuard,
-  permission('teachers.read'),
+  permission('norm_positions.read'),
   promotionsCtrl.exportSalaryForm,
 );
 router.get(
@@ -66,7 +67,7 @@ router.post(
   promotionsCtrl.applyPromotion,
 );
 router.post('/', auth, moduleGuard, permission('teachers.create'), validate(createTeacherSchema), ctrl.create);
-router.put('/:id', auth, moduleGuard, permission('teachers.update'), validate(createTeacherSchema), ctrl.update);
+router.put('/:id', auth, moduleGuard, permission('teachers.update'), validate(updateTeacherSchema), ctrl.update);
 router.delete('/:id', auth, moduleGuard, permission('teachers.delete'), ctrl.remove);
 
 module.exports = router;

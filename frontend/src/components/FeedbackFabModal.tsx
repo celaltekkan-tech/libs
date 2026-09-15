@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { App, Button, Form, Modal, Tooltip, Typography, Upload } from 'antd'
 import { CommentOutlined, InboxOutlined, SendOutlined } from '@ant-design/icons'
 import type { RcFile, UploadFile } from 'antd/es/upload/interface'
@@ -77,16 +78,21 @@ export function FeedbackFabModal() {
 
   return (
     <>
-      <Tooltip title="Geri bildirim gönder" placement="left">
-        <button
-          type="button"
-          className="feedback-fab"
-          aria-label="Geri bildirim gönder"
-          onClick={() => setOpen(true)}
-        >
-          <CommentOutlined />
-        </button>
-      </Tooltip>
+      {createPortal(
+        <div className="feedback-fab-host">
+          <Tooltip title="Geri bildirim gönder" placement="left">
+            <button
+              type="button"
+              className="feedback-fab"
+              aria-label="Geri bildirim gönder"
+              onClick={() => setOpen(true)}
+            >
+              <CommentOutlined />
+            </button>
+          </Tooltip>
+        </div>,
+        document.body,
+      )}
 
       <Modal
         title="Geri Bildirim Gönder"

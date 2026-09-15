@@ -53,7 +53,10 @@ import type { Classroom } from '../types/classroom'
 import { classroomLabel } from '../types/classroom'
 import type { Teacher } from '../types/teacher'
 import type { ScheduleTeacherOption } from '../api/schedule'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+import { tablePagination } from '../utils/tablePagination'
+import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 export function KelebekPage() {
   const { message, modal } = App.useApp()
@@ -94,7 +97,7 @@ export function KelebekPage() {
         listExamRooms(),
         listExamSessions(),
         listClassrooms({ is_active: true }),
-        listTeachers(),
+        listTeachers({ scope: 'teachers' }),
         listScheduleTeachers().catch(() => []),
       ])
       setRooms(roomData)
@@ -114,6 +117,35 @@ export function KelebekPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const {
+    bulkOpen: sessionsBulkOpen,
+    setBulkOpen: setSessionsBulkOpen,
+    bulkLoading: sessionsBulkLoading,
+    onBulkDelete: onBulkDeleteSessions,
+  } = useBulkTypedDelete({
+    getIds: () => sessions.map((s) => s.id),
+    deleteOne: (id) => deleteExamSession(Number(id)),
+    noun: 'sınav oturumu',
+    reload: () => {
+      setSelectedSessionId(null)
+      void load()
+    },
+    message,
+  })
+
+  const {
+    bulkOpen: roomsBulkOpen,
+    setBulkOpen: setRoomsBulkOpen,
+    bulkLoading: roomsBulkLoading,
+    onBulkDelete: onBulkDeleteRooms,
+  } = useBulkTypedDelete({
+    getIds: () => rooms.map((r) => r.id),
+    deleteOne: (id) => deleteExamRoom(Number(id)),
+    noun: 'sınav salonu',
+    reload: () => void load(),
+    message,
+  })
 
   const loadSessionDetail = useCallback(async () => {
     if (!selectedSessionId) {
@@ -322,14 +354,24 @@ export function KelebekPage() {
     }
   }
 
-  const onRemoveProctor = async (proctor: ProctorAssignment) => {
+  const onRemoveProctor = (proctor: ProctorAssignment) => {
     if (!selectedSessionId) return
-    try {
-      await removeProctor(selectedSessionId, proctor.id)
-      void loadSessionDetail()
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    }
+    modal.confirm({
+      title: 'Gözetmeni kaldır',
+      content: 'Bu gözetmen atamasını kaldırmak istediğinize emin misiniz?',
+      okText: 'Kaldır',
+      okButtonProps: { danger: true },
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        try {
+          await removeProctor(selectedSessionId, proctor.id)
+          message.success('Gözetmen kaldırıldı')
+          void loadSessionDetail()
+        } catch (err) {
+          message.error(getErrorMessage(err))
+        }
+      },
+    })
   }
 
   const onExport = async () => {
@@ -422,6 +464,11 @@ export function KelebekPage() {
               Yeni Oturum
             </Button>
           )}
+          {canDelete && sessions.length > 0 && (
+            <Button danger icon={<DeleteOutlined />} onClick={() => setSessionsBulkOpen(true)}>
+              Toplu sil ({sessions.length})
+            </Button>
+          )}
           {selectedSessionId && canDelete && (
             <Button danger onClick={() => onDeleteSession(sessions.find((s) => s.id === selectedSessionId)!)}>
               Oturumu Sil
@@ -503,7 +550,7 @@ export function KelebekPage() {
         size="small"
         columns={sessionColumns}
         dataSource={sessions}
-        pagination={{ pageSize: 20 }}
+        pagination={tablePagination(20)}
         rowClassName={(row) => (row.id === selectedSessionId ? 'ant-table-row-selected' : '')}
         onRow={(row) => ({
           onClick: () => setSelectedSessionId(row.id),
@@ -519,11 +566,18 @@ export function KelebekPage() {
         onClose={() => setRoomsDrawerOpen(false)}
         width={640}
         extra={
-          canCreate && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={openAddRoom}>
-              Salon Ekle
-            </Button>
-          )
+          <Space>
+            {canDelete && rooms.length > 0 && (
+              <Button danger icon={<DeleteOutlined />} onClick={() => setRoomsBulkOpen(true)}>
+                Toplu sil ({rooms.length})
+              </Button>
+            )}
+            {canCreate && (
+              <Button type="primary" icon={<PlusOutlined />} onClick={openAddRoom}>
+                Salon Ekle
+              </Button>
+            )}
+          </Space>
         }
       >
         <Table
@@ -673,6 +727,22 @@ export function KelebekPage() {
           </Form.Item>
         </Form>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={sessionsBulkOpen}
+        title="Sınav oturumlarını toplu sil"
+        description={`Listedeki ${sessions.length} sınav oturumu silinecek.`}
+        loading={sessionsBulkLoading}
+        onCancel={() => setSessionsBulkOpen(false)}
+        onConfirm={onBulkDeleteSessions}
+      />
+      <TypedPhraseConfirmModal
+        open={roomsBulkOpen}
+        title="Sınav salonlarını toplu sil"
+        description={`Listedeki ${rooms.length} sınav salonu silinecek.`}
+        loading={roomsBulkLoading}
+        onCancel={() => setRoomsBulkOpen(false)}
+        onConfirm={onBulkDeleteRooms}
+      />
     </AppLayout>
   )
 }

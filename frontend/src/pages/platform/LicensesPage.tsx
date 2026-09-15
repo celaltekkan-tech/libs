@@ -25,6 +25,7 @@ import { getErrorMessage } from '../../api/client'
 import { LICENSE_PLANS, MODULE_LABELS, getLicensePlan } from '../../constants/licensePlans'
 import type { License, LicenseStatus } from '../../types/license'
 import type { TenantListItem } from '../../types/tenant'
+import { tablePagination } from '../../utils/tablePagination'
 
 const STATUS_LABEL: Record<LicenseStatus, { text: string; color: string }> = {
   active: { text: 'Aktif', color: 'green' },
@@ -219,7 +220,7 @@ export function LicensesPage() {
           loading={loading}
           columns={columns}
           dataSource={licenses}
-          pagination={{ pageSize: 20 }}
+          pagination={tablePagination(20)}
           scroll={{ x: 'max-content' }}
         />
       </div>

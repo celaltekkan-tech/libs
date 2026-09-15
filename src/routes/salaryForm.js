@@ -1,0 +1,23 @@
+const express = require('express');
+const router = express.Router();
+const ctrl = require('../controllers/salaryFormController');
+const validate = require('../middlewares/validate');
+const { upsertSalaryFormDraftSchema } = require('../validators/salaryForm.validator');
+const auth = require('../middlewares/auth');
+const requireModule = require('../middlewares/moduleGuard');
+const permission = require('../middlewares/permission');
+
+const moduleGuard = requireModule('teachers');
+
+router.get('/draft', auth, moduleGuard, permission('norm_positions.read'), ctrl.getDraft);
+router.put(
+  '/draft',
+  auth,
+  moduleGuard,
+  permission('norm_positions.update'),
+  validate(upsertSalaryFormDraftSchema),
+  ctrl.upsertDraft
+);
+router.get('/export', auth, moduleGuard, permission('norm_positions.read'), ctrl.export);
+
+module.exports = router;

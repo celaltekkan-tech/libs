@@ -33,6 +33,7 @@ import {
   TeamOutlined,
   UserOutlined,
   ClusterOutlined,
+  ContactsOutlined,
   SettingOutlined,
   DatabaseOutlined,
   SolutionOutlined,
@@ -99,7 +100,10 @@ function buildTenantMenu(opts: {
   if (hasModule('schools')) definitions.push({ key: '/schools', icon: <BankOutlined />, label: 'Okullar' })
   if (hasModule('classrooms')) definitions.push({ key: '/classrooms', icon: <ClusterOutlined />, label: 'Sınıflar' })
   if (hasModule('students')) definitions.push({ key: '/students', icon: <ReadOutlined />, label: 'Öğrenciler' })
-  if (hasModule('teachers')) definitions.push({ key: '/teachers', icon: <TeamOutlined />, label: 'Öğretmenler' })
+  if (hasModule('teachers')) {
+    definitions.push({ key: '/teachers', icon: <TeamOutlined />, label: 'Öğretmenler' })
+    definitions.push({ key: '/other-personnel', icon: <ContactsOutlined />, label: 'Diğer Personeller' })
+  }
   if (hasModule('schedule')) definitions.push({ key: '/subjects', icon: <IdcardOutlined />, label: 'Dersler' })
   definitions.push({ key: '/academic-years', icon: <CalendarOutlined />, label: 'Eğitim Öğretim Yılları' })
   if (definitions.length > 0) {
@@ -115,7 +119,6 @@ function buildTenantMenu(opts: {
   if (hasModule('teachers')) {
     personnel.push(
       { key: '/norm-positions', icon: <ApartmentOutlined />, label: 'Norm Kadro' },
-      { key: '/trainings', icon: <ReadOutlined />, label: 'Hizmet İçi Eğitim' },
       { key: '/teacher-documents', icon: <FileProtectOutlined />, label: 'Öğretmen Evrak Arşivi' },
     )
   }
@@ -211,6 +214,26 @@ function toMenuItems(nodes: NavNode[]): MenuProps['items'] {
 }
 
 const MOBILE_BREAKPOINT = 767
+const SIDER_COLLAPSED_KEY = 'okul-idare-sider-collapsed'
+
+function readStoredCollapsed(): boolean | null {
+  try {
+    const stored = localStorage.getItem(SIDER_COLLAPSED_KEY)
+    if (stored === '1') return true
+    if (stored === '0') return false
+  } catch {
+    /* ignore */
+  }
+  return null
+}
+
+function writeStoredCollapsed(value: boolean) {
+  try {
+    localStorage.setItem(SIDER_COLLAPSED_KEY, value ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
+}
 
 export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayoutProps) {
   const { session, logout, hasModule, hasPermission } = useAuth()
@@ -221,7 +244,10 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
   const user = session?.user
 
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= MOBILE_BREAKPOINT)
-  const [collapsed, setCollapsed] = useState(() => window.innerWidth <= MOBILE_BREAKPOINT)
+  const [collapsed, setCollapsed] = useState(() => {
+    if (window.innerWidth <= MOBILE_BREAKPOINT) return true
+    return readStoredCollapsed() ?? false
+  })
   const [search, setSearch] = useState('')
   const [openKeys, setOpenKeys] = useState<string[]>([])
 
@@ -302,6 +328,14 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
     if (isMobile) setCollapsed(true)
   }
 
+  const toggleCollapsed = () => {
+    setCollapsed((value) => {
+      const next = !value
+      if (!isMobile) writeStoredCollapsed(next)
+      return next
+    })
+  }
+
   return (
     <Layout className="app-shell">
       {isMobile && !collapsed && (
@@ -313,9 +347,7 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
         className="app-sider"
         collapsible
         collapsed={collapsed}
-        onCollapse={setCollapsed}
         trigger={null}
-        breakpoint="lg"
       >
         <div className="app-sider-brand">{collapsed ? 'Lİ' : 'Okul İdare'}</div>
 
@@ -353,7 +385,7 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
             <Button
               type="text"
               icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-              onClick={() => setCollapsed((value) => !value)}
+              onClick={toggleCollapsed}
             />
             <span className="app-header-title">{title}</span>
           </Space>

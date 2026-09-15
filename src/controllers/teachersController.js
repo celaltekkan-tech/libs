@@ -1,10 +1,12 @@
 'use strict';
 
 const PDFDocument = require('pdfkit');
-const { Teacher, School, sequelize } = require('../models');
+const { Teacher, School, PersonnelCategory, sequelize } = require('../models');
+const { Op } = require('sequelize');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
 const { parseMebbisWorkbook } = require('../services/mebbisImportService');
+const { ensureDefaultCategories } = require('./personnelCategoriesController');
 
 const PERSONNEL_DOCUMENT_TITLES = {
   gorevlendirme: 'GÖREVLENDİRME YAZISI',
@@ -40,6 +42,46 @@ const DEFAULT_COLUMNS = [
   'city',
   'district',
 ];
+
+function applyPersonnelScope(where, query = {}) {
+  const categoryId = query.category_id != null ? Number(query.category_id) : null;
+  if (categoryId) {
+    where.personnel_category_id = categoryId;
+    return;
+  }
+  const scope = String(query.scope || 'all');
+  if (scope === 'teachers') {
+    where.personnel_type = 'ogretmen';
+    where.personnel_category_id = null;
+  } else if (scope === 'staff') {
+    where[Op.or] = [
+      { personnel_type: { [Op.ne]: 'ogretmen' } },
+      { personnel_category_id: { [Op.ne]: null } },
+    ];
+  }
+}
+
+async function applyCategoryToPayload(payload, tenantId) {
+  if (payload.personnel_category_id == null || payload.personnel_category_id === '') {
+    return payload;
+  }
+  const category = await PersonnelCategory.findOne({
+    where: { id: Number(payload.personnel_category_id), tenant_id: tenantId },
+  });
+  if (!category) {
+    const err = new Error('Personel kategorisi bulunamadı');
+    err.status = 400;
+    throw err;
+  }
+  payload.personnel_category_id = category.id;
+  payload.personnel_type = category.code || 'diger';
+  return payload;
+}
+
+async function findCategoryByCode(tenantId, code) {
+  if (!code || code === 'ogretmen' || code === 'diger') return null;
+  return PersonnelCategory.findOne({ where: { tenant_id: tenantId, code } });
+}
 
 function matchesTeacherSearch(teacher, q) {
   const needle = String(q || '')
@@ -193,10 +235,14 @@ module.exports = {
       const toImport = rows.filter((r) => r.include !== false);
       let created = 0;
       let updated = 0;
+      if (tenantId) await ensureDefaultCategories(tenantId);
 
       await sequelize.transaction(async (transaction) => {
         for (const row of toImport) {
           const payload = buildTeacherPayloadFromMebbisRow(row, tenantId, schoolId);
+          const category = await findCategoryByCode(tenantId, payload.personnel_type);
+          if (category) payload.personnel_category_id = category.id;
+          else payload.personnel_category_id = null;
           let teacher = null;
           if (row.matched_teacher_id) {
             teacher = await Teacher.findByPk(row.matched_teacher_id, { transaction });
@@ -289,36 +335,79 @@ module.exports = {
   async upcomingPromotions(req, res, next) {
     try {
       const tenantId = req.user && req.user.tenant_id;
-      const days = req.query.days ? Number(req.query.days) : 90;
-      const where = { tenant_id: tenantId };
+      const { getSalaryPeriodForDate, getSalaryPeriodRange, suggestNextDegreeRank } = require('../utils/salaryPeriod');
+
+      const periodMonth = req.query.month ? Number(req.query.month) : null;
+      const periodYear = req.query.year ? Number(req.query.year) : null;
+      const period =
+        periodMonth && periodYear
+          ? getSalaryPeriodRange(periodMonth, periodYear)
+          : getSalaryPeriodForDate(new Date());
+
+      // days verilirse ek ufuk; yoksa yalnızca ilgili maaş dönemi (15→14)
+      const days = req.query.days != null ? Number(req.query.days) : null;
+      const today = new Date();
+      const horizon =
+        days != null && Number.isFinite(days)
+          ? new Date(today.getTime() + days * 86400000)
+          : period.endExclusive;
+
+      const where = { tenant_id: tenantId, personnel_type: 'ogretmen', personnel_category_id: null };
       const teachers = await Teacher.findAll({
         where,
         order: [['degree_rank_date', 'ASC']],
       });
-
-      const today = new Date();
-      const horizon = new Date(today.getTime() + days * 86400000);
 
       const data = teachers
         .filter((t) => t.degree_rank_date)
         .map((t) => {
           const nextDate = addYears(t.degree_rank_date, 1);
           const daysRemaining = Math.round((nextDate.getTime() - today.getTime()) / 86400000);
+          const suggested = suggestNextDegreeRank(t.degree, t.rank);
+          const inCurrentPeriod =
+            nextDate >= period.start && nextDate < period.endExclusive;
           return {
             teacher_id: t.id,
             teacher_name: `${t.first_name} ${t.last_name}`,
             personnel_no: t.personnel_no,
             degree: t.degree,
             rank: t.rank,
+            suggested_degree: suggested.new_degree,
+            suggested_rank: suggested.new_rank,
             degree_rank_date: t.degree_rank_date,
             next_promotion_date: nextDate.toISOString().slice(0, 10),
             days_remaining: daysRemaining,
+            in_current_period: inCurrentPeriod,
           };
         })
-        .filter((row) => new Date(row.next_promotion_date) <= horizon)
-        .sort((a, b) => a.days_remaining - b.days_remaining);
+        .filter((row) => {
+          const next = new Date(row.next_promotion_date);
+          if (days != null && Number.isFinite(days)) {
+            return next <= horizon;
+          }
+          return row.in_current_period || next <= period.endExclusive;
+        })
+        .sort((a, b) => {
+          if (a.in_current_period !== b.in_current_period) {
+            return a.in_current_period ? -1 : 1;
+          }
+          return a.days_remaining - b.days_remaining;
+        });
 
-      res.json({ success: true, data });
+      res.json({
+        success: true,
+        data,
+        meta: {
+          period: {
+            month: period.month,
+            year: period.year,
+            start: period.start.toISOString().slice(0, 10),
+            end: new Date(period.endExclusive.getTime() - 86400000).toISOString().slice(0, 10),
+            start_label: period.startLabel,
+            end_label: period.endLabel,
+          },
+        },
+      });
     } catch (err) {
       next(err);
     }
@@ -330,7 +419,16 @@ module.exports = {
       const where = {};
       if (tenantId) where.tenant_id = tenantId;
       if (req.query.school_id) where.school_id = Number(req.query.school_id);
-      const teachers = await Teacher.findAll({ where, limit: 500 });
+      applyPersonnelScope(where, req.query);
+      const teachers = await Teacher.findAll({
+        where,
+        include: [{ model: PersonnelCategory, required: false }],
+        order: [
+          ['last_name', 'ASC'],
+          ['first_name', 'ASC'],
+        ],
+        limit: 500,
+      });
       res.json({ success: true, data: teachers });
     } catch (err) {
       next(err);
@@ -354,6 +452,11 @@ module.exports = {
     try {
       const payload = { ...(req.validatedBody || req.body) };
       if (req.user && req.user.tenant_id) payload.tenant_id = req.user.tenant_id;
+      await applyCategoryToPayload(payload, payload.tenant_id);
+      if (!payload.personnel_category_id) {
+        payload.personnel_type = payload.personnel_type || 'ogretmen';
+        payload.personnel_category_id = null;
+      }
       const teacher = await Teacher.create(payload);
       await audit.log(req, {
         action: 'create',
@@ -376,6 +479,10 @@ module.exports = {
       }
       const payload = { ...(req.validatedBody || req.body) };
       if (req.user && req.user.tenant_id) payload.tenant_id = req.user.tenant_id;
+      await applyCategoryToPayload(payload, teacher.tenant_id);
+      if (payload.personnel_category_id === null) {
+        payload.personnel_type = payload.personnel_type || 'ogretmen';
+      }
       await teacher.update(payload);
       await audit.log(req, {
         action: 'update',
@@ -424,6 +531,7 @@ module.exports = {
       const where = {};
       if (tenantId) where.tenant_id = tenantId;
       if (filters?.school_id) where.school_id = Number(filters.school_id);
+      applyPersonnelScope(where, filters || {});
 
       let teachers = await Teacher.findAll({
         where,

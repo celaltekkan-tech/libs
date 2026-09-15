@@ -27,4 +27,9 @@ const updateTenantSchema = Joi.object({
   two_factor_enabled: Joi.boolean(),
 }).min(1);
 
-module.exports = { createTenantWizardSchema, updateTenantSchema };
+const updateTenantUserSchema = Joi.object({
+  full_name: Joi.string().min(2).max(100),
+  email,
+}).or('full_name', 'email');
+
+module.exports = { createTenantWizardSchema, updateTenantSchema, updateTenantUserSchema };

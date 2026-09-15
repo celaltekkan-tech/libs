@@ -3,6 +3,7 @@ import { App, Button, Form, Input, Modal, Select, Space, Switch, Table, Typograp
 import { DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import {
   createClassroom,
@@ -19,6 +20,8 @@ import { classroomLabel } from '../types/classroom'
 import type { Teacher } from '../types/teacher'
 import type { School } from '../types/school'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+import { tablePagination } from '../utils/tablePagination'
+import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
 
 export function ClassroomsPage() {
   const { message, modal } = App.useApp()
@@ -33,6 +36,8 @@ export function ClassroomsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [search, setSearch] = useState('')
   const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx')
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
   const [form] = Form.useForm<ClassroomPayload>()
 
   const canSchools = hasModule('schools')
@@ -42,7 +47,7 @@ export function ClassroomsPage() {
     try {
       const [classroomData, teacherData, schoolData] = await Promise.all([
         listClassrooms(),
-        listTeachers().catch(() => []),
+        listTeachers({ scope: 'teachers' }).catch(() => []),
         canSchools ? listSchools().catch(() => []) : Promise.resolve([]),
       ])
       setRows(classroomData)
@@ -144,6 +149,23 @@ export function ClassroomsPage() {
     })
   }
 
+  const onBulkDelete = async () => {
+    setBulkLoading(true)
+    try {
+      const result = await bulkDeleteByIds(
+        filteredRows.map((r) => r.id),
+        (id) => deleteClassroom(Number(id)),
+      )
+      const text = bulkDeleteResultMessage(result, 'sınıf')
+      if (result.failed === 0) message.success(text)
+      else message.warning(text)
+      setBulkOpen(false)
+      void load()
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   const onExport = async () => {
     setSubmitting(true)
     try {
@@ -216,12 +238,17 @@ export function ClassroomsPage() {
 
   return (
     <AppLayout title="Sınıflar / Şubeler">
-      <div style={{ maxWidth: 1000 }}>
+      <div>
         <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }} wrap>
           <Typography.Title level={3} style={{ margin: 0 }}>
             Sınıflar / Şubeler
           </Typography.Title>
           <Space wrap>
+            {canDelete && filteredRows.length > 0 && (
+              <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+                Toplu sil ({filteredRows.length})
+              </Button>
+            )}
             <Button icon={<DownloadOutlined />} onClick={() => setExportOpen(true)}>
               Dışa Aktar
             </Button>
@@ -247,7 +274,7 @@ export function ClassroomsPage() {
           loading={loading}
           columns={columns}
           dataSource={filteredRows}
-          pagination={{ pageSize: 20 }}
+          pagination={tablePagination(20)}
           scroll={{ x: 'max-content' }}
         />
       </div>
@@ -328,6 +355,14 @@ export function ClassroomsPage() {
           </Typography.Text>
         </Form>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Sınıfları toplu sil"
+        description={`Filtreye uyan ${filteredRows.length} sınıf/şube kaydı silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

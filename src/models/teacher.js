@@ -27,6 +27,7 @@ module.exports = (sequelize, DataTypes) => {
     contract_start_date: DataTypes.DATEONLY,
     contract_end_date: DataTypes.DATEONLY,
     union_name: DataTypes.STRING,
+    personnel_category_id: DataTypes.INTEGER,
     meta: DataTypes.JSONB
     }, {
     tableName: 'Teachers',
@@ -39,10 +40,10 @@ module.exports = (sequelize, DataTypes) => {
     Teacher.associate = function(models) {
     Teacher.belongsTo(models.Tenant, { foreignKey: 'tenant_id' });
     Teacher.belongsTo(models.School, { foreignKey: 'school_id' });
+    Teacher.belongsTo(models.PersonnelCategory, { foreignKey: 'personnel_category_id' });
     Teacher.hasMany(models.Classroom, { foreignKey: 'teacher_id' });
     Teacher.hasMany(models.ScheduleEntry, { foreignKey: 'teacher_id' });
     Teacher.hasMany(models.LeaveRecord, { foreignKey: 'teacher_id' });
-    Teacher.hasMany(models.TrainingRecord, { foreignKey: 'teacher_id' });
     Teacher.hasMany(models.DutyAssignment, { foreignKey: 'teacher_id' });
     Teacher.hasMany(models.ExtraLessonEntry, { foreignKey: 'teacher_id' });
     Teacher.hasMany(models.AttendanceRecord, { foreignKey: 'teacher_id' });

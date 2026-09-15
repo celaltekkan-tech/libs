@@ -40,7 +40,6 @@ router.post(
 router.post('/import', auth, moduleGuard, permission('students.create'), upload.single('file'), ctrl.importExcel);
 router.post('/export', auth, moduleGuard, permission('students.read'), validate(exportStudentSchema), ctrl.exportFile);
 router.get('/:id', auth, moduleGuard, permission('students.read'), ctrl.get);
-router.get('/:id/certificate', auth, moduleGuard, permission('students.read'), ctrl.certificate);
 router.post('/', auth, moduleGuard, permission('students.create'), validate(createStudentSchema), ctrl.create);
 router.put('/:id', auth, moduleGuard, permission('students.update'), validate(updateStudentSchema), ctrl.update);
 router.delete('/:id', auth, moduleGuard, permission('students.delete'), ctrl.remove);

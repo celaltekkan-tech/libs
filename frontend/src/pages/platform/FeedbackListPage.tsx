@@ -47,6 +47,8 @@ import {
   type FeedbackStatusFilter,
 } from '../../types/feedback'
 import type { TenantListItem } from '../../types/tenant'
+import { TypedPhraseConfirmModal } from '../../components/TypedPhraseConfirmModal'
+import { useBulkTypedDelete } from '../../hooks/useBulkTypedDelete'
 
 const { RangePicker } = DatePicker
 
@@ -93,6 +95,14 @@ export function FeedbackListPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
+    getIds: () => feedbacks.map((f) => f.id),
+    deleteOne: (id) => deleteFeedback(Number(id)),
+    noun: 'geri bildirim',
+    reload: () => void load(),
+    message,
+  })
 
   const changeStatus = async (id: number, status: FeedbackStatus) => {
     try {
@@ -173,29 +183,36 @@ export function FeedbackListPage() {
           </div>
 
           <Card size="small" styles={{ body: { padding: 12 } }}>
-            <Space wrap style={{ width: '100%' }}>
-              <Select
-                allowClear
-                showSearch
-                optionFilterProp="label"
-                placeholder="Hesap (tenant)"
-                style={{ minWidth: 220 }}
-                value={tenantFilter}
-                onChange={(value) => setTenantFilter(value)}
-                options={tenants.map((t) => ({ value: t.id, label: t.name }))}
-              />
-              <Segmented
-                value={statusFilter}
-                onChange={(value) => setStatusFilter(value as FeedbackStatusFilter)}
-                options={FEEDBACK_FILTER_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-              />
-              <RangePicker
-                allowClear
-                format="DD.MM.YYYY"
-                value={dateRange}
-                onChange={(values) => setDateRange(values as [Dayjs, Dayjs] | null)}
-                placeholder={['Başlangıç', 'Bitiş']}
-              />
+            <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
+              <Space wrap>
+                <Select
+                  allowClear
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="Hesap (tenant)"
+                  style={{ minWidth: 220 }}
+                  value={tenantFilter}
+                  onChange={(value) => setTenantFilter(value)}
+                  options={tenants.map((t) => ({ value: t.id, label: t.name }))}
+                />
+                <Segmented
+                  value={statusFilter}
+                  onChange={(value) => setStatusFilter(value as FeedbackStatusFilter)}
+                  options={FEEDBACK_FILTER_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                />
+                <RangePicker
+                  allowClear
+                  format="DD.MM.YYYY"
+                  value={dateRange}
+                  onChange={(values) => setDateRange(values as [Dayjs, Dayjs] | null)}
+                  placeholder={['Başlangıç', 'Bitiş']}
+                />
+              </Space>
+              {!loading && feedbacks.length > 0 && (
+                <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+                  Toplu sil ({feedbacks.length})
+                </Button>
+              )}
             </Space>
           </Card>
 
@@ -208,7 +225,7 @@ export function FeedbackListPage() {
               dataSource={feedbacks}
               locale={{ emptyText: <Empty description="Bu filtrelere uygun geri bildirim yok" /> }}
               pagination={{
-                pageSize: 10,
+                defaultPageSize: 10,
                 showSizeChanger: true,
                 pageSizeOptions: [5, 10, 20, 50],
                 showTotal: (total) => `Toplam ${total} kayıt`,
@@ -222,9 +239,14 @@ export function FeedbackListPage() {
                       <Space direction="vertical" size={12} style={{ width: '100%' }}>
                         <Space style={{ width: '100%', justifyContent: 'space-between' }} align="start" wrap>
                           <Space direction="vertical" size={2}>
-                            <Typography.Text strong style={{ fontSize: 15 }}>
-                              {item.Tenant?.name || `Hesap #${item.tenant_id}`}
-                            </Typography.Text>
+                            <Space size={8} wrap>
+                              <Typography.Text type="secondary" copyable={{ text: String(item.id) }}>
+                                #{item.id}
+                              </Typography.Text>
+                              <Typography.Text strong style={{ fontSize: 15 }}>
+                                {item.Tenant?.name || `Hesap #${item.tenant_id}`}
+                              </Typography.Text>
+                            </Space>
                             <Typography.Text type="secondary">
                               {item.User
                                 ? `${item.User.full_name} · ${item.User.email}`
@@ -421,6 +443,14 @@ export function FeedbackListPage() {
           </>
         )}
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Geri bildirimleri toplu sil"
+        description={`Filtreye uyan ${feedbacks.length} geri bildirim silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

@@ -48,6 +48,15 @@ const IMPORT_HEADER_MAP = {
   subesi: 'section',
   şube: 'section',
   sube: 'section',
+  'sınıf/şube': 'class_level',
+  'sınıf / şube': 'class_level',
+  'sınıf-şube': 'class_level',
+  'sınıf şube': 'class_level',
+  'sinif/sube': 'class_level',
+  'sinif / sube': 'class_level',
+  'sınıfı / şubesi': 'class_level',
+  'sınıfı/şubesi': 'class_level',
+  'sınıf - şube': 'class_level',
   cinsiyeti: 'gender',
   cinsiyet: 'gender',
   'doğum tarihi': 'birth_date',
@@ -176,15 +185,48 @@ function suggestMapping(headers, headerMap = IMPORT_HEADER_MAP) {
 
 function parseClassFromText(text) {
   if (!text) return null;
-  const str = String(text).replace(/\s+/g, ' ');
+  const str = String(text).replace(/\s+/g, ' ').trim();
   const match =
-    str.match(/(\d+)\s*\.\s*S[ıi]n[ıi]f\s*\/\s*([A-ZÇĞİÖŞÜa-zçğıöşü])\s*Şube/i) ||
-    str.match(/(\d+)\s*\.\s*S[ıi]n[ıi]f\s*[\/\-]\s*([A-ZÇĞİÖŞÜa-zçğıöşü])\b/i);
+    str.match(/(\d+)\s*\.\s*S[ıi]n[ıi]f\s*\/\s*([A-ZÇĞİÖŞÜa-zçğıöşü])/i) ||
+    str.match(/(\d+)\s*\.\s*S[ıi]n[ıi]f\s*[\/\-]\s*([A-ZÇĞİÖŞÜa-zçğıöşü])\b/i) ||
+    str.match(/^(\d{1,2})\s*[\/.\-]\s*([A-ZÇĞİÖŞÜa-zçğıöşü])\s*$/i) ||
+    str.match(/^(\d{1,2})\s+([A-ZÇĞİÖŞÜa-zçğıöşü])(?:\s*(?:Şube|Sube))?$/i);
   if (!match) return null;
   return {
-    class_level: match[1],
+    class_level: String(Number(match[1])),
     section: match[2].toLocaleUpperCase('tr-TR'),
   };
+}
+
+/** Sınıf ve şubeyi ayrı veya birleşik (9/A, 9-A, 9.A) hücrelerden okur. */
+function parseClassSection(classLevel, section) {
+  let level = classLevel != null && classLevel !== '' ? String(classLevel).trim() : '';
+  let sec = section != null && section !== '' ? String(section).trim() : '';
+
+  if (level) {
+    const fromText = parseClassFromText(level);
+    if (fromText) {
+      level = fromText.class_level;
+      if (!sec) sec = fromText.section;
+    } else {
+      const onlyLevel = level.match(/^(\d{1,2})(?:\.\s*[Ss][ıi]n[ıi]f)?$/);
+      if (onlyLevel) level = String(Number(onlyLevel[1]));
+    }
+  }
+
+  if (sec) {
+    const fromSec = parseClassFromText(sec);
+    if (fromSec) {
+      if (!level) level = fromSec.class_level;
+      sec = fromSec.section;
+    } else {
+      const letter = sec.match(/([A-Za-zÇĞİÖŞÜçğıöşü])/);
+      sec = letter ? letter[1].toLocaleUpperCase('tr-TR') : sec.toLocaleUpperCase('tr-TR');
+    }
+  }
+
+  if (!level || !sec) return null;
+  return { class_level: String(level), section: sec };
 }
 
 function detectClassInfo(matrix, headerRowIndex) {
@@ -295,4 +337,5 @@ module.exports = {
   previewWorkbook,
   getMappedRows,
   parseClassFromText,
+  parseClassSection,
 };

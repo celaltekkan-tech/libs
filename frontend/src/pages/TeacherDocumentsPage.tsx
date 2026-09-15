@@ -3,6 +3,9 @@ import { App, Button, Form, Input, Modal, Select, Space, Table, Tag, Typography 
 import { CopyOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { ClearFiltersButton } from '../components/ClearFiltersButton'
+import { FilterBar } from '../components/FilterBar'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import {
   createTeacherDocument,
@@ -16,6 +19,8 @@ import { getErrorMessage } from '../api/client'
 import { DOC_STATUS_LABELS, DOC_STATUS_OPTIONS, DOC_TYPE_LABELS, DOC_TYPE_OPTIONS } from '../types/teacherDocument'
 import type { TeacherDocument, TeacherDocumentPayload } from '../types/teacherDocument'
 import type { Teacher } from '../types/teacher'
+import { tablePagination } from '../utils/tablePagination'
+import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 const STATUS_COLORS: Record<string, string> = {
   taslak: 'default',
@@ -49,7 +54,7 @@ export function TeacherDocumentsPage() {
     try {
       const [docData, teacherData] = await Promise.all([
         listTeacherDocuments(selectedTeacherId ? { teacher_id: selectedTeacherId } : undefined),
-        listTeachers(),
+        listTeachers({ scope: 'teachers' }),
       ])
       setDocs(docData)
       setTeachers(teacherData)
@@ -63,6 +68,14 @@ export function TeacherDocumentsPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
+    getIds: () => docs.map((d) => d.id),
+    deleteOne: (id) => deleteTeacherDocument(Number(id)),
+    noun: 'evrak',
+    reload: () => void load(),
+    message,
+  })
 
   const onFinish = async (values: TeacherDocumentPayload) => {
     if (!session) return
@@ -176,21 +189,34 @@ export function TeacherDocumentsPage() {
       </Typography.Title>
 
       <Space wrap style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Select
-          allowClear
-          showSearch
-          optionFilterProp="label"
-          placeholder="Personele göre filtrele"
-          value={selectedTeacherId ?? undefined}
-          onChange={(v) => setSelectedTeacherId(v ?? null)}
-          options={teachers.map((t) => ({ value: t.id, label: `${t.first_name} ${t.last_name}` }))}
-          style={{ width: 260 }}
-        />
-        {canCreate && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-            Yeni Evrak
-          </Button>
-        )}
+        <FilterBar style={{ marginBottom: 0, width: 'auto' }}>
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="Personele göre filtrele"
+            value={selectedTeacherId ?? undefined}
+            onChange={(v) => setSelectedTeacherId(v ?? null)}
+            options={teachers.map((t) => ({ value: t.id, label: `${t.first_name} ${t.last_name}` }))}
+            style={{ width: 260 }}
+          />
+          <ClearFiltersButton
+            active={selectedTeacherId != null}
+            onClick={() => setSelectedTeacherId(null)}
+          />
+        </FilterBar>
+        <Space wrap>
+          {canDelete && docs.length > 0 && (
+            <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+              Toplu sil ({docs.length})
+            </Button>
+          )}
+          {canCreate && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
+              Yeni Evrak
+            </Button>
+          )}
+        </Space>
       </Space>
 
       <Table
@@ -198,7 +224,7 @@ export function TeacherDocumentsPage() {
         loading={loading}
         columns={columns}
         dataSource={docs}
-        pagination={{ pageSize: 20 }}
+        pagination={tablePagination(20)}
         scroll={{ x: 'max-content' }}
       />
 
@@ -271,6 +297,14 @@ export function TeacherDocumentsPage() {
           onChange={(e) => setDuplicateYear(e.target.value)}
         />
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Evrakları toplu sil"
+        description={`Filtreye uyan ${docs.length} evrak kaydı silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

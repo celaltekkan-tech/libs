@@ -16,6 +16,7 @@ import {
 import { DeleteOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import {
   createExtraLesson,
@@ -31,11 +32,13 @@ import { EXTRA_LESSON_CATEGORY_LABELS, EXTRA_LESSON_CATEGORY_OPTIONS } from '../
 import type { ExtraLessonEntry, ExtraLessonMonthlySummaryRow, ExtraLessonPayload } from '../types/extraLesson'
 import type { Teacher } from '../types/teacher'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+import { tablePagination } from '../utils/tablePagination'
+import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 const now = new Date()
 
 export function ExtraLessonsPage() {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const { session, hasPermission } = useAuth()
 
   const [teachers, setTeachers] = useState<Teacher[]>([])
@@ -58,7 +61,7 @@ export function ExtraLessonsPage() {
     setLoading(true)
     try {
       const [teacherData, rowsData, summaryData] = await Promise.all([
-        listTeachers(),
+        listTeachers({ scope: 'teachers' }),
         listExtraLessons({ year, month }),
         fetchExtraLessonMonthlySummary(year, month),
       ])
@@ -75,6 +78,14 @@ export function ExtraLessonsPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
+    getIds: () => rows.map((r) => r.id),
+    deleteOne: (id) => deleteExtraLesson(Number(id)),
+    noun: 'ek ders kaydı',
+    reload: () => void load(),
+    message,
+  })
 
   const openCreate = () => {
     form.resetFields()
@@ -117,14 +128,23 @@ export function ExtraLessonsPage() {
     }
   }
 
-  const onDelete = async (row: ExtraLessonEntry) => {
-    try {
-      await deleteExtraLesson(row.id)
-      message.success('Kayıt silindi')
-      void load()
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    }
+  const onDelete = (row: ExtraLessonEntry) => {
+    modal.confirm({
+      title: 'Ek ders kaydını sil',
+      content: 'Bu ek ders kaydını silmek istediğinize emin misiniz?',
+      okText: 'Sil',
+      okButtonProps: { danger: true },
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        try {
+          await deleteExtraLesson(row.id)
+          message.success('Kayıt silindi')
+          void load()
+        } catch (err) {
+          message.error(getErrorMessage(err))
+        }
+      },
+    })
   }
 
   const onExport = async () => {
@@ -155,7 +175,7 @@ export function ExtraLessonsPage() {
             title: 'İşlemler',
             width: 80,
             render: (_: unknown, record: ExtraLessonEntry) => (
-              <Button size="small" danger icon={<DeleteOutlined />} onClick={() => void onDelete(record)} />
+              <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onDelete(record)} />
             ),
           },
         ]
@@ -179,6 +199,11 @@ export function ExtraLessonsPage() {
           />
         </Space>
         <Space wrap>
+          {canDelete && rows.length > 0 && (
+            <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+              Toplu sil ({rows.length})
+            </Button>
+          )}
           <Button icon={<DownloadOutlined />} onClick={() => setExportOpen(true)}>
             Dışa Aktar
           </Button>
@@ -195,7 +220,7 @@ export function ExtraLessonsPage() {
         loading={loading}
         columns={columns}
         dataSource={rows}
-        pagination={{ pageSize: 20 }}
+        pagination={tablePagination(20)}
         scroll={{ x: 'max-content' }}
       />
 
@@ -299,6 +324,14 @@ export function ExtraLessonsPage() {
           </Form.Item>
         </Form>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Ek ders kayıtlarını toplu sil"
+        description={`Seçili ay filtresine uyan ${rows.length} ek ders kaydı silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

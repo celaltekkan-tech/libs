@@ -6,6 +6,7 @@ import type {
   TenantSchool,
   TenantUser,
   UpdateTenantPayload,
+  UpdateTenantUserPayload,
 } from '../types/tenant'
 
 interface Envelope<T> {
@@ -57,6 +58,18 @@ export async function resetTenantUserTwoFactor(
 ): Promise<{ user_id: number; totp_enabled: boolean }> {
   const { data } = await client.post<Envelope<{ user_id: number; totp_enabled: boolean }>>(
     `/api/tenants/${tenantId}/users/${userId}/reset-2fa`,
+  )
+  return data.data
+}
+
+export async function updateTenantUser(
+  tenantId: number,
+  userId: number,
+  payload: UpdateTenantUserPayload,
+): Promise<TenantUser> {
+  const { data } = await client.put<Envelope<TenantUser>>(
+    `/api/tenants/${tenantId}/users/${userId}`,
+    payload,
   )
   return data.data
 }
