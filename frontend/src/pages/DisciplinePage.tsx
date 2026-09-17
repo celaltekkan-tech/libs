@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Dropdown, Form, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd'
+import { App, Button, Dropdown, Form, Input, Modal, Select, Space, Tag, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import { DeleteOutlined, FileTextOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
@@ -16,6 +17,7 @@ import {
 import type { DisciplinaryDocumentType } from '../api/disciplinaryCases'
 import { listStudents } from '../api/students'
 import { getErrorMessage } from '../api/client'
+import { nestedPersonNameSorter, SORT_AZ } from '../utils/tableSort'
 import {
   CASE_STATUS_LABELS,
   CASE_STATUS_OPTIONS,
@@ -153,6 +155,8 @@ export function DisciplinePage() {
   const columns: ColumnsType<DisciplinaryCase> = [
     {
       title: 'Öğrenci',
+      sorter: nestedPersonNameSorter((r: DisciplinaryCase) => r.Student),
+      sortDirections: [...SORT_AZ],
       render: (_: unknown, r: DisciplinaryCase) => (r.Student ? `${r.Student.first_name} ${r.Student.last_name}` : '—'),
     },
     { title: 'Olay Tarihi', dataIndex: 'incident_date' },
@@ -224,7 +228,7 @@ export function DisciplinePage() {
         )}
       </Space>
 
-      <Table
+      <SortableTable
         rowKey="id"
         loading={loading}
         columns={columns}

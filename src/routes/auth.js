@@ -10,13 +10,18 @@ const {
   confirm2faSchema,
   disable2faSchema,
   tenantTwoFactorSchema,
+  verifySmsSchema,
+  resendSmsSchema,
   changePasswordSchema,
   updateProfileSchema,
+  tenantMenuLayoutSchema,
 } = require('../validators/auth.validator');
 
 router.post('/register', validate(registerSchema), ctrl.register);
 router.post('/login', validate(loginSchema), ctrl.login);
 router.post('/verify-2fa', validate(verify2faSchema), ctrl.verify2fa);
+router.post('/verify-sms', validate(verifySmsSchema), ctrl.verifySms);
+router.post('/resend-sms', validate(resendSmsSchema), ctrl.resendSms);
 
 router.get('/me', auth, ctrl.me);
 router.put('/profile', auth, validate(updateProfileSchema), ctrl.updateProfile);
@@ -30,5 +35,8 @@ router.post('/2fa/disable', auth, validate(disable2faSchema), ctrl.disable2fa);
 
 router.get('/tenant-2fa', auth, ctrl.getTenantTwoFactorSetting);
 router.put('/tenant-2fa', auth, validate(tenantTwoFactorSchema), ctrl.updateTenantTwoFactorSetting);
+
+router.get('/menu-layout', auth, ctrl.getMenuLayout);
+router.put('/menu-layout', auth, validate(tenantMenuLayoutSchema), ctrl.updateMenuLayout);
 
 module.exports = router;

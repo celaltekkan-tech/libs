@@ -1,21 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  App,
-  Button,
-  Card,
-  Checkbox,
-  Collapse,
-  DatePicker,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Typography,
-} from 'antd'
+import { App, Button, Card, Checkbox, Collapse, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import { DownloadOutlined, DeleteOutlined, SaveOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
@@ -43,6 +28,7 @@ import type { Holiday } from '../types/holiday'
 import type { Teacher } from '../types/teacher'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
 import { tablePagination } from '../utils/tablePagination'
+import { nestedPersonNameSorter, personNameSorter, SORT_AZ } from '../utils/tableSort'
 import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 const now = new Date()
@@ -301,7 +287,12 @@ export function AttendancePage() {
   }, [workerTeachers, draft])
 
   const columns: ColumnsType<Teacher> = [
-    { title: 'Personel', render: (_: unknown, t: Teacher) => `${t.first_name} ${t.last_name}` },
+    {
+      title: 'Personel',
+      sorter: personNameSorter<Teacher>(),
+      sortDirections: [...SORT_AZ],
+      render: (_: unknown, t: Teacher) => `${t.first_name} ${t.last_name}`,
+    },
     {
       title: 'Durum',
       width: 180,
@@ -361,6 +352,8 @@ export function AttendancePage() {
   const existingColumns: ColumnsType<AttendanceRecord> = [
     {
       title: 'Personel',
+      sorter: nestedPersonNameSorter((r: AttendanceRecord) => r.Teacher),
+      sortDirections: [...SORT_AZ],
       render: (_: unknown, r: AttendanceRecord) =>
         r.Teacher ? `${r.Teacher.first_name} ${r.Teacher.last_name}` : '—',
     },
@@ -400,6 +393,8 @@ export function AttendancePage() {
     },
     {
       title: 'Personel',
+      sorter: nestedPersonNameSorter((r: AttendanceRecord) => r.Teacher),
+      sortDirections: [...SORT_AZ],
       render: (_: unknown, r: AttendanceRecord) =>
         r.Teacher ? `${r.Teacher.first_name} ${r.Teacher.last_name}` : '—',
     },
@@ -438,11 +433,11 @@ export function AttendancePage() {
 
       {workerTeachers.length === 0 ? (
         <Typography.Text type="secondary">
-          Henüz "İşçi" veya "TYP" personel tipi tanımlı personel yok. Öğretmenler sayfasından personel tipini
-          güncelleyin.
+          Henüz "İşçi" veya "TYP" personel tipi tanımlı personel yok. Diğer Personeller sayfasından bu
+          kategoride personel ekleyin.
         </Typography.Text>
       ) : (
-        <Table
+        <SortableTable
           rowKey="id"
           loading={loading}
           columns={columns}
@@ -487,7 +482,7 @@ export function AttendancePage() {
               </Button>
             )}
           </Space>
-          <Table
+          <SortableTable
             rowKey="id"
             size="small"
             columns={existingColumns}
@@ -519,7 +514,7 @@ export function AttendancePage() {
           style={{ width: 100 }}
         />
       </Space>
-      <Table
+      <SortableTable
         rowKey="id"
         size="small"
         loading={loading}
@@ -543,7 +538,7 @@ export function AttendancePage() {
             </Space>
           ),
           children: (
-            <Table
+            <SortableTable
               size="small"
               rowKey="status"
               pagination={false}

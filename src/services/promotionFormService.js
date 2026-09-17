@@ -42,6 +42,55 @@ function writeRowBlock(ws, block, rows, mapRow) {
   return Array.isArray(rows) && rows.length > capacity;
 }
 
+function cellText(cell) {
+  if (cell.value == null) return '';
+  if (typeof cell.value === 'object' && cell.value.richText) {
+    return cell.value.richText.map((t) => t.text || '').join('');
+  }
+  if (typeof cell.value === 'object' && cell.value.formula) {
+    return String(cell.value.result || '');
+  }
+  return String(cell.value);
+}
+
+function isInstructionalNote(text) {
+  const s = String(text || '').trim();
+  if (!s) return false;
+  if (s.startsWith('(')) return true;
+  if (/sağlık raporları/i.test(s)) return true;
+  if (/^Terfii Onayı/i.test(s)) return true;
+  return false;
+}
+
+/** Örnek okul verisini siler; etiket, birleşik başlık ve belge notlarına dokunmaz. */
+function clearSalaryFormSampleData(ws, mapping) {
+  Object.values(mapping.header || {}).forEach((addr) => {
+    if (!addr) return;
+    ws.getCell(addr).value = '';
+  });
+
+  const blocks = [
+    mapping.departureRows,
+    mapping.starterRows,
+    mapping.promotionRows,
+    mapping.otherChangeRows,
+    mapping.deductionRows,
+    mapping.reportDayRows,
+    mapping.unionChangeRows,
+  ];
+  blocks.forEach((block) => {
+    if (!block) return;
+    for (let row = block.startRow; row <= block.endRow; row += 1) {
+      Object.values(block.columns || {}).forEach((col) => {
+        if (!col) return;
+        const cell = ws.getCell(`${col}${row}`);
+        if (isInstructionalNote(cellText(cell))) return;
+        cell.value = '';
+      });
+    }
+  });
+}
+
 async function fillPromotionForm(history, teacher) {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(PROMOTION_FORM_TEMPLATE);
@@ -80,17 +129,15 @@ async function fillPromotionForm(history, teacher) {
 }
 
 /**
- * @param {Array<{history: object, teacher: object}>} promotionEntries DB terfi kayıtları
- * @param {{ month, year, draft?: object }} options draft = SalaryFormDraft.payload
+ * Excel / PDF için ortak form modeli.
+ * @param {Array<{history: object, teacher: object}>} promotionEntries
+ * @param {{ month, year, draft?: object, institutionName?: string }} options
  */
-async function fillSalaryChangeForm(promotionEntries, options) {
-  const wb = new ExcelJS.Workbook();
-  await wb.xlsx.readFile(SALARY_FORM_TEMPLATE);
-  const ws = wb.worksheets[0];
+function buildSalaryFormModel(promotionEntries, options) {
   const mapping = salaryFormMapping;
   const draft = options.draft || {};
 
-  const headerValues = {
+  const header = {
     institution_name: draft.institution_name || options.institutionName || '',
     bank_branch: draft.bank_branch || '',
     month_name: MONTH_NAMES_TR[options.month - 1] || '',
@@ -107,98 +154,131 @@ async function fillSalaryChangeForm(promotionEntries, options) {
       '',
   };
 
+  const cap = (block) => (block ? block.endRow - block.startRow + 1 : 0);
+  const take = (rows, capacity) => (Array.isArray(rows) ? rows.slice(0, capacity) : []);
+  const over = (rows, capacity) => Array.isArray(rows) && rows.length > capacity;
+
+  const departures = take(draft.departures, cap(mapping.departureRows)).map((r) => ({
+    personnel_no: r.personnel_no,
+    full_name: r.full_name,
+    national_id: r.national_id,
+    leave_date: r.leave_date,
+    leave_reason: r.leave_reason,
+    documents: r.documents,
+  }));
+
+  const starters = take(draft.starters, cap(mapping.starterRows)).map((r) => ({
+    personnel_no: r.personnel_no,
+    full_name: r.full_name,
+    national_id: r.national_id,
+    iban: r.iban,
+    start_reason: r.start_reason,
+    start_date: r.start_date,
+    documents: r.documents,
+  }));
+
+  const promotions = take(promotionEntries, cap(mapping.promotionRows)).map(({ history, teacher }) => ({
+    personnel_no: teacher.personnel_no || '',
+    full_name: `${teacher.first_name || ''} ${teacher.last_name || ''}`.trim(),
+    national_id: teacher.national_id || '',
+    previous_degree: history.previous_degree || '',
+    previous_rank: history.previous_rank || '',
+    new_degree: history.new_degree || '',
+    new_rank: history.new_rank || '',
+    promotion_date: formatDateTR(history.new_degree_rank_date),
+    documents: history.note || '',
+  }));
+
+  const other_changes = take(draft.other_changes, cap(mapping.otherChangeRows)).map((r) => ({
+    personnel_no: r.personnel_no,
+    full_name: r.full_name,
+    national_id: r.national_id,
+    previous_status: r.previous_status,
+    new_status: r.new_status,
+    documents: r.documents,
+  }));
+
+  const deductions = take(draft.deductions, cap(mapping.deductionRows)).map((r) => ({
+    personnel_no: r.personnel_no,
+    full_name: r.full_name,
+    national_id: r.national_id,
+    reason: r.reason,
+    amount: r.amount,
+    documents: r.documents,
+  }));
+
+  const report_days = take(draft.report_days, cap(mapping.reportDayRows)).map((r) => ({
+    personnel_no: r.personnel_no,
+    full_name: r.full_name,
+    national_id: r.national_id,
+    start_date: r.start_date,
+    days_after_7: r.days_after_7,
+    documents: r.documents,
+  }));
+
+  const union_changes = take(draft.union_changes, cap(mapping.unionChangeRows)).map((r) => ({
+    personnel_no: r.personnel_no,
+    full_name: r.full_name,
+    national_id: r.national_id,
+    left_union: r.left_union,
+    joined_union: r.joined_union,
+    documents: r.documents,
+  }));
+
+  const truncated =
+    over(draft.departures, cap(mapping.departureRows)) ||
+    over(draft.starters, cap(mapping.starterRows)) ||
+    over(promotionEntries, cap(mapping.promotionRows)) ||
+    over(draft.other_changes, cap(mapping.otherChangeRows)) ||
+    over(draft.deductions, cap(mapping.deductionRows)) ||
+    over(draft.report_days, cap(mapping.reportDayRows)) ||
+    over(draft.union_changes, cap(mapping.unionChangeRows));
+
+  return {
+    header,
+    departures,
+    starters,
+    promotions,
+    other_changes,
+    deductions,
+    report_days,
+    union_changes,
+    truncated,
+  };
+}
+
+/**
+ * @param {Array<{history: object, teacher: object}>} promotionEntries DB terfi kayıtları
+ * @param {{ month, year, draft?: object }} options draft = SalaryFormDraft.payload
+ */
+async function fillSalaryChangeForm(promotionEntries, options) {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(SALARY_FORM_TEMPLATE);
+  const ws = wb.worksheets[0];
+  const mapping = salaryFormMapping;
+  const model = buildSalaryFormModel(promotionEntries, options);
+  clearSalaryFormSampleData(ws, mapping);
+
   Object.entries(mapping.header || {}).forEach(([field, cell]) => {
     if (cell == null) return;
-    writeMapped(ws, cell, headerValues[field]);
+    writeMapped(ws, cell, model.header[field]);
   });
 
-  let truncated = false;
-
-  truncated =
-    writeRowBlock(ws, mapping.departureRows, draft.departures, (r) => ({
-      personnel_no: r.personnel_no,
-      full_name: r.full_name,
-      national_id: r.national_id,
-      leave_date: r.leave_date,
-      leave_reason: r.leave_reason,
-      documents: r.documents,
-    })) || truncated;
-
-  truncated =
-    writeRowBlock(ws, mapping.starterRows, draft.starters, (r) => ({
-      personnel_no: r.personnel_no,
-      full_name: r.full_name,
-      national_id: r.national_id,
-      iban: r.iban,
-      start_reason: r.start_reason,
-      start_date: r.start_date,
-      documents: r.documents,
-    })) || truncated;
-
-  truncated =
-    writeRowBlock(
-      ws,
-      mapping.promotionRows,
-      promotionEntries.map(({ history, teacher }) => ({ history, teacher })),
-      ({ history, teacher }) => ({
-        personnel_no: teacher.personnel_no || '',
-        full_name: `${teacher.first_name || ''} ${teacher.last_name || ''}`.trim(),
-        national_id: teacher.national_id || '',
-        previous_degree: history.previous_degree || '',
-        previous_rank: history.previous_rank || '',
-        new_degree: history.new_degree || '',
-        new_rank: history.new_rank || '',
-        promotion_date: formatDateTR(history.new_degree_rank_date),
-        documents: history.note || '',
-      })
-    ) || truncated;
-
-  truncated =
-    writeRowBlock(ws, mapping.otherChangeRows, draft.other_changes, (r) => ({
-      personnel_no: r.personnel_no,
-      full_name: r.full_name,
-      national_id: r.national_id,
-      previous_status: r.previous_status,
-      new_status: r.new_status,
-      documents: r.documents,
-    })) || truncated;
-
-  truncated =
-    writeRowBlock(ws, mapping.deductionRows, draft.deductions, (r) => ({
-      personnel_no: r.personnel_no,
-      full_name: r.full_name,
-      national_id: r.national_id,
-      reason: r.reason,
-      amount: r.amount,
-      documents: r.documents,
-    })) || truncated;
-
-  truncated =
-    writeRowBlock(ws, mapping.reportDayRows, draft.report_days, (r) => ({
-      personnel_no: r.personnel_no,
-      full_name: r.full_name,
-      national_id: r.national_id,
-      start_date: r.start_date,
-      days_after_7: r.days_after_7,
-      documents: r.documents,
-    })) || truncated;
-
-  truncated =
-    writeRowBlock(ws, mapping.unionChangeRows, draft.union_changes, (r) => ({
-      personnel_no: r.personnel_no,
-      full_name: r.full_name,
-      national_id: r.national_id,
-      left_union: r.left_union,
-      joined_union: r.joined_union,
-      documents: r.documents,
-    })) || truncated;
+  writeRowBlock(ws, mapping.departureRows, model.departures, (r) => r);
+  writeRowBlock(ws, mapping.starterRows, model.starters, (r) => r);
+  writeRowBlock(ws, mapping.promotionRows, model.promotions, (r) => r);
+  writeRowBlock(ws, mapping.otherChangeRows, model.other_changes, (r) => r);
+  writeRowBlock(ws, mapping.deductionRows, model.deductions, (r) => r);
+  writeRowBlock(ws, mapping.reportDayRows, model.report_days, (r) => r);
+  writeRowBlock(ws, mapping.unionChangeRows, model.union_changes, (r) => r);
 
   const buffer = await wb.xlsx.writeBuffer();
-  return { buffer, truncated };
+  return { buffer, truncated: model.truncated };
 }
 
 module.exports = {
   fillPromotionForm,
   fillSalaryChangeForm,
+  buildSalaryFormModel,
   formatDateTR,
 };

@@ -3,7 +3,8 @@
 const { Op } = require('sequelize');
 const { SalaryFormDraft, PromotionHistory, Teacher, School } = require('../models');
 const audit = require('../services/auditService');
-const { fillSalaryChangeForm } = require('../services/promotionFormService');
+const { fillSalaryChangeForm, buildSalaryFormModel } = require('../services/promotionFormService');
+const { buildSalaryChangePdf } = require('../services/salaryFormPdfService');
 const { getSalaryPeriodRange } = require('../utils/salaryPeriod');
 
 const EMPTY_PAYLOAD = {
@@ -31,6 +32,45 @@ function parsePeriod(query) {
     return null;
   }
   return { month, year };
+}
+
+function parseFormat(query) {
+  const format = String(query.format || 'xlsx').toLowerCase();
+  return format === 'pdf' ? 'pdf' : 'xlsx';
+}
+
+async function loadExportContext(req, period) {
+  const tenantId = req.user.tenant_id;
+  const range = getSalaryPeriodRange(period.month, period.year);
+
+  const draft = await SalaryFormDraft.findOne({
+    where: { tenant_id: tenantId, month: period.month, year: period.year },
+  });
+
+  const histories = await PromotionHistory.findAll({
+    where: {
+      tenant_id: tenantId,
+      new_degree_rank_date: { [Op.gte]: range.start, [Op.lt]: range.endExclusive },
+    },
+    include: [{ model: Teacher, include: [{ model: School, required: false }] }],
+    order: [['new_degree_rank_date', 'ASC']],
+  });
+
+  const entries = histories.filter((h) => h.Teacher).map((h) => ({ history: h, teacher: h.Teacher }));
+  const institutionName =
+    draft?.payload?.institution_name ||
+    entries[0]?.teacher.School?.name ||
+    entries[0]?.teacher.working_institution ||
+    null;
+
+  const options = {
+    month: period.month,
+    year: period.year,
+    institutionName,
+    draft: draft?.payload || EMPTY_PAYLOAD,
+  };
+
+  return { draft, entries, options, range };
 }
 
 module.exports = {
@@ -121,48 +161,43 @@ module.exports = {
         return res.status(400).json({ success: false, message: 'Geçerli ay ve yıl gerekli' });
       }
 
-      const tenantId = req.user.tenant_id;
-      const range = getSalaryPeriodRange(period.month, period.year);
+      const format = parseFormat(req.query);
+      const inline =
+        String(req.query.inline || '') === '1' || String(req.query.inline || '').toLowerCase() === 'true';
+      const { draft, entries, options, range } = await loadExportContext(req, period);
+      const baseName = `maas-degisiklik-${period.year}-${String(period.month).padStart(2, '0')}`;
 
-      const draft = await SalaryFormDraft.findOne({
-        where: { tenant_id: tenantId, month: period.month, year: period.year },
-      });
+      let buffer;
+      let truncated = false;
+      let contentType;
+      let filename;
 
-      const histories = await PromotionHistory.findAll({
-        where: {
-          tenant_id: tenantId,
-          new_degree_rank_date: { [Op.gte]: range.start, [Op.lt]: range.endExclusive },
-        },
-        include: [{ model: Teacher, include: [{ model: School, required: false }] }],
-        order: [['new_degree_rank_date', 'ASC']],
-      });
-
-      const entries = histories.filter((h) => h.Teacher).map((h) => ({ history: h, teacher: h.Teacher }));
-      const institutionName =
-        draft?.payload?.institution_name ||
-        entries[0]?.teacher.School?.name ||
-        entries[0]?.teacher.working_institution ||
-        null;
-
-      const { buffer, truncated } = await fillSalaryChangeForm(entries, {
-        month: period.month,
-        year: period.year,
-        institutionName,
-        draft: draft?.payload || EMPTY_PAYLOAD,
-      });
+      if (format === 'pdf') {
+        const model = buildSalaryFormModel(entries, options);
+        truncated = model.truncated;
+        buffer = await buildSalaryChangePdf(model);
+        contentType = 'application/pdf';
+        filename = `${baseName}.pdf`;
+      } else {
+        const result = await fillSalaryChangeForm(entries, options);
+        buffer = result.buffer;
+        truncated = result.truncated;
+        contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        filename = `${baseName}.xlsx`;
+      }
 
       await audit.log(req, {
         action: 'export',
         entityType: 'salary_change_form',
         entityId: draft?.id || null,
-        summary: `Maaş değişikliği formu indirildi: ${range.startLabel}–${range.endLabel}`,
+        summary: `Maaş değişikliği formu (${format.toUpperCase()}) indirildi: ${range.startLabel}–${range.endLabel}`,
       });
 
       if (truncated) res.setHeader('X-Promotion-Rows-Truncated', 'true');
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Type', contentType);
       res.setHeader(
         'Content-Disposition',
-        `attachment; filename="maas-degisiklik-${period.year}-${String(period.month).padStart(2, '0')}.xlsx"`,
+        `${inline && format === 'pdf' ? 'inline' : 'attachment'}; filename="${filename}"`,
       );
       res.send(buffer);
     } catch (err) {

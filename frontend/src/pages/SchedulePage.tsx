@@ -1,22 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  App,
-  Button,
-  Checkbox,
-  Collapse,
-  Empty,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Select,
-  Space,
-  Steps,
-  Table,
-  Tag,
-  Typography,
-  Upload,
-} from 'antd'
+import { App, Button, Checkbox, Collapse, Empty, Form, Input, InputNumber, Modal, Select, Space, Steps, Tag, Typography, Upload } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import type { UploadFile } from 'antd/es/upload/interface'
 import { DeleteOutlined, DownloadOutlined, InboxOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons'
 import { AppLayout } from '../components/AppLayout'
@@ -469,7 +453,7 @@ export function SchedulePage() {
           <Typography.Title level={4} style={{ marginTop: 32 }}>
             Ders Yükü Kontrolü
           </Typography.Title>
-          <Table
+          <SortableTable
             size="small"
             rowKey="subject_id"
             pagination={false}
@@ -506,7 +490,7 @@ export function SchedulePage() {
             </Space>
           ),
           children: (
-            <Table
+            <SortableTable
               size="small"
               rowKey="name"
               pagination={false}
@@ -713,7 +697,7 @@ export function SchedulePage() {
             {importPreview.sample_rows.length > 0 && (
               <>
                 <Typography.Text strong>Örnek satırlar</Typography.Text>
-                <Table
+                <SortableTable
                   size="small"
                   pagination={false}
                   rowKey="row"

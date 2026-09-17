@@ -178,6 +178,20 @@ const MENU_PERMISSION_GROUPS = [
     permissions: ['audit.read'],
   },
   {
+    id: 'work_tasks',
+    label: 'İş Takibi',
+    group: 'Sistem',
+    module: null,
+    permissions: ['work_tasks.read', 'work_tasks.create', 'work_tasks.update', 'work_tasks.delete'],
+  },
+  {
+    id: 'message_logs',
+    label: 'SMS / E-posta Kayıtları',
+    group: 'Sistem',
+    module: null,
+    permissions: ['message_logs.read'],
+  },
+  {
     id: 'feedback',
     label: 'Geri Bildirim',
     group: 'Sistem',
@@ -212,6 +226,9 @@ const MENU_PATH_PERMISSION = {
   '/users': 'users.read',
   '/audit-logs': 'audit.read',
   '/feedback': 'feedback.read',
+  '/work-tasks': 'work_tasks.read',
+  // /calendar görünürlüğü kaynak izinlerinin OR birleşimi (frontend CALENDAR_MENU_SOURCE_PERMISSIONS)
+  '/message-logs': 'message_logs.read',
 };
 
 module.exports = {

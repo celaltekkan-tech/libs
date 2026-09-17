@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { App, Space, Table, Tag, Typography } from 'antd'
+import { App, Space, Tag, Typography } from 'antd'
+import { SortableTable } from './SortableTable'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { listAbsences } from '../api/absences'
@@ -97,7 +98,7 @@ export function StudentAbsenceHistory({ studentId, studentName, refreshKey = 0 }
           İki yarım gün 1 gün sayılır; mazeretli / raporlu toplama dahil edilmez.
         </Typography.Text>
       </Space>
-      <Table
+      <SortableTable
         size="small"
         rowKey="id"
         loading={loading}

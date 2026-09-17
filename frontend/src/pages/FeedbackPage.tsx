@@ -175,7 +175,7 @@ export function FeedbackPage() {
 
   return (
     <AppLayout title="Geri Bildirim">
-      <div style={{ maxWidth: 720 }}>
+      <div style={{ width: '100%' }}>
         <Typography.Title level={3}>Geri Bildirim Gönder</Typography.Title>
         <Typography.Paragraph type="secondary">
           Madde imi, kalın/italik yazı kullanabilirsiniz. İsterseniz PDF veya ekran görüntüsü ekleyin

@@ -1,18 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import {
-  App,
-  Button,
-  Form,
-  Input,
-  Modal,
-  Select,
-  Space,
-  Switch,
-  Table,
-  Tabs,
-  Tag,
-  Typography,
-} from 'antd'
+import { App, Button, Form, Input, Modal, Select, Space, Switch, Tabs, Tag, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
@@ -263,7 +251,7 @@ export function CommunicationsPage() {
                   kayıt altına alınır ve "gönderildi" olarak işaretlenebilir; fiili gönderim için bir sağlayıcı
                   entegrasyonu gerekir.
                 </Typography.Paragraph>
-                <Table
+                <SortableTable
                   rowKey="id"
                   loading={loading}
                   columns={announcementColumns}
@@ -289,7 +277,7 @@ export function CommunicationsPage() {
                   style={{ width: 320, marginBottom: 16 }}
                 />
                 {selectedStudentId && (
-                  <Table
+                  <SortableTable
                     rowKey="value"
                     pagination={false}
                     scroll={{ x: 'max-content' }}

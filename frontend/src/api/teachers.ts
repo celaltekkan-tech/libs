@@ -103,10 +103,15 @@ export async function downloadSalaryChangeForm(month: number, year: number): Pro
 }
 
 export type TeacherDocumentType = 'gorevlendirme' | 'baslama' | 'ayrilis'
+export type TeacherDocumentFormat = 'docx' | 'pdf'
 
-export async function downloadTeacherDocument(id: number, type: TeacherDocumentType): Promise<Blob> {
+export async function downloadTeacherDocument(
+  id: number,
+  type: TeacherDocumentType,
+  format: TeacherDocumentFormat = 'docx',
+): Promise<Blob> {
   const { data } = await client.get(`/api/teachers/${id}/document`, {
-    params: { type },
+    params: { type, format },
     responseType: 'blob',
     timeout: 30000,
   })

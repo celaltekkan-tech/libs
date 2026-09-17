@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { App, Alert, Button, Checkbox, Input, Modal, Select, Table, Tag, Typography, Upload } from 'antd'
+import { App, Alert, Button, Checkbox, Input, Modal, Select, Tag, Typography, Upload } from 'antd'
+import { SortableTable } from './SortableTable'
 import { InboxOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import type { RcFile } from 'antd/es/upload/interface'
@@ -223,7 +224,7 @@ export function MebbisImportModal({ open, schoolId, schoolName, onCancel, onImpo
             (TC kimlik no ile eşleşenler MEBBİS verisiyle tamamen güncellenir; Sendika alanı korunur/manuel
             girilir).
           </Typography.Paragraph>
-          <Table
+          <SortableTable
             rowKey="row_index"
             size="small"
             columns={columns}

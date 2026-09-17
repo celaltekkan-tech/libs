@@ -1,19 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import {
-  App,
-  Button,
-  Checkbox,
-  DatePicker,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Typography,
-} from 'antd'
+import { App, Button, Checkbox, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
@@ -337,7 +324,7 @@ export function DykAttendancePanel() {
             )}
           </Space>
 
-          <Table
+          <SortableTable
             rowKey="id"
             columns={enrollmentColumns}
             dataSource={enrollments}
@@ -348,7 +335,7 @@ export function DykAttendancePanel() {
           <Typography.Title level={4} style={{ marginTop: 32 }}>
             Devam Özeti
           </Typography.Title>
-          <Table
+          <SortableTable
             rowKey="student_id"
             columns={summaryColumns}
             dataSource={summary}

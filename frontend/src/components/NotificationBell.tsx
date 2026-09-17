@@ -11,7 +11,7 @@ import { getErrorMessage } from '../api/client'
 import type { AppNotification } from '../types/notification'
 import { App } from 'antd'
 
-const POLL_MS = 60_000
+const POLL_MS = 120_000
 
 export function NotificationBell() {
   const { message } = App.useApp()
@@ -19,7 +19,6 @@ export function NotificationBell() {
   const [unread, setUnread] = useState(0)
   const [items, setItems] = useState<AppNotification[]>([])
   const [loading, setLoading] = useState(false)
-  const [shakeTick, setShakeTick] = useState(0)
 
   const refreshCount = useCallback(async () => {
     try {
@@ -46,13 +45,6 @@ export function NotificationBell() {
     const id = window.setInterval(() => void refreshCount(), POLL_MS)
     return () => window.clearInterval(id)
   }, [refreshCount])
-
-  // Okunmamış varken dakikada bir kısa sallanma
-  useEffect(() => {
-    if (unread <= 0) return
-    const id = window.setInterval(() => setShakeTick((n) => n + 1), POLL_MS)
-    return () => window.clearInterval(id)
-  }, [unread])
 
   useEffect(() => {
     if (open) void loadList()
@@ -140,7 +132,6 @@ export function NotificationBell() {
         <Button
           type="text"
           className={unread > 0 ? 'notification-bell has-unread' : 'notification-bell'}
-          data-shake={shakeTick}
           icon={<BellOutlined />}
           aria-label={unread > 0 ? `${unread} okunmamış bildirim` : 'Bildirimler'}
           title="Bildirimler"

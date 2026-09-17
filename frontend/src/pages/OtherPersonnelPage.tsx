@@ -1,24 +1,30 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { App, Button, Checkbox, Collapse, Dropdown, Empty, Form, Input, Modal, Select, Space, Typography } from 'antd'
+import dayjs from 'dayjs'
+import { SortableTable } from '../components/SortableTable'
 import {
-  App,
-  Button,
-  Collapse,
-  Empty,
-  Form,
-  Input,
-  Modal,
-  Select,
-  Space,
-  Table,
-  Typography,
-} from 'antd'
-import { DeleteOutlined, EditOutlined, PlusOutlined, SearchOutlined, TagOutlined } from '@ant-design/icons'
+  DeleteOutlined,
+  EditOutlined,
+  FileTextOutlined,
+  PlusOutlined,
+  SearchOutlined,
+  SwapOutlined,
+  TagOutlined,
+} from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { PersonnelDepartureModal } from '../components/PersonnelDepartureModal'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import { useActiveSchool } from '../auth/ActiveSchoolContext'
-import { createTeacher, deleteTeacher, listTeachers, updateTeacher } from '../api/teachers'
+import {
+  createTeacher,
+  deleteTeacher,
+  downloadTeacherDocument,
+  listTeachers,
+  updateTeacher,
+} from '../api/teachers'
+import type { TeacherDocumentType } from '../api/teachers'
 import {
   createPersonnelCategory,
   deletePersonnelCategory,
@@ -29,6 +35,9 @@ import { getErrorMessage } from '../api/client'
 import type { Teacher } from '../types/teacher'
 import type { PersonnelCategory } from '../types/personnelCategory'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
+import { downloadBlob } from '../utils/download'
+import { addSalaryFormStarter } from '../utils/salaryFormAutoEntry'
+import { personNameSorter, SORT_AZ } from '../utils/tableSort'
 
 interface CategoryFormValues {
   name: string
@@ -43,6 +52,7 @@ interface StaffFormValues {
   national_id?: string
   title_branch?: string
   working_institution?: string
+  add_to_salary_form?: boolean
 }
 
 export function OtherPersonnelPage() {
@@ -61,6 +71,7 @@ export function OtherPersonnelPage() {
   const [submitting, setSubmitting] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkLoading, setBulkLoading] = useState(false)
+  const [departureTarget, setDepartureTarget] = useState<Teacher | null>(null)
   const [categoryForm] = Form.useForm<CategoryFormValues>()
   const [staffForm] = Form.useForm<StaffFormValues>()
 
@@ -174,7 +185,7 @@ export function OtherPersonnelPage() {
     staffForm.resetFields()
     const id = categoryId ?? categories[0]?.id
     setDefaultCategoryId(id ?? null)
-    staffForm.setFieldsValue({ personnel_category_id: id })
+    staffForm.setFieldsValue({ personnel_category_id: id, add_to_salary_form: true })
     setStaffOpen(true)
   }
 
@@ -197,16 +208,30 @@ export function OtherPersonnelPage() {
     if (!session) return
     setSubmitting(true)
     try {
+      const { add_to_salary_form, ...rest } = values
       const payload = {
-        ...values,
+        ...rest,
         personnel_category_id: values.personnel_category_id,
       }
       if (editingStaff) {
         await updateTeacher(editingStaff.id, payload)
         message.success('Personel güncellendi')
       } else {
-        await createTeacher(session.user.tenant_id, payload)
+        const created = await createTeacher(session.user.tenant_id, payload)
         message.success('Personel eklendi')
+        if (add_to_salary_form) {
+          const startDate = dayjs()
+          try {
+            await addSalaryFormStarter(startDate, {
+              personnel_no: created.personnel_no || undefined,
+              full_name: `${created.first_name} ${created.last_name}`,
+              national_id: created.national_id || undefined,
+              start_date: startDate.format('YYYY-MM-DD'),
+            })
+          } catch (err) {
+            message.warning('Personel eklendi ancak maaş değişikliği formuna eklenemedi: ' + getErrorMessage(err))
+          }
+        }
       }
       setStaffOpen(false)
       void load()
@@ -215,6 +240,37 @@ export function OtherPersonnelPage() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const onDownloadDocument = async (person: Teacher, type: TeacherDocumentType) => {
+    if (type === 'ayrilis') {
+      setDepartureTarget(person)
+      return
+    }
+    try {
+      const blob = await downloadTeacherDocument(person.id, type)
+      downloadBlob(blob, `${type}-${person.personnel_no || person.id}.docx`)
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    }
+  }
+
+  const onMoveToTeacher = (person: Teacher) => {
+    modal.confirm({
+      title: 'Öğretmene taşı',
+      content: `"${person.first_name} ${person.last_name}" Diğer Personeller listesinden çıkarılıp Öğretmenler listesine taşınacak.`,
+      okText: 'Taşı',
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        try {
+          await updateTeacher(person.id, { personnel_category_id: null, personnel_type: 'ogretmen' })
+          message.success('Personel Öğretmenler listesine taşındı')
+          void load()
+        } catch (err) {
+          message.error(getErrorMessage(err))
+        }
+      },
+    })
   }
 
   const onDeleteStaff = (person: Teacher) => {
@@ -256,6 +312,8 @@ export function OtherPersonnelPage() {
   const columns: ColumnsType<Teacher> = [
     {
       title: 'Ad soyad',
+      sorter: personNameSorter<Teacher>(),
+      sortDirections: [...SORT_AZ],
       render: (_: unknown, record) => `${record.first_name} ${record.last_name}`,
     },
     { title: 'Sicil No', dataIndex: 'personnel_no', render: (v: string | null) => v || '—' },
@@ -264,9 +322,29 @@ export function OtherPersonnelPage() {
     { title: 'Okul', render: (_: unknown, record) => schoolName(record.school_id) },
     {
       title: 'İşlemler',
-      width: 120,
+      width: 160,
       render: (_: unknown, record) => (
         <Space>
+          <Dropdown
+            menu={{
+              items: [
+                { key: 'baslama', label: 'Göreve Başlama Yazısı' },
+                { key: 'gorevlendirme', label: 'Görevlendirme Yazısı' },
+                { key: 'ayrilis', label: 'Ayrılış Ver...' },
+              ],
+              onClick: ({ key }) => void onDownloadDocument(record, key as TeacherDocumentType),
+            }}
+          >
+            <Button size="small" icon={<FileTextOutlined />} title="Evrak indir" />
+          </Dropdown>
+          {canUpdate && (
+            <Button
+              size="small"
+              icon={<SwapOutlined />}
+              onClick={() => onMoveToTeacher(record)}
+              title="Öğretmene taşı"
+            />
+          )}
           {canUpdate && (
             <Button size="small" icon={<EditOutlined />} onClick={() => openEditStaff(record)} title="Düzenle" />
           )}
@@ -312,7 +390,7 @@ export function OtherPersonnelPage() {
           </Space>
         ),
         children: (
-          <Table
+          <SortableTable
             rowKey="id"
             size="small"
             loading={loading}
@@ -335,7 +413,7 @@ export function OtherPersonnelPage() {
               </Space>
             ),
             children: (
-              <Table
+              <SortableTable
                 rowKey="id"
                 size="small"
                 loading={loading}
@@ -460,6 +538,14 @@ export function OtherPersonnelPage() {
             <Form.Item name="working_institution" label="Görev yeri">
               <Input />
             </Form.Item>
+            {!editingStaff && (
+              <Form.Item name="add_to_salary_form" valuePropName="checked">
+                <Checkbox>
+                  Maaş Değişikliği Bildirim Formuna ekle (C - Başlayan Personel). İşaret kaldırılırsa
+                  kurum içi görevlendirme kabul edilir.
+                </Checkbox>
+              </Form.Item>
+            )}
           </Form>
         </Modal>
       </div>
@@ -470,6 +556,14 @@ export function OtherPersonnelPage() {
         loading={bulkLoading}
         onCancel={() => setBulkOpen(false)}
         onConfirm={onBulkDelete}
+      />
+      <PersonnelDepartureModal
+        teacher={departureTarget}
+        onClose={() => setDepartureTarget(null)}
+        onDone={() => {
+          setDepartureTarget(null)
+          void load()
+        }}
       />
     </AppLayout>
   )

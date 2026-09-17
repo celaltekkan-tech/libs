@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Form, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd'
+import { App, Button, Form, Input, Modal, Select, Space, Tag, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import { DeleteOutlined, LockOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
@@ -19,6 +20,7 @@ import { REFERRAL_LABELS, REFERRAL_OPTIONS, SESSION_TYPE_LABELS, SESSION_TYPE_OP
 import type { GuidanceSession, GuidanceSessionPayload, GuidanceStats } from '../types/guidanceSession'
 import type { Student } from '../types/student'
 import { tablePagination } from '../utils/tablePagination'
+import { nestedPersonNameSorter, SORT_AZ } from '../utils/tableSort'
 import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 export function GuidancePage() {
@@ -106,6 +108,8 @@ export function GuidancePage() {
     { title: 'Tarih', dataIndex: 'session_date' },
     {
       title: 'Öğrenci',
+      sorter: nestedPersonNameSorter((r: GuidanceSession) => r.Student),
+      sortDirections: [...SORT_AZ],
       render: (_: unknown, r: GuidanceSession) => (r.Student ? `${r.Student.first_name} ${r.Student.last_name}` : '—'),
     },
     { title: 'Görüşme Türü', dataIndex: 'session_type', render: (v: string) => SESSION_TYPE_LABELS[v] || v },
@@ -177,7 +181,7 @@ export function GuidancePage() {
         </Space>
       </Space>
 
-      <Table
+      <SortableTable
         rowKey="id"
         loading={loading}
         columns={columns}

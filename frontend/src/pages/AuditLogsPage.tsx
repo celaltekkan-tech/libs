@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Input, Select, Table, Tag, Typography } from 'antd'
+import { App, Input, Select, Tag, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
@@ -112,7 +113,7 @@ export function AuditLogsPage() {
 
   return (
     <AppLayout title="Denetim Kayıtları">
-      <div style={{ maxWidth: 1200 }}>
+      <div style={{ width: '100%' }}>
         <Typography.Title level={3} style={{ marginBottom: 4 }}>
           Denetim Kayıtları
         </Typography.Title>
@@ -156,7 +157,7 @@ export function AuditLogsPage() {
           />
         </FilterBar>
 
-        <Table
+        <SortableTable
           rowKey="id"
           loading={loading}
           columns={columns}

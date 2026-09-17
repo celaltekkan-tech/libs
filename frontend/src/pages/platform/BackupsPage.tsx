@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Card, Form, InputNumber, Space, Table, Typography } from 'antd'
+import { App, Button, Card, Form, InputNumber, Space, Typography } from 'antd'
+import { SortableTable } from '../../components/SortableTable'
 import { DeleteOutlined, SaveOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../../components/AppLayout'
@@ -106,7 +107,7 @@ export function BackupsPage() {
 
   return (
     <AppLayout title="Veritabanı Yedekleme">
-      <div style={{ maxWidth: 1000 }}>
+      <div style={{ width: '100%' }}>
         <Typography.Title level={3} style={{ margin: 0, marginBottom: 4 }}>
           Yedekleme
         </Typography.Title>
@@ -141,7 +142,7 @@ export function BackupsPage() {
           <Button onClick={() => void load()}>Yenile</Button>
         </Space>
 
-        <Table
+        <SortableTable
           rowKey="filename"
           loading={loading}
           columns={columns}

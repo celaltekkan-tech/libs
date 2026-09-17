@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Button, Form, Input, Modal, Select, Space, Switch, Table, Typography } from 'antd'
+import { App, Button, Form, Input, Modal, Select, Space, Switch, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import { DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
@@ -22,6 +23,7 @@ import type { School } from '../types/school'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
 import { tablePagination } from '../utils/tablePagination'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
+import { nestedPersonNameSorter, sorterBy, SORT_AZ } from '../utils/tableSort'
 
 export function ClassroomsPage() {
   const { message, modal } = App.useApp()
@@ -190,10 +192,14 @@ export function ClassroomsPage() {
   const columns: ColumnsType<Classroom> = [
     {
       title: 'Sınıf / Şube',
+      sorter: sorterBy((r: Classroom) => classroomLabel(r)),
+      sortDirections: [...SORT_AZ],
       render: (_: unknown, record) => classroomLabel(record),
     },
     {
       title: 'Sınıf öğretmeni',
+      sorter: nestedPersonNameSorter((r: Classroom) => r.Teacher),
+      sortDirections: [...SORT_AZ],
       render: (_: unknown, record) =>
         record.Teacher ? `${record.Teacher.first_name} ${record.Teacher.last_name}` : '—',
     },
@@ -201,6 +207,8 @@ export function ClassroomsPage() {
       ? [
           {
             title: 'Okul',
+            sorter: sorterBy((record: Classroom) => record.School?.name || ''),
+            sortDirections: [...SORT_AZ],
             render: (_: unknown, record: Classroom) => record.School?.name || '—',
           },
         ]
@@ -269,7 +277,7 @@ export function ClassroomsPage() {
           style={{ maxWidth: 420, marginBottom: 16 }}
         />
 
-        <Table
+        <SortableTable
           rowKey="id"
           loading={loading}
           columns={columns}

@@ -5,6 +5,7 @@ import { createTenant } from '../../api/tenants'
 import { LICENSE_PLANS } from '../../constants/licensePlans'
 import { SCHOOL_TYPE_LABELS } from '../../types/school'
 import type { CreateTenantWizardPayload } from '../../types/tenant'
+import { MOBILE_PHONE_RULE, requiredMobilePhoneRule } from '../../utils/phone'
 
 const SCHOOL_TYPE_OPTIONS = Object.entries(SCHOOL_TYPE_LABELS).map(([value, label]) => ({ value, label }))
 
@@ -73,6 +74,14 @@ export function CreateTenantWizardModal({ open, onClose, onCreated }: CreateTena
         >
           <Input placeholder="Örn. Atatürk Anadolu Lisesi" />
         </Form.Item>
+        <Form.Item
+          label="Kurum telefonu"
+          name={['tenant', 'phone']}
+          extra="Telefonu olmayan kullanıcılara kopyalanabilir (05xxxxxxxxx)."
+          rules={[MOBILE_PHONE_RULE]}
+        >
+          <Input placeholder="05xx xxx xx xx" maxLength={30} />
+        </Form.Item>
         <Form.Item label="Plan" name={['tenant', 'plan']}>
           <Select
             allowClear
@@ -125,6 +134,17 @@ export function CreateTenantWizardModal({ open, onClose, onCreated }: CreateTena
           ]}
         >
           <Input placeholder="mudur@okul.local" />
+        </Form.Item>
+        <Form.Item
+          label="Yönetici telefonu (SMS)"
+          name={['admin', 'phone']}
+          extra="Yönetici SMS giriş/bildirimleri için geçerli cep telefonu (05xxxxxxxxx)."
+          rules={[
+            { required: true, message: 'Yönetici telefonu zorunludur' },
+            requiredMobilePhoneRule(true),
+          ]}
+        >
+          <Input placeholder="05xx xxx xx xx" maxLength={30} />
         </Form.Item>
         <Form.Item
           label="Şifre"

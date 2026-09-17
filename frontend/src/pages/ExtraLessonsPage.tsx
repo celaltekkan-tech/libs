@@ -1,18 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import {
-  App,
-  Button,
-  Collapse,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Typography,
-} from 'antd'
+import { App, Button, Collapse, Form, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import { DeleteOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
@@ -33,6 +21,7 @@ import type { ExtraLessonEntry, ExtraLessonMonthlySummaryRow, ExtraLessonPayload
 import type { Teacher } from '../types/teacher'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
 import { tablePagination } from '../utils/tablePagination'
+import { nestedPersonNameSorter, SORT_AZ } from '../utils/tableSort'
 import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 const now = new Date()
@@ -164,6 +153,8 @@ export function ExtraLessonsPage() {
   const columns: ColumnsType<ExtraLessonEntry> = [
     {
       title: 'Personel',
+      sorter: nestedPersonNameSorter((r: ExtraLessonEntry) => r.Teacher),
+      sortDirections: [...SORT_AZ],
       render: (_: unknown, r: ExtraLessonEntry) => (r.Teacher ? `${r.Teacher.first_name} ${r.Teacher.last_name}` : '—'),
     },
     { title: 'Kategori', dataIndex: 'category', render: (v: string) => EXTRA_LESSON_CATEGORY_LABELS[v] || v },
@@ -215,7 +206,7 @@ export function ExtraLessonsPage() {
         </Space>
       </Space>
 
-      <Table
+      <SortableTable
         rowKey="id"
         loading={loading}
         columns={columns}
@@ -237,7 +228,7 @@ export function ExtraLessonsPage() {
             </Space>
           ),
           children: (
-            <Table
+            <SortableTable
               size="small"
               rowKey="name"
               pagination={false}

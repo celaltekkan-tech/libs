@@ -3,6 +3,11 @@
 const { Announcement, AnnouncementRecipient, Student } = require('../models');
 const audit = require('../services/auditService');
 const smsEngine = require('../services/smsEngine');
+const messageLogService = require('../services/messageLogService');
+
+function studentFullName(student) {
+  return [student.first_name, student.last_name].filter(Boolean).join(' ') || null;
+}
 
 function assertTenantAccess(req, row) {
   if (req.user && req.user.tenant_id && row.tenant_id !== req.user.tenant_id) return false;
@@ -100,6 +105,19 @@ module.exports = {
               status: smsEngine.SMS_STATUS.CANCELLED,
               error_message: 'Telefon numarası yok',
             });
+            await messageLogService.record({
+              tenantId: row.tenant_id,
+              channel: 'sms',
+              sourceModule: 'announcement',
+              sourceId: row.id,
+              recipientLabel: studentFullName(student),
+              recipientContact: null,
+              subject: row.title,
+              body: row.body,
+              status: smsEngine.SMS_STATUS.CANCELLED,
+              error: 'Telefon numarası yok',
+              sentAt: null,
+            });
             summary.iptal += 1;
             continue;
           }
@@ -115,6 +133,19 @@ module.exports = {
             provider_message_id: result.providerMessageId,
             error_message: result.error,
             sent_at: result.status === smsEngine.SMS_STATUS.SUCCESS ? new Date() : null,
+          });
+          await messageLogService.record({
+            tenantId: row.tenant_id,
+            channel: 'sms',
+            sourceModule: 'announcement',
+            sourceId: row.id,
+            recipientLabel: studentFullName(student),
+            recipientContact: phone,
+            subject: row.title,
+            body: row.body,
+            status: result.status,
+            error: result.error,
+            sentAt: result.status === smsEngine.SMS_STATUS.SUCCESS ? new Date() : null,
           });
           if (result.status === smsEngine.SMS_STATUS.SUCCESS) summary.basarili += 1;
           else if (result.status === smsEngine.SMS_STATUS.CANCELLED) summary.iptal += 1;

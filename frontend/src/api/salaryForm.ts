@@ -7,6 +7,8 @@ interface Envelope<T> {
   message?: string
 }
 
+export type SalaryFormExportFormat = 'xlsx' | 'pdf'
+
 export async function getSalaryFormDraft(month: number, year: number): Promise<SalaryFormDraftResponse> {
   const { data } = await client.get<Envelope<SalaryFormDraftResponse>>('/api/salary-form/draft', {
     params: { month, year },
@@ -27,11 +29,21 @@ export async function saveSalaryFormDraft(
   return data.data
 }
 
-export async function downloadSalaryForm(month: number, year: number): Promise<Blob> {
+export async function downloadSalaryForm(
+  month: number,
+  year: number,
+  format: SalaryFormExportFormat = 'xlsx',
+  options?: { inline?: boolean },
+): Promise<Blob> {
   const { data } = await client.get('/api/salary-form/export', {
-    params: { month, year },
+    params: {
+      month,
+      year,
+      format,
+      ...(options?.inline ? { inline: 1 } : {}),
+    },
     responseType: 'blob',
-    timeout: 30000,
+    timeout: 60000,
   })
   return data as Blob
 }

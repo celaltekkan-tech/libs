@@ -1,20 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  App,
-  Button,
-  DatePicker,
-  Descriptions,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Select,
-  Space,
-  Table,
-  Tabs,
-  Tag,
-  Typography,
-} from 'antd'
+import { App, Button, DatePicker, Descriptions, Form, Input, InputNumber, Modal, Select, Space, Tabs, Tag, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import { DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
@@ -324,7 +310,7 @@ export function LeavesPage() {
         </Descriptions>
       )}
 
-      <Table
+      <SortableTable
         rowKey="id"
         loading={rowsLoading}
         columns={columns}

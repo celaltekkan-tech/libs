@@ -277,6 +277,45 @@ JSON şablonu vb.) `smsEngine.SmsConfigError` fırlatılır; `announcementsContr
 yakalayıp `500` ile "SMS motoru yapılandırma hatası" mesajı döner — bu, tek bir alıcının
 gönderim başarısızlığından ayrıdır, motor hiç çalıştırılamadığı anlamına gelir.
 
+### İş Takibi (Work Tasks)
+
+Tenant bazlı periyodik görevler: tek sefer / günlük / haftalık / aylık / yıllık tekrar,
+zorunlu iş bayrağı, atama yalnızca aynı tenant’ın sistem kullanıcılarına (`Users`).
+Frontend: `/work-tasks` (Sistem → İş Takibi). İzinler: `work_tasks.read|create|update|delete`.
+
+- `GET /api/work-tasks` — `?mine=true`, `?overdue=true`, `?mandatory=true`, `?status=`
+- `GET /api/work-tasks/:id`
+- `POST /api/work-tasks` — gövde: başlık, `assignee_user_id`, `frequency`, `next_due_at`, `notify_channels` (`in_app`, `sms`, `email`), `is_mandatory`, `remind_before_minutes`
+- `PUT /api/work-tasks/:id`
+- `POST /api/work-tasks/:id/complete` — atanan veya `work_tasks.update` yetkisi
+- `POST /api/work-tasks/:id/pause` / `resume`, `DELETE /api/work-tasks/:id`
+
+**Hatırlatma zamanlayıcısı:** `src/server.js` içinde `node-cron` ile
+`processWorkTaskReminders()` çalışır. Ortam değişkenleri:
+
+| Değişken | Açıklama |
+|---|---|
+| `WORK_TASK_CRON` | Cron ifadesi (varsayılan `*/15 * * * *`) |
+| `WORK_TASK_REMINDERS_ENABLED` | `false` ise cron kaydı yapılmaz |
+
+Vade yaklaşınca ve zorunlu görev gecikince seçilen kanallarla bildirim gider. SMS için atanan
+kullanıcının `Users.phone` alanı dolu olmalı; yoksa SMS log’da başarısız sayılır, diğer kanallar
+denenmeye devam eder.
+
+#### E-posta motoru (`src/services/emailEngine.js`)
+
+İş takibi e-posta uyarıları için nodemailer + SMTP. Duyuru modülündeki e-posta stub’ından bağımsızdır.
+
+| Değişken | Açıklama |
+|---|---|
+| `SMTP_HOST` | SMTP sunucusu (zorunlu) |
+| `SMTP_FROM` | Gönderen adresi (zorunlu) |
+| `SMTP_PORT` | Varsayılan `587` |
+| `SMTP_SECURE` | `true` veya port `465` ise TLS |
+| `SMTP_USER` / `SMTP_PASS` | Kimlik doğrulama (opsiyonel) |
+
+`notify_channels` içinde `email` seçiliyken SMTP yapılandırması eksikse gönderim hata log’una yazılır.
+
 ### Licenses (Lisans Yönetimi)
 
 Tenant'lara lisans tanımlama/iptal etme sadece platform admin yetkisindedir. Bir tenant'a

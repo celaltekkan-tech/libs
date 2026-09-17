@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Form, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd'
+import { App, Button, Form, Input, Modal, Select, Space, Tag, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import { CopyOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
@@ -20,6 +21,7 @@ import { DOC_STATUS_LABELS, DOC_STATUS_OPTIONS, DOC_TYPE_LABELS, DOC_TYPE_OPTION
 import type { TeacherDocument, TeacherDocumentPayload } from '../types/teacherDocument'
 import type { Teacher } from '../types/teacher'
 import { tablePagination } from '../utils/tablePagination'
+import { nestedPersonNameSorter, SORT_AZ } from '../utils/tableSort'
 import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 const STATUS_COLORS: Record<string, string> = {
@@ -151,6 +153,8 @@ export function TeacherDocumentsPage() {
   const columns: ColumnsType<TeacherDocument> = [
     {
       title: 'Personel',
+      sorter: nestedPersonNameSorter((r: TeacherDocument) => r.Teacher),
+      sortDirections: [...SORT_AZ],
       render: (_: unknown, r: TeacherDocument) => (r.Teacher ? `${r.Teacher.first_name} ${r.Teacher.last_name}` : '—'),
     },
     { title: 'Evrak Türü', dataIndex: 'doc_type', render: (v: string) => DOC_TYPE_LABELS[v] || v },
@@ -219,7 +223,7 @@ export function TeacherDocumentsPage() {
         </Space>
       </Space>
 
-      <Table
+      <SortableTable
         rowKey="id"
         loading={loading}
         columns={columns}

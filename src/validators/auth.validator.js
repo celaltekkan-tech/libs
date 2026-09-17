@@ -55,7 +55,30 @@ const disable2faSchema = Joi.object({
 });
 
 const tenantTwoFactorSchema = Joi.object({
-  two_factor_enabled: Joi.boolean().required(),
+  two_factor_enabled: Joi.boolean(),
+  sms_login_enabled: Joi.boolean(),
+})
+  .or('two_factor_enabled', 'sms_login_enabled')
+  .min(1);
+
+const verifySmsSchema = Joi.object({
+  temp_token: Joi.string().required().messages({
+    'string.empty': 'Doğrulama oturumu zorunludur',
+  }),
+  code: Joi.string()
+    .trim()
+    .pattern(/^\d{6}$/)
+    .required()
+    .messages({
+      'string.empty': 'SMS kodu zorunludur',
+      'string.pattern.base': '6 haneli SMS kodunu girin',
+    }),
+});
+
+const resendSmsSchema = Joi.object({
+  temp_token: Joi.string().required().messages({
+    'string.empty': 'Doğrulama oturumu zorunludur',
+  }),
 });
 
 const changePasswordSchema = Joi.object({
@@ -72,6 +95,29 @@ const updateProfileSchema = Joi.object({
     'string.empty': 'Ad soyad zorunludur',
     'string.min': 'Ad soyad en az 2 karakter olmalıdır',
   }),
+  phone: Joi.string().trim().max(30).allow('', null),
+});
+
+const menuKey = Joi.string().trim().pattern(/^(\/[\w\-./]*|grp-[\w-]+)$/).max(80);
+
+const menuLayoutObjectSchema = Joi.object({
+  version: Joi.number().valid(1).required(),
+  order: Joi.array().items(menuKey).max(80).required(),
+  groups: Joi.object()
+    .pattern(
+      /^grp-[\w-]+$/,
+      Joi.object({
+        label: Joi.string().trim().min(1).max(80).required(),
+        children: Joi.array().items(Joi.string().trim().pattern(/^\/[\w\-./]*$/).max(80)).max(80).required(),
+      }),
+    )
+    .max(40)
+    .required(),
+  hidden: Joi.array().items(Joi.string().trim().pattern(/^\/[\w\-./]*$/).max(80)).max(80).required(),
+});
+
+const tenantMenuLayoutSchema = Joi.object({
+  layout: menuLayoutObjectSchema.allow(null).required(),
 });
 
 module.exports = {
@@ -81,6 +127,9 @@ module.exports = {
   confirm2faSchema,
   disable2faSchema,
   tenantTwoFactorSchema,
+  verifySmsSchema,
+  resendSmsSchema,
   changePasswordSchema,
   updateProfileSchema,
+  tenantMenuLayoutSchema,
 };

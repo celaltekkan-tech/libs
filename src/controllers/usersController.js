@@ -226,6 +226,20 @@ module.exports = {
 
       const password_hash = await bcrypt.hash(payload.password, 10);
 
+      const { assertValidMobilePhone } = require('../utils/phone');
+      let phone = null;
+      try {
+        phone = assertValidMobilePhone(payload.phone, {
+          required: Boolean(tenant.sms_login_enabled),
+        });
+      } catch (err) {
+        return res.status(err.status || 400).json({
+          success: false,
+          code: err.code || 'PHONE_INVALID',
+          message: err.message,
+        });
+      }
+
       // Alt kullanıcılar global admin olmaz; arayüz yetkisi okul rolünden gelir.
       const user = await User.create({
         tenant_id: payload.tenant_id,
@@ -235,6 +249,7 @@ module.exports = {
         password_hash,
         role: 'user',
         is_active: payload.is_active !== false,
+        phone,
       });
 
       await UserSchool.create({
@@ -300,6 +315,26 @@ module.exports = {
         email: payload.email ?? user.email,
       };
       if (payload.is_active !== undefined) updates.is_active = payload.is_active;
+      {
+        const tenantRow = await Tenant.findByPk(tenantId);
+        const smsRequired = Boolean(tenantRow?.sms_login_enabled);
+        if (payload.phone !== undefined || smsRequired) {
+          const { assertValidMobilePhone } = require('../utils/phone');
+          try {
+            if (payload.phone !== undefined) {
+              updates.phone = assertValidMobilePhone(payload.phone, { required: smsRequired });
+            } else if (smsRequired) {
+              assertValidMobilePhone(user.phone, { required: true });
+            }
+          } catch (err) {
+            return res.status(err.status || 400).json({
+              success: false,
+              code: err.code || 'PHONE_INVALID',
+              message: err.message,
+            });
+          }
+        }
+      }
       if (payload.password) {
         updates.password_hash = await bcrypt.hash(payload.password, 10);
       }
@@ -341,6 +376,38 @@ module.exports = {
           message: err.message,
         });
       }
+      next(err);
+    }
+  },
+
+  async resetSmsLogin(req, res, next) {
+    try {
+      const user = await User.findByPk(req.params.id);
+      if (!user || user.is_platform_admin) {
+        return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı' });
+      }
+      if (req.user && req.user.tenant_id && user.tenant_id !== req.user.tenant_id) {
+        return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
+      }
+
+      const smsLoginService = require('../services/smsLoginService');
+      const loginLockout = require('../services/loginLockoutService');
+      await smsLoginService.resetSmsRequestCounter(user);
+      await loginLockout.clearFailures(user);
+
+      await audit.log(req, {
+        action: 'update',
+        entityType: 'user',
+        entityId: user.id,
+        summary: `SMS giriş sayacı sıfırlandı: ${user.full_name}`,
+      });
+
+      res.json({
+        success: true,
+        message: `SMS giriş istek sayacı sıfırlandı: ${user.full_name}`,
+        data: { user_id: user.id, sms_login_requests_count: 0 },
+      });
+    } catch (err) {
       next(err);
     }
   },

@@ -23,6 +23,9 @@ export const MENU_PATH_PERMISSION: Record<string, string> = {
   '/guidance': 'guidance.read',
   '/users': 'users.read',
   '/audit-logs': 'audit.read',
+  '/work-tasks': 'work_tasks.read',
+  // /calendar: kaynak OR kontrolü AppLayout + CALENDAR_MENU_SOURCE_PERMISSIONS
+  '/message-logs': 'message_logs.read',
   '/feedback': 'feedback.read',
 }
 

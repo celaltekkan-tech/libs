@@ -1,20 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import {
-  App,
-  Button,
-  Card,
-  Descriptions,
-  Form,
-  Input,
-  Modal,
-  Popconfirm,
-  Space,
-  Switch,
-  Table,
-  Tag,
-  Typography,
-} from 'antd'
+import { App, Button, Card, Descriptions, Form, Input, Modal, Popconfirm, Space, Switch, Tag, Typography } from 'antd'
+import { SortableTable } from '../../components/SortableTable'
 import { ArrowLeftOutlined, EditOutlined, IdcardOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
 import { AppLayout } from '../../components/AppLayout'
 import { SortableDashboard } from '../../components/SortableDashboard'
@@ -25,6 +12,7 @@ import {
   listTenantUsers,
   resetTenantTwoFactor,
   resetTenantUserTwoFactor,
+  resetTenantUserSmsLogin,
   updateTenant,
   updateTenantUser,
 } from '../../api/tenants'
@@ -32,10 +20,16 @@ import { listLicenses } from '../../api/licenses'
 import { getErrorMessage } from '../../api/client'
 import type { Tenant, TenantSchool, TenantUser, UpdateTenantUserPayload } from '../../types/tenant'
 import type { License } from '../../types/license'
+import { MOBILE_PHONE_RULE, requiredMobilePhoneRule } from '../../utils/phone'
 
 interface EditUserForm {
   full_name: string
   email: string
+  phone?: string
+}
+
+interface TenantContactForm {
+  phone?: string
 }
 
 export function TenantDetailPage() {
@@ -51,11 +45,15 @@ export function TenantDetailPage() {
   const [loading, setLoading] = useState(true)
   const [togglingStatus, setTogglingStatus] = useState(false)
   const [toggling2fa, setToggling2fa] = useState(false)
+  const [togglingSmsLogin, setTogglingSmsLogin] = useState(false)
   const [resetting2fa, setResetting2fa] = useState(false)
   const [resettingUserId, setResettingUserId] = useState<number | null>(null)
+  const [resettingSmsUserId, setResettingSmsUserId] = useState<number | null>(null)
   const [editingUser, setEditingUser] = useState<TenantUser | null>(null)
   const [savingUser, setSavingUser] = useState(false)
+  const [savingPhone, setSavingPhone] = useState(false)
   const [editForm] = Form.useForm<EditUserForm>()
+  const [contactForm] = Form.useForm<TenantContactForm>()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -70,12 +68,13 @@ export function TenantDetailPage() {
       setSchools(schoolData)
       setUsers(userData)
       setLicenses(licenseData)
+      contactForm.setFieldsValue({ phone: tenantData.phone || undefined })
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
-  }, [tenantId, message])
+  }, [tenantId, message, contactForm])
 
   const activeLicense = licenses.find((license) => license.status === 'active')
 
@@ -83,10 +82,33 @@ export function TenantDetailPage() {
     if (Number.isFinite(tenantId)) void load()
   }, [tenantId, load])
 
+  async function handleSaveTenantPhone(values: TenantContactForm) {
+    setSavingPhone(true)
+    try {
+      const { tenant: updated, usersPhoneSynced } = await updateTenant(tenantId, {
+        phone: values.phone?.trim() || null,
+      })
+      setTenant(updated)
+      if (usersPhoneSynced > 0) {
+        const userData = await listTenantUsers(tenantId)
+        setUsers(userData)
+        message.success(
+          `Kurum telefonu kaydedildi; ${usersPhoneSynced} kullanıcının telefonu güncellendi`,
+        )
+      } else {
+        message.success('Kurum telefonu kaydedildi')
+      }
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSavingPhone(false)
+    }
+  }
+
   async function handleToggleActive(checked: boolean) {
     setTogglingStatus(true)
     try {
-      const updated = await updateTenant(tenantId, { is_active: checked })
+      const { tenant: updated } = await updateTenant(tenantId, { is_active: checked })
       setTenant(updated)
       message.success(checked ? 'Hesap aktifleştirildi' : 'Hesap askıya alındı')
     } catch (err) {
@@ -99,7 +121,7 @@ export function TenantDetailPage() {
   async function handleToggle2fa(checked: boolean) {
     setToggling2fa(true)
     try {
-      const updated = await updateTenant(tenantId, { two_factor_enabled: checked })
+      const { tenant: updated } = await updateTenant(tenantId, { two_factor_enabled: checked })
       setTenant(updated)
       if (!checked) {
         setUsers((prev) => prev.map((user) => ({ ...user, totp_enabled: false })))
@@ -113,6 +135,48 @@ export function TenantDetailPage() {
       message.error(getErrorMessage(err))
     } finally {
       setToggling2fa(false)
+    }
+  }
+
+  async function handleToggleSmsLogin(checked: boolean) {
+    setTogglingSmsLogin(true)
+    try {
+      const { tenant: updated } = await updateTenant(tenantId, { sms_login_enabled: checked })
+      setTenant(updated)
+      if (checked) {
+        const userData = await listTenantUsers(tenantId)
+        setUsers(userData)
+      }
+      message.success(checked ? 'SMS ile giriş açıldı' : 'SMS ile giriş kapatıldı')
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setTogglingSmsLogin(false)
+    }
+  }
+
+  async function handleResetUserSms(userId: number) {
+    setResettingSmsUserId(userId)
+    try {
+      await resetTenantUserSmsLogin(tenantId, userId)
+      setUsers((prev) =>
+        prev.map((user) =>
+          user.id === userId
+            ? {
+                ...user,
+                sms_login_requests_count: 0,
+                sms_login_requests_date: null,
+                login_failed_count: 0,
+                login_locked_until: null,
+              }
+            : user,
+        ),
+      )
+      message.success('SMS giriş istek sayacı ve kilit sıfırlandı')
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setResettingSmsUserId(null)
     }
   }
 
@@ -153,6 +217,7 @@ export function TenantDetailPage() {
     editForm.setFieldsValue({
       full_name: user.full_name,
       email: user.email,
+      phone: user.phone || undefined,
     })
   }
 
@@ -168,6 +233,7 @@ export function TenantDetailPage() {
       const payload: UpdateTenantUserPayload = {
         full_name: values.full_name.trim(),
         email: values.email.trim().toLowerCase(),
+        phone: values.phone?.trim() || null,
       }
       const updated = await updateTenantUser(tenantId, editingUser.id, payload)
       setUsers((prev) =>
@@ -177,6 +243,7 @@ export function TenantDetailPage() {
                 ...user,
                 full_name: updated.full_name,
                 email: updated.email,
+                phone: updated.phone ?? null,
               }
             : user,
         ),
@@ -192,7 +259,7 @@ export function TenantDetailPage() {
 
   return (
     <AppLayout title="Hesap Yönetimi">
-      <div style={{ maxWidth: 1100 }}>
+      <div style={{ width: '100%' }}>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <Link to="/platform/tenants">
             <Button icon={<ArrowLeftOutlined />} type="text">
@@ -209,28 +276,53 @@ export function TenantDetailPage() {
                 node: (
                   <Card loading={loading} title={tenant?.name || 'Hesap'}>
                     {tenant && (
-                      <Descriptions column={1} size="small">
-                        <Descriptions.Item label="Plan">{tenant.plan || '—'}</Descriptions.Item>
-                        <Descriptions.Item label="Durum">
-                          <Space>
-                            <Switch
-                              checked={tenant.is_active}
-                              loading={togglingStatus}
-                              onChange={(checked) => void handleToggleActive(checked)}
-                            />
-                            {tenant.is_active ? <Tag color="green">Aktif</Tag> : <Tag color="red">Askıda</Tag>}
-                          </Space>
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Oluşturma">
-                          {new Date(tenant.created_at).toLocaleString('tr-TR')}
-                        </Descriptions.Item>
-                      </Descriptions>
+                      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                        <Descriptions column={1} size="small">
+                          <Descriptions.Item label="Plan">{tenant.plan || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="Kurum telefonu">
+                            {tenant.phone || '—'}
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Durum">
+                            <Space>
+                              <Switch
+                                checked={tenant.is_active}
+                                loading={togglingStatus}
+                                onChange={(checked) => void handleToggleActive(checked)}
+                              />
+                              {tenant.is_active ? <Tag color="green">Aktif</Tag> : <Tag color="red">Askıda</Tag>}
+                            </Space>
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Oluşturma">
+                            {new Date(tenant.created_at).toLocaleString('tr-TR')}
+                          </Descriptions.Item>
+                        </Descriptions>
+                        <Form
+                          form={contactForm}
+                          layout="vertical"
+                          onFinish={(values) => void handleSaveTenantPhone(values)}
+                          style={{ maxWidth: 360 }}
+                        >
+                          <Form.Item
+                            name="phone"
+                            label="Kurum telefonu"
+                            extra="Telefonu olmayan aktif kullanıcılara da kopyalanır (05xxxxxxxxx)."
+                            style={{ marginBottom: 8 }}
+                            rules={[MOBILE_PHONE_RULE]}
+                          >
+                            <Input placeholder="05xx xxx xx xx" maxLength={30} />
+                          </Form.Item>
+                          <Button type="primary" htmlType="submit" loading={savingPhone}>
+                            Kurum telefonunu kaydet
+                          </Button>
+                        </Form>
+                      </Space>
                     )}
                   </Card>
                 ),
               },
               {
                 id: 'tenant-2fa',
+                label: 'Hesap güvenliği',
                 span: { xs: 24 },
                 node: (
                   <Card
@@ -238,24 +330,32 @@ export function TenantDetailPage() {
                     title={
                       <Space>
                         <SafetyCertificateOutlined />
-                        İki adımlı doğrulama (2FA)
+                        Hesap güvenliği (2FA / SMS)
                       </Space>
                     }
                   >
                     {tenant && (
-                      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                      <Space direction="vertical" size={16} style={{ width: '100%' }}>
                         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                          Hesap için 2FA özelliğini açıp kapatabilir veya kilitlenen kullanıcılar için 2FA
-                          kurulumlarını sıfırlayabilirsiniz. Kapatma işlemi tüm kullanıcı 2FA ayarlarını da
-                          temizler.
+                          Authenticator 2FA veya SMS ile giriş ikinci adımını açabilirsiniz. SMS
+                          girişi için her kullanıcının kendi cep telefonu gerekir; kurum telefonu
+                          kaydedildiğinde telefonu boş olan kullanıcılara otomatik kopyalanır.
+                          Günlük SMS istek limiti 3’tür.
                         </Typography.Paragraph>
                         <Space wrap>
                           <Switch
                             checked={Boolean(tenant.two_factor_enabled)}
                             loading={toggling2fa}
-                            checkedChildren="Açık"
-                            unCheckedChildren="Kapalı"
+                            checkedChildren="2FA açık"
+                            unCheckedChildren="2FA kapalı"
                             onChange={(checked) => void handleToggle2fa(checked)}
+                          />
+                          <Switch
+                            checked={Boolean(tenant.sms_login_enabled)}
+                            loading={togglingSmsLogin}
+                            checkedChildren="SMS giriş açık"
+                            unCheckedChildren="SMS giriş kapalı"
+                            onChange={(checked) => void handleToggleSmsLogin(checked)}
                           />
                           <Popconfirm
                             title="Tüm kullanıcıların 2FA ayarları sıfırlansın mı?"
@@ -315,7 +415,7 @@ export function TenantDetailPage() {
                 span: { xs: 24 },
                 node: (
                   <Card title="Okullar" loading={loading}>
-                    <Table
+                    <SortableTable
                       rowKey="id"
                       size="small"
                       pagination={false}
@@ -334,7 +434,7 @@ export function TenantDetailPage() {
                 span: { xs: 24 },
                 node: (
                   <Card title="Kullanıcılar" loading={loading}>
-                    <Table
+                    <SortableTable
                       rowKey="id"
                       size="small"
                       pagination={false}
@@ -343,6 +443,17 @@ export function TenantDetailPage() {
                       columns={[
                         { title: 'Ad soyad', dataIndex: 'full_name' },
                         { title: 'E-posta', dataIndex: 'email' },
+                        {
+                          title: 'Telefon',
+                          dataIndex: 'phone',
+                          render: (phone: string | null | undefined) => phone || '—',
+                        },
+                        {
+                          title: 'SMS istek',
+                          key: 'sms_req',
+                          render: (_: unknown, record: TenantUser) =>
+                            `${record.sms_login_requests_count ?? 0}/3`,
+                        },
                         { title: 'Rol', dataIndex: 'role' },
                         {
                           title: 'Durum',
@@ -382,6 +493,20 @@ export function TenantDetailPage() {
                                   loading={resettingUserId === record.id}
                                 >
                                   2FA sıfırla
+                                </Button>
+                              </Popconfirm>
+                              <Popconfirm
+                                title={`${record.full_name} için SMS istek sayacı sıfırlansın mı?`}
+                                description="Günlük SMS hakkı ve giriş kilidi temizlenir."
+                                okText="Sıfırla"
+                                cancelText="Vazgeç"
+                                onConfirm={() => void handleResetUserSms(record.id)}
+                              >
+                                <Button
+                                  size="small"
+                                  loading={resettingSmsUserId === record.id}
+                                >
+                                  SMS sayacı sıfırla
                                 </Button>
                               </Popconfirm>
                             </Space>
@@ -427,6 +552,23 @@ export function TenantDetailPage() {
             ]}
           >
             <Input autoComplete="off" />
+          </Form.Item>
+          <Form.Item
+            name="phone"
+            label="Kullanıcı telefonu (SMS)"
+            extra={
+              tenant?.sms_login_enabled
+                ? 'SMS ile giriş açık: bu kullanıcının cep telefonu zorunludur.'
+                : 'SMS bildirimleri ve SMS giriş kodu bu numaraya gider (kurum telefonundan ayrıdır).'
+            }
+            rules={[
+              ...(tenant?.sms_login_enabled
+                ? [{ required: true, message: 'Telefon zorunludur' }]
+                : []),
+              requiredMobilePhoneRule(Boolean(tenant?.sms_login_enabled)),
+            ]}
+          >
+            <Input placeholder="05xx xxx xx xx" maxLength={30} />
           </Form.Item>
         </Form>
       </Modal>

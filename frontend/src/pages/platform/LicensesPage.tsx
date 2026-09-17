@@ -1,20 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import {
-  App,
-  Button,
-  Collapse,
-  DatePicker,
-  Form,
-  Input,
-  List,
-  Modal,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Tooltip,
-  Typography,
-} from 'antd'
+import { App, Button, Collapse, DatePicker, Form, Input, List, Modal, Select, Space, Tag, Tooltip, Typography } from 'antd'
+import { SortableTable } from '../../components/SortableTable'
 import { CloseCircleOutlined, InfoCircleOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
@@ -168,7 +154,7 @@ export function LicensesPage() {
 
   return (
     <AppLayout title="Lisans Yönetimi">
-      <div style={{ maxWidth: 1100 }}>
+      <div style={{ width: '100%' }}>
         <Typography.Title level={3} style={{ margin: 0, marginBottom: 4 }}>
           Lisanslar
         </Typography.Title>
@@ -215,7 +201,7 @@ export function LicensesPage() {
           </Button>
         </Space>
 
-        <Table
+        <SortableTable
           rowKey="id"
           loading={loading}
           columns={columns}

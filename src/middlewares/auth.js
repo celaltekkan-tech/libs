@@ -14,11 +14,11 @@ module.exports = (req, res, next) => {
 
   try {
     const payload = jwtUtil.verify(token);
-    if (payload.purpose === '2fa_pending') {
+    if (payload.purpose === '2fa_pending' || payload.purpose === 'sms_pending') {
       return res.status(401).json({
         success: false,
         code: 'TOKEN_INVALID',
-        message: 'İki adımlı doğrulama tamamlanmadan oturum açılamaz',
+        message: 'Doğrulama tamamlanmadan oturum açılamaz',
       });
     }
     req.user = payload;

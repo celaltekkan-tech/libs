@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Form, Input, Modal, Select, Space, Table, Typography } from 'antd'
+import { App, Button, Form, Input, Modal, Select, Space, Typography } from 'antd'
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { SortableTable } from '../components/SortableTable'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import { createSchool, deleteSchool, listSchools, updateSchool } from '../api/schools'
@@ -174,7 +175,7 @@ export function SchoolsPage() {
           </Space>
         </Space>
 
-        <Table
+        <SortableTable
           rowKey="id"
           loading={loading}
           columns={columns}
@@ -198,8 +199,13 @@ export function SchoolsPage() {
           <Form.Item name="name" label="Okul adı" rules={[{ required: true, message: 'Okul adı zorunludur' }]}>
             <Input placeholder="Örn. Atatürk Ortaokulu" />
           </Form.Item>
-          <Form.Item name="code" label="Okul kodu" rules={[{ required: true, message: 'Okul kodu zorunludur' }]}>
-            <Input placeholder="Örn. ATA-001" />
+          <Form.Item
+            name="code"
+            label="Okul kodu"
+            tooltip="MEB kurum kodunuzu (6 haneli) kullanmanız önerilir; tüm evrak ve dışa aktarmalarda bu kod kurumu tanımlar."
+            rules={[{ required: true, message: 'Okul kodu zorunludur' }]}
+          >
+            <Input placeholder="Örn. 765978 (MEB kurum kodu)" />
           </Form.Item>
           <Form.Item
             name="school_type"

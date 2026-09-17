@@ -3,10 +3,12 @@ import type {
   LoginFormValues,
   LoginResult,
   LoginResponse,
+  LoginChallengeSms,
   SessionPayload,
   TwoFactorSetup,
   TwoFactorStatus,
 } from '../types/auth'
+import type { TenantMenuLayout } from '../types/menuLayout'
 
 interface Envelope<T> {
   success: true
@@ -17,6 +19,9 @@ interface Envelope<T> {
 export async function login(values: LoginFormValues): Promise<LoginResult> {
   const { data } = await client.post<Envelope<LoginResult>>('/api/auth/login', values)
   if ('requires_2fa' in data.data && data.data.requires_2fa) {
+    return data.data
+  }
+  if ('requires_sms' in data.data && data.data.requires_sms) {
     return data.data
   }
   const session = data.data as LoginResponse
@@ -33,15 +38,32 @@ export async function verify2fa(tempToken: string, code: string): Promise<LoginR
   return data.data
 }
 
+export async function verifySms(tempToken: string, code: string): Promise<LoginResponse> {
+  const { data } = await client.post<Envelope<LoginResponse>>('/api/auth/verify-sms', {
+    temp_token: tempToken,
+    code,
+  })
+  persistSession(data.data.token, data.data.expires_at)
+  return data.data
+}
+
+export async function resendSms(tempToken: string): Promise<LoginChallengeSms> {
+  const { data } = await client.post<Envelope<LoginChallengeSms>>('/api/auth/resend-sms', {
+    temp_token: tempToken,
+  })
+  return data.data
+}
+
 export async function fetchMe(): Promise<SessionPayload> {
   const { data } = await client.get<Envelope<SessionPayload>>('/api/auth/me')
   return data.data
 }
 
-export async function updateProfile(fullName: string): Promise<SessionPayload> {
-  const { data } = await client.put<Envelope<SessionPayload>>('/api/auth/profile', {
-    full_name: fullName,
-  })
+export async function updateProfile(payload: {
+  full_name: string
+  phone?: string | null
+}): Promise<SessionPayload> {
+  const { data } = await client.put<Envelope<SessionPayload>>('/api/auth/profile', payload)
   return data.data
 }
 
@@ -86,12 +108,30 @@ export async function getTenantTwoFactorSetting(): Promise<{ two_factor_enabled:
   return data.data
 }
 
-export async function updateTenantTwoFactorSetting(
-  twoFactorEnabled: boolean,
-): Promise<{ two_factor_enabled: boolean }> {
-  const { data } = await client.put<Envelope<{ two_factor_enabled: boolean }>>('/api/auth/tenant-2fa', {
-    two_factor_enabled: twoFactorEnabled,
-  })
+export async function updateTenantTwoFactorSetting(payload: {
+  two_factor_enabled?: boolean
+  sms_login_enabled?: boolean
+}): Promise<{ two_factor_enabled: boolean; sms_login_enabled: boolean }> {
+  const { data } = await client.put<
+    Envelope<{ two_factor_enabled: boolean; sms_login_enabled: boolean }>
+  >('/api/auth/tenant-2fa', payload)
+  return data.data
+}
+
+export async function getMenuLayout(): Promise<{ layout: TenantMenuLayout | null }> {
+  const { data } = await client.get<Envelope<{ layout: TenantMenuLayout | null }>>(
+    '/api/auth/menu-layout',
+  )
+  return data.data
+}
+
+export async function updateMenuLayout(
+  layout: TenantMenuLayout | null,
+): Promise<{ layout: TenantMenuLayout | null }> {
+  const { data } = await client.put<Envelope<{ layout: TenantMenuLayout | null }>>(
+    '/api/auth/menu-layout',
+    { layout },
+  )
   return data.data
 }
 

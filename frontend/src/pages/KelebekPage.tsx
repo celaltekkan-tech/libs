@@ -1,21 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  App,
-  Button,
-  Checkbox,
-  Drawer,
-  Empty,
-  Form,
-  Input,
-  Modal,
-  Select,
-  Space,
-  Switch,
-  Table,
-  Tabs,
-  Tag,
-  Typography,
-} from 'antd'
+import { App, Button, Checkbox, Drawer, Empty, Form, Input, Modal, Select, Space, Switch, Tabs, Tag, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import {
   CopyOutlined,
   DeleteOutlined,
@@ -524,7 +509,7 @@ export function KelebekPage() {
                 key: String(roomId),
                 label: `${group.roomName} (${group.seats.length})`,
                 children: (
-                  <Table
+                  <SortableTable
                     rowKey="id"
                     size="small"
                     columns={seatColumns}
@@ -544,7 +529,7 @@ export function KelebekPage() {
       <Typography.Title level={4} style={{ marginTop: selectedSessionId ? 32 : 0 }}>
         Oluşturulan Sınavlar
       </Typography.Title>
-      <Table
+      <SortableTable
         rowKey="id"
         loading={loading}
         size="small"
@@ -580,7 +565,7 @@ export function KelebekPage() {
           </Space>
         }
       >
-        <Table
+        <SortableTable
           rowKey="id"
           size="small"
           columns={roomColumns}

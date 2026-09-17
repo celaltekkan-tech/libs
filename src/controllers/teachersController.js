@@ -7,6 +7,8 @@ const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
 const { parseMebbisWorkbook } = require('../services/mebbisImportService');
 const { ensureDefaultCategories } = require('./personnelCategoriesController');
+const { registerUnicodeFonts } = require('../utils/pdfFonts');
+const { buildPersonnelDocumentDocx } = require('../services/personnelDocumentService');
 
 const PERSONNEL_DOCUMENT_TITLES = {
   gorevlendirme: 'GÖREVLENDİRME YAZISI',
@@ -274,6 +276,7 @@ module.exports = {
   async document(req, res, next) {
     try {
       const type = PERSONNEL_DOCUMENT_TITLES[req.query.type] ? req.query.type : 'gorevlendirme';
+      const format = String(req.query.format || 'docx').toLowerCase() === 'pdf' ? 'pdf' : 'docx';
       const teacher = await Teacher.findByPk(req.params.id, {
         include: [{ model: School, required: false }],
       });
@@ -282,50 +285,74 @@ module.exports = {
         return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
       }
 
-      const doc = new PDFDocument({ margin: 60, size: 'A4' });
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${type}-${teacher.personnel_no || teacher.id}.pdf"`);
-      doc.pipe(res);
-
       const schoolName = teacher.School?.name || 'Okul Müdürlüğü';
-      doc.fontSize(13).text(schoolName.toUpperCase(), { align: 'center' });
-      doc.fontSize(13).text(PERSONNEL_DOCUMENT_TITLES[type], { align: 'center' });
-      doc.moveDown(2);
-
       const rows = [
         ['Adı Soyadı', `${teacher.first_name} ${teacher.last_name}`],
         ['Sicil No', teacher.personnel_no || '—'],
         ['Unvan / Branş', teacher.title_branch || '—'],
         ['Görev Yeri', teacher.working_institution || schoolName],
       ];
-
-      doc.fontSize(11);
-      rows.forEach(([label, value]) => {
-        doc.font('Helvetica-Bold').text(`${label}: `, { continued: true });
-        doc.font('Helvetica').text(String(value));
-        doc.moveDown(0.5);
-      });
-
-      doc.moveDown(2);
       const bodyTextMap = {
         gorevlendirme: `Yukarıda kimlik bilgileri yazılı personel, kurumumuzda ilgili görevle görevlendirilmiştir. Bu yazı ilgili işlemlerde kullanılmak üzere düzenlenmiştir.`,
         baslama: `Yukarıda kimlik bilgileri yazılı personel, kurumumuzda göreve başlamıştır. Bu yazı ilgili işlemlerde kullanılmak üzere düzenlenmiştir.`,
         ayrilis: `Yukarıda kimlik bilgileri yazılı personelin kurumumuzdaki görevi sona ermiş ve ayrılış işlemleri tamamlanmıştır. Bu yazı ilgili işlemlerde kullanılmak üzere düzenlenmiştir.`,
       };
-      doc.text(bodyTextMap[type], { align: 'justify' });
+      const dateLabel = new Date().toLocaleDateString('tr-TR');
+
+      const logExport = () =>
+        audit.log(req, {
+          action: 'export',
+          entityType: 'teacher_document',
+          entityId: teacher.id,
+          summary: `${PERSONNEL_DOCUMENT_TITLES[type]} üretildi: ${teacher.first_name} ${teacher.last_name}`,
+        });
+
+      if (format === 'docx') {
+        const buffer = await buildPersonnelDocumentDocx({
+          schoolName,
+          title: PERSONNEL_DOCUMENT_TITLES[type],
+          rows,
+          body: bodyTextMap[type],
+          dateLabel,
+        });
+        await logExport();
+        res.setHeader(
+          'Content-Type',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        );
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${type}-${teacher.personnel_no || teacher.id}.docx"`,
+        );
+        return res.send(buffer);
+      }
+
+      const doc = new PDFDocument({ margin: 60, size: 'A4' });
+      const fonts = registerUnicodeFonts(doc);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${type}-${teacher.personnel_no || teacher.id}.pdf"`);
+      doc.pipe(res);
+
+      doc.font(fonts.bold).fontSize(13).text(schoolName.toUpperCase(), { align: 'center' });
+      doc.font(fonts.bold).fontSize(13).text(PERSONNEL_DOCUMENT_TITLES[type], { align: 'center' });
+      doc.moveDown(2);
+
+      doc.fontSize(11);
+      rows.forEach(([label, value]) => {
+        doc.font(fonts.bold).text(`${label}: `, { continued: true });
+        doc.font(fonts.regular).text(String(value));
+        doc.moveDown(0.5);
+      });
+
+      doc.moveDown(2);
+      doc.font(fonts.regular).text(bodyTextMap[type], { align: 'justify' });
 
       doc.moveDown(4);
-      doc.text(`Düzenleme Tarihi: ${new Date().toLocaleDateString('tr-TR')}`, { align: 'right' });
+      doc.text(`Düzenleme Tarihi: ${dateLabel}`, { align: 'right' });
       doc.moveDown(2);
       doc.text('Okul Müdürü', { align: 'right' });
 
-      await audit.log(req, {
-        action: 'export',
-        entityType: 'teacher_document',
-        entityId: teacher.id,
-        summary: `${PERSONNEL_DOCUMENT_TITLES[type]} üretildi: ${teacher.first_name} ${teacher.last_name}`,
-      });
-
+      await logExport();
       doc.end();
     } catch (err) {
       next(err);

@@ -14,6 +14,7 @@ export interface ManagedUser {
   school_id: number | null
   full_name: string
   email: string
+  phone: string | null
   role: string
   is_active: boolean
   last_login_at: string | null
@@ -33,6 +34,7 @@ export interface ManagedUserPayload {
   full_name: string
   email: string
   password?: string
+  phone?: string | null
   is_active?: boolean
 }
 

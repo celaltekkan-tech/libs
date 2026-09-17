@@ -25,6 +25,12 @@ router.put(
   ctrl.updateUser
 );
 router.post('/:id/users/:userId/reset-2fa', auth, platformAdmin, ctrl.resetUserTwoFactor);
+router.post(
+  '/:id/users/:userId/reset-sms-login',
+  auth,
+  platformAdmin,
+  ctrl.resetUserSmsLoginRequests
+);
 router.delete('/:id', auth, platformAdmin, ctrl.remove);
 
 module.exports = router;

@@ -12,6 +12,7 @@ import {
   login as loginRequest,
   logout as logoutRequest,
   verify2fa as verify2faRequest,
+  verifySms as verifySmsRequest,
 } from '../api/auth'
 import {
   clearSession,
@@ -22,6 +23,7 @@ import {
 } from '../api/client'
 import {
   isLoginChallenge2fa,
+  isLoginChallengeSms,
   type LoginFormValues,
   type LoginResult,
   type SessionPayload,
@@ -32,6 +34,7 @@ interface AuthContextValue {
   ready: boolean
   login: (values: LoginFormValues) => Promise<LoginResult>
   complete2fa: (tempToken: string, code: string) => Promise<SessionPayload>
+  completeSms: (tempToken: string, code: string) => Promise<SessionPayload>
   logout: () => Promise<void>
   refreshSession: () => Promise<void>
   setSessionPayload: (payload: SessionPayload) => void
@@ -54,6 +57,7 @@ function toSessionPayload(payload: SessionPayload & { token?: string; expires_at
     license: payload.license,
     modules: payload.modules,
     tenant_two_factor_enabled: payload.tenant_two_factor_enabled,
+    tenant_sms_login_enabled: payload.tenant_sms_login_enabled,
   }
 }
 
@@ -90,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (values: LoginFormValues) => {
     const result = await loginRequest(values)
-    if (isLoginChallenge2fa(result)) {
+    if (isLoginChallenge2fa(result) || isLoginChallengeSms(result)) {
       return result
     }
     const sessionPayload = toSessionPayload(result)
@@ -100,6 +104,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const complete2fa = useCallback(async (tempToken: string, code: string) => {
     const payload = await verify2faRequest(tempToken, code)
+    const sessionPayload = toSessionPayload(payload)
+    setSession(sessionPayload)
+    return sessionPayload
+  }, [])
+
+  const completeSms = useCallback(async (tempToken: string, code: string) => {
+    const payload = await verifySmsRequest(tempToken, code)
     const sessionPayload = toSessionPayload(payload)
     setSession(sessionPayload)
     return sessionPayload
@@ -145,6 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ready,
       login,
       complete2fa,
+      completeSms,
       logout,
       refreshSession,
       setSessionPayload,
@@ -157,6 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ready,
       login,
       complete2fa,
+      completeSms,
       logout,
       refreshSession,
       setSessionPayload,

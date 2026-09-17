@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { App, Card, List, Progress, Space, Spin, Statistic, Table, Tag, Typography } from 'antd'
+import { App, Button, Card, List, Progress, Space, Spin, Statistic, Tag, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import {
   ApartmentOutlined,
   BankOutlined,
+  CheckOutlined,
   CommentOutlined,
+  ExclamationCircleOutlined,
   IdcardOutlined,
   ReadOutlined,
   RightOutlined,
@@ -12,6 +15,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import dayjs from 'dayjs'
 import { AppLayout } from '../components/AppLayout'
 import { SortableDashboard } from '../components/SortableDashboard'
 import { useAuth } from '../auth/AuthContext'
@@ -21,11 +25,43 @@ import { listStudents } from '../api/students'
 import { listTenants } from '../api/tenants'
 import { listLicenses } from '../api/licenses'
 import { listFeedback } from '../api/feedback'
+import { completeWorkTask, listWorkTasks } from '../api/workTasks'
 import { getErrorMessage } from '../api/client'
 import type { Student } from '../types/student'
 import { REGISTRATION_STATUS_OPTIONS } from '../types/student'
 import type { TenantListItem } from '../types/tenant'
 import type { License } from '../types/license'
+import type { WorkTask, WorkTaskDueState } from '../types/workTask'
+
+const UPCOMING_HORIZON_DAYS = 7
+const UPCOMING_LIST_LIMIT = 8
+
+function workTaskDueTag(state: WorkTaskDueState, mandatory: boolean) {
+  const icon = mandatory ? <ExclamationCircleOutlined /> : undefined
+  switch (state) {
+    case 'overdue':
+      return (
+        <Tag color="red" icon={icon}>
+          Gecikmiş
+        </Tag>
+      )
+    case 'due_soon':
+      return <Tag color="orange">Yaklaşıyor</Tag>
+    default:
+      return <Tag color="blue">Zamanında</Tag>
+  }
+}
+
+function isDashboardUpcomingTask(task: WorkTask, nowMs: number, horizonMs: number) {
+  if (task.status !== 'active') return false
+  if (task.due_state === 'done_period' || task.due_state === 'completed' || task.due_state === 'cancelled') {
+    return false
+  }
+  const dueMs = new Date(task.next_due_at).getTime()
+  if (Number.isNaN(dueMs)) return false
+  if (task.due_state === 'overdue' || task.due_state === 'due_soon') return true
+  return dueMs <= horizonMs && dueMs >= nowMs - 60_000
+}
 
 interface DashboardStats {
   schools: number | null
@@ -207,7 +243,7 @@ function PlatformAdminDashboard() {
 
   return (
     <AppLayout title="Ana Sayfa">
-      <div style={{ maxWidth: 1200 }}>
+      <div style={{ width: '100%' }}>
         <Space direction="vertical" size={20} style={{ width: '100%' }}>
           <div>
             <Typography.Title level={3} style={{ marginBottom: 4 }}>
@@ -228,6 +264,7 @@ function PlatformAdminDashboard() {
               widgets={[
                 ...cards.map((card) => ({
                   id: card.key,
+                  label: card.title,
                   span: { xs: 24, sm: 12, lg: 8 },
                   node: (
                     <Card
@@ -272,6 +309,7 @@ function PlatformAdminDashboard() {
                 })),
                 {
                   id: 'license-summary',
+                  label: 'Lisans özeti',
                   span: { xs: 24, md: 10 },
                   node: (
                     <Card title="Lisans özeti">
@@ -305,6 +343,7 @@ function PlatformAdminDashboard() {
                 },
                 {
                   id: 'recent-tenants',
+                  label: 'Son hesaplar',
                   span: { xs: 24, md: 14 },
                   node: (
                     <Card
@@ -315,7 +354,7 @@ function PlatformAdminDashboard() {
                         </Typography.Link>
                       }
                     >
-                      <Table
+                      <SortableTable
                         rowKey="id"
                         size="small"
                         pagination={false}
@@ -343,19 +382,24 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<DashboardStats>(emptyStats)
   const [students, setStudents] = useState<Student[]>([])
+  const [upcomingTasks, setUpcomingTasks] = useState<WorkTask[]>([])
+  const [completingTaskId, setCompletingTaskId] = useState<number | null>(null)
 
   const canSchools = hasModule('schools') && hasPermission('schools.read')
   const canTeachers = hasModule('teachers') && hasPermission('teachers.read')
   const canStudents = hasModule('students') && hasPermission('students.read')
+  const canWorkTasks = hasPermission('work_tasks.read')
+  const canUpdateWorkTasks = hasPermission('work_tasks.update')
 
   const load = useCallback(async () => {
     if (session?.is_platform_admin) return
     setLoading(true)
     try {
-      const [schoolCount, teacherCount, studentRows] = await Promise.all([
+      const [schoolCount, teacherCount, studentRows, workTaskRows] = await Promise.all([
         safeCount(listSchools(), canSchools),
         safeCount(listTeachers({ scope: 'teachers' }), canTeachers),
         canStudents ? listStudents().catch(() => null) : Promise.resolve(null),
+        canWorkTasks ? listWorkTasks({ status: 'active' }).catch(() => []) : Promise.resolve([]),
       ])
 
       const studentList = studentRows || []
@@ -374,7 +418,15 @@ export function DashboardPage() {
         .sort((a, b) => b.count - a.count)
         .slice(0, 6)
 
+      const nowMs = Date.now()
+      const horizonMs = nowMs + UPCOMING_HORIZON_DAYS * 24 * 60 * 60 * 1000
+      const upcoming = (workTaskRows || [])
+        .filter((task) => isDashboardUpcomingTask(task, nowMs, horizonMs))
+        .sort((a, b) => new Date(a.next_due_at).getTime() - new Date(b.next_due_at).getTime())
+        .slice(0, UPCOMING_LIST_LIMIT)
+
       setStudents(studentList)
+      setUpcomingTasks(upcoming)
       setStats({
         schools: schoolCount,
         teachers: teacherCount,
@@ -387,7 +439,7 @@ export function DashboardPage() {
     } finally {
       setLoading(false)
     }
-  }, [canSchools, canTeachers, canStudents, message, session?.is_platform_admin])
+  }, [canSchools, canTeachers, canStudents, canWorkTasks, message, session?.is_platform_admin])
 
   useEffect(() => {
     void load()
@@ -397,6 +449,19 @@ export function DashboardPage() {
     () => Object.values(stats.studentsByStatus).reduce((sum, n) => sum + n, 0) || 1,
     [stats.studentsByStatus],
   )
+
+  const onCompleteUpcoming = async (task: WorkTask) => {
+    setCompletingTaskId(task.id)
+    try {
+      await completeWorkTask(task.id)
+      message.success('Görev tamamlandı')
+      void load()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setCompletingTaskId(null)
+    }
+  }
 
   if (session?.is_platform_admin) {
     return <PlatformAdminDashboard />
@@ -435,14 +500,14 @@ export function DashboardPage() {
 
   return (
     <AppLayout title="Ana Sayfa">
-      <div style={{ maxWidth: 1100 }}>
+      <div style={{ width: '100%' }}>
         <Space direction="vertical" size={20} style={{ width: '100%' }}>
           <div>
             <Typography.Title level={3} style={{ marginBottom: 4 }}>
               Merhaba, {session?.user.full_name}
             </Typography.Title>
             <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Okul, öğretmen ve öğrenci özetiniz
+              Okul, öğretmen, öğrenci ve yaklaşan iş özetiniz
               {session?.license?.plan ? ` · Plan: ${session.license.plan}` : ''}
             </Typography.Paragraph>
           </div>
@@ -457,6 +522,7 @@ export function DashboardPage() {
               widgets={[
                 ...cards.map((card) => ({
                   id: card.key,
+                  label: card.title,
                   span: { xs: 24, sm: 12, md: 8 },
                   node: (
                     <Card
@@ -465,12 +531,14 @@ export function DashboardPage() {
                       styles={{ body: { padding: 20 } }}
                     >
                       <Space style={{ width: '100%', justifyContent: 'space-between' }} align="start">
-                        <Statistic
-                          title={card.title}
-                          value={card.value ?? '—'}
-                          suffix={card.suffix}
-                          valueStyle={{ color: card.color, fontWeight: 600 }}
-                        />
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <Statistic
+                            title={card.title}
+                            value={card.value ?? '—'}
+                            suffix={card.suffix}
+                            valueStyle={{ color: card.color, fontWeight: 600 }}
+                          />
+                        </div>
                         <span
                           style={{
                             width: 44,
@@ -482,6 +550,7 @@ export function DashboardPage() {
                             alignItems: 'center',
                             justifyContent: 'center',
                             fontSize: 20,
+                            flexShrink: 0,
                           }}
                         >
                           {card.icon}
@@ -495,10 +564,85 @@ export function DashboardPage() {
                     </Card>
                   ),
                 })),
+                ...(canWorkTasks
+                  ? [
+                      {
+                        id: 'upcoming-work-tasks',
+                        label: 'Yaklaşan işler',
+                        span: { xs: 24, md: 24 },
+                        node: (
+                          <Card
+                            title="Yaklaşan işler"
+                            extra={
+                              <Typography.Link onClick={() => navigate('/work-tasks')}>
+                                Tümü <RightOutlined />
+                              </Typography.Link>
+                            }
+                          >
+                            {upcomingTasks.length === 0 ? (
+                              <Typography.Text type="secondary">
+                                Önümüzdeki {UPCOMING_HORIZON_DAYS} günde yaklaşan veya gecikmiş aktif görev yok.
+                              </Typography.Text>
+                            ) : (
+                              <List
+                                size="small"
+                                dataSource={upcomingTasks}
+                                renderItem={(task) => {
+                                  const isAssignee = session?.user.id === task.assignee_user_id
+                                  const canComplete =
+                                    task.due_state !== 'done_period' && (isAssignee || canUpdateWorkTasks)
+                                  return (
+                                    <List.Item
+                                      actions={
+                                        canComplete
+                                          ? [
+                                              <Button
+                                                key="done"
+                                                size="small"
+                                                type="link"
+                                                icon={<CheckOutlined />}
+                                                loading={completingTaskId === task.id}
+                                                onClick={() => void onCompleteUpcoming(task)}
+                                              >
+                                                Yapıldı
+                                              </Button>,
+                                            ]
+                                          : undefined
+                                      }
+                                    >
+                                      <div style={{ minWidth: 0, flex: 1 }}>
+                                        <Space wrap size={6} style={{ marginBottom: 2 }}>
+                                          {task.is_mandatory && (
+                                            <ExclamationCircleOutlined style={{ color: '#cf1322' }} />
+                                          )}
+                                          <Typography.Text strong style={{ fontSize: 15 }}>
+                                            {task.title}
+                                          </Typography.Text>
+                                          {workTaskDueTag(task.due_state, task.is_mandatory)}
+                                        </Space>
+                                        <div>
+                                          <Typography.Text type="secondary">
+                                            {dayjs(task.next_due_at).format('DD.MM.YYYY HH:mm')}
+                                            {' · '}
+                                            {task.Assignee?.full_name || 'Atanmamış'}
+                                          </Typography.Text>
+                                        </div>
+                                      </div>
+                                    </List.Item>
+                                  )
+                                }}
+                              />
+                            )}
+                          </Card>
+                        ),
+                      },
+                    ]
+                  : []),
                 ...(canStudents
                   ? [
                       {
                         id: 'students-status',
+                        label: 'Öğrenci kayıt durumu',
                         span: { xs: 24, md: 12 },
                         node: (
                           <Card title="Öğrenci kayıt durumu">
@@ -526,6 +670,7 @@ export function DashboardPage() {
                       },
                       {
                         id: 'students-by-class',
+                        label: 'Sınıflara göre öğrenci',
                         span: { xs: 24, md: 12 },
                         node: (
                           <Card title="Sınıflara göre öğrenci">
@@ -552,6 +697,7 @@ export function DashboardPage() {
                   ? [
                       {
                         id: 'linked-schools',
+                        label: 'Bağlı okullarınız',
                         span: { xs: 24, md: canStudents ? 24 : 12 },
                         node: (
                           <Card title="Bağlı okullarınız">

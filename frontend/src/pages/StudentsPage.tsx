@@ -1,23 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  App,
-  Alert,
-  Button,
-  Checkbox,
-  Col,
-  DatePicker,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Row,
-  Select,
-  Space,
-  Steps,
-  Table,
-  Typography,
-  Upload,
-} from 'antd'
+import { App, Alert, Button, Checkbox, Col, DatePicker, Form, Input, InputNumber, Modal, Row, Select, Space, Steps, Typography, Upload } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import {
   DeleteOutlined,
   DownloadOutlined,
@@ -70,6 +53,7 @@ import {
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
 import { tablePagination } from '../utils/tablePagination'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
+import { personNameSorter, SORT_AZ } from '../utils/tableSort'
 
 interface StudentFormValues {
   first_name: string
@@ -507,6 +491,8 @@ export function StudentsPage() {
     { title: 'Öğrenci No', dataIndex: 'student_number', render: (v: string | null) => v || '—' },
     {
       title: 'Ad soyad',
+      sorter: personNameSorter(),
+      sortDirections: [...SORT_AZ],
       render: (_: unknown, record) => `${record.first_name} ${record.last_name}`,
     },
     { title: 'T.C.', dataIndex: 'national_id', render: (v: string | null) => v || '—' },
@@ -632,7 +618,7 @@ export function StudentsPage() {
           />
         </FilterBar>
 
-        <Table
+        <SortableTable
           rowKey="id"
           loading={loading}
           columns={columns}
@@ -1005,7 +991,7 @@ export function StudentsPage() {
               Her Excel başlığını bir öğrenci alanına bağlayın. Kullanılmayan sütunları boş bırakın.
             </Typography.Paragraph>
 
-            <Table
+            <SortableTable
               size="small"
               pagination={false}
               scroll={{ x: 'max-content' }}
@@ -1059,7 +1045,7 @@ export function StudentsPage() {
                 <Typography.Text strong style={{ display: 'block', marginTop: 16 }}>
                   Önizleme (ilk satırlar)
                 </Typography.Text>
-                <Table
+                <SortableTable
                   size="small"
                   style={{ marginTop: 8 }}
                   pagination={false}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { App, Button, Space, Table, Tag, Typography } from 'antd'
+import { App, Button, Space, Tag, Typography } from 'antd'
+import { SortableTable } from '../../components/SortableTable'
 import { PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../../components/AppLayout'
@@ -39,6 +40,11 @@ export function TenantsListPage() {
     },
     { title: 'Plan', dataIndex: 'plan', render: (plan: string | null) => plan || '—' },
     {
+      title: 'Telefon',
+      dataIndex: 'phone',
+      render: (phone: string | null | undefined) => phone || '—',
+    },
+    {
       title: 'Durum',
       dataIndex: 'is_active',
       render: (isActive: boolean) =>
@@ -55,7 +61,7 @@ export function TenantsListPage() {
 
   return (
     <AppLayout title="Hesap Yönetimi">
-      <div style={{ maxWidth: 1100 }}>
+      <div style={{ width: '100%' }}>
         <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
           <Typography.Title level={3} style={{ margin: 0 }}>
             Hesaplar
@@ -65,7 +71,7 @@ export function TenantsListPage() {
           </Button>
         </Space>
 
-        <Table
+        <SortableTable
           rowKey="id"
           loading={loading}
           columns={columns}

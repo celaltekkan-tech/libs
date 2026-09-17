@@ -29,9 +29,11 @@ import {
 } from '../api/auth'
 import { getErrorMessage } from '../api/client'
 import type { TwoFactorSetup } from '../types/auth'
+import { requiredMobilePhoneRule } from '../utils/phone'
 
 interface ProfileForm {
   full_name: string
+  phone?: string
 }
 
 interface PasswordForm {
@@ -60,6 +62,8 @@ export function ProfilePage() {
   const [tenantTwoFactorEnabled, setTenantTwoFactorEnabled] = useState(
     Boolean(session?.tenant_two_factor_enabled),
   )
+  const [tenantSmsLoginEnabled, setTenantSmsLoginEnabled] = useState(false)
+  const [tenantSmsSaving, setTenantSmsSaving] = useState(false)
   const [userTotpEnabled, setUserTotpEnabled] = useState(Boolean(session?.user.totp_enabled))
   const [setupData, setSetupData] = useState<TwoFactorSetup | null>(null)
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null)
@@ -77,6 +81,7 @@ export function ProfilePage() {
       .then((status) => {
         if (cancelled) return
         setTenantTwoFactorEnabled(status.tenant_two_factor_enabled)
+        setTenantSmsLoginEnabled(Boolean(status.tenant_sms_login_enabled))
         setUserTotpEnabled(status.totp_enabled)
       })
       .catch(() => {
@@ -90,7 +95,10 @@ export function ProfilePage() {
   const onSaveProfile = async (values: ProfileForm) => {
     setProfileSubmitting(true)
     try {
-      const payload = await updateProfile(values.full_name.trim())
+      const payload = await updateProfile({
+        full_name: values.full_name.trim(),
+        phone: values.phone?.trim() || null,
+      })
       setSessionPayload(payload)
       message.success('Profil güncellendi')
     } catch (err) {
@@ -116,8 +124,9 @@ export function ProfilePage() {
   const onToggleTenant2fa = async (checked: boolean) => {
     setTenant2faSaving(true)
     try {
-      const result = await updateTenantTwoFactorSetting(checked)
+      const result = await updateTenantTwoFactorSetting({ two_factor_enabled: checked })
       setTenantTwoFactorEnabled(result.two_factor_enabled)
+      setTenantSmsLoginEnabled(Boolean(result.sms_login_enabled))
       if (!result.two_factor_enabled) {
         setUserTotpEnabled(false)
         setSetupData(null)
@@ -133,6 +142,25 @@ export function ProfilePage() {
       message.error(getErrorMessage(err))
     } finally {
       setTenant2faSaving(false)
+    }
+  }
+
+  const onToggleTenantSmsLogin = async (checked: boolean) => {
+    setTenantSmsSaving(true)
+    try {
+      const result = await updateTenantTwoFactorSetting({ sms_login_enabled: checked })
+      setTenantSmsLoginEnabled(Boolean(result.sms_login_enabled))
+      setTenantTwoFactorEnabled(result.two_factor_enabled)
+      await refreshSession()
+      message.success(
+        result.sms_login_enabled
+          ? 'SMS ile giriş hesap için açıldı'
+          : 'SMS ile giriş hesap için kapatıldı',
+      )
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setTenantSmsSaving(false)
     }
   }
 
@@ -186,12 +214,13 @@ export function ProfilePage() {
 
   return (
     <AppLayout title="Profilim">
-      <div style={{ maxWidth: 1100 }}>
+      <div style={{ width: '100%' }}>
         <Typography.Title level={3} style={{ marginBottom: 4 }}>
           Profilim
         </Typography.Title>
         <Typography.Paragraph type="secondary">
-          Hesap bilgilerinizi görüntüleyin, adınızı güncelleyin veya şifrenizi değiştirin.
+          Hesap bilgilerinizi görüntüleyin, adınızı ve telefonunuzu güncelleyin veya şifrenizi değiştirin.
+          Kartları sürükleyerek yan yana hizalayabilir (2–6), alta bırakarak tam genişlik yapabilirsiniz.
         </Typography.Paragraph>
 
         <SortableDashboard
@@ -205,6 +234,7 @@ export function ProfilePage() {
                   <Descriptions column={1} size="small">
                     <Descriptions.Item label="Ad soyad">{user?.full_name}</Descriptions.Item>
                     <Descriptions.Item label="E-posta">{user?.email}</Descriptions.Item>
+                    <Descriptions.Item label="Telefon">{user?.phone || '—'}</Descriptions.Item>
                     <Descriptions.Item label="Global rol">{user?.role}</Descriptions.Item>
                     <Descriptions.Item label="Okul rolleri">
                       <Space wrap>
@@ -269,11 +299,11 @@ export function ProfilePage() {
               id: 'profile-name',
               span: { xs: 24, md: 12 },
               node: (
-                <Card title="Ad soyad güncelle">
+                <Card title="Profil bilgileri">
                   <Form
                     form={profileForm}
                     layout="vertical"
-                    initialValues={{ full_name: user?.full_name }}
+                    initialValues={{ full_name: user?.full_name, phone: user?.phone || undefined }}
                     onFinish={onSaveProfile}
                   >
                     <Form.Item
@@ -285,6 +315,23 @@ export function ProfilePage() {
                       ]}
                     >
                       <Input />
+                    </Form.Item>
+                    <Form.Item
+                      name="phone"
+                      label="Kullanıcı telefonu (SMS)"
+                      extra={
+                        tenantSmsLoginEnabled
+                          ? 'SMS ile giriş açık: geçerli cep telefonu zorunludur (05xxxxxxxxx).'
+                          : 'İş takibi ve diğer SMS bildirimleri bu numaraya gönderilir.'
+                      }
+                      rules={[
+                        ...(tenantSmsLoginEnabled
+                          ? [{ required: true, message: 'Telefon zorunludur' }]
+                          : []),
+                        requiredMobilePhoneRule(tenantSmsLoginEnabled),
+                      ]}
+                    >
+                      <Input placeholder="05xx xxx xx xx" maxLength={30} />
                     </Form.Item>
                     <Button type="primary" htmlType="submit" loading={profileSubmitting}>
                       Kaydet
@@ -349,18 +396,38 @@ export function ProfilePage() {
                     node: (
                       <Card title="Hesap güvenliği (yönetici)">
                         <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-                          Açıldığında kullanıcılar profilinden iki adımlı doğrulama kurabilir. Kapatılırsa
-                          tüm kullanıcıların 2FA ayarları sıfırlanır.
+                          Authenticator (2FA) veya SMS ile giriş ikinci doğrulama yöntemleridir. SMS
+                          için her kullanıcının kendi telefonu gerekir; kurum telefonu kayıtlıysa
+                          telefonu boş kullanıcılara otomatik aktarılır. Günde en fazla 3 SMS kodu
+                          isteği yapılabilir.
                         </Typography.Paragraph>
-                        <Space>
-                          <Switch
-                            checked={tenantTwoFactorEnabled}
-                            loading={tenant2faSaving}
-                            onChange={(checked) => void onToggleTenant2fa(checked)}
-                          />
-                          <span>
-                            {tenantTwoFactorEnabled ? '2FA hesapta açık' : '2FA hesapta kapalı'}
-                          </span>
+                        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                          <Space>
+                            <Switch
+                              checked={tenantTwoFactorEnabled}
+                              loading={tenant2faSaving}
+                              onChange={(checked) => void onToggleTenant2fa(checked)}
+                            />
+                            <span>
+                              {tenantTwoFactorEnabled
+                                ? 'Authenticator 2FA açık'
+                                : 'Authenticator 2FA kapalı'}
+                            </span>
+                          </Space>
+                          <Space>
+                            <Switch
+                              checked={tenantSmsLoginEnabled}
+                              loading={tenantSmsSaving}
+                              onChange={(checked) => void onToggleTenantSmsLogin(checked)}
+                            />
+                            <span>
+                              {tenantSmsLoginEnabled ? 'SMS ile giriş açık' : 'SMS ile giriş kapalı'}
+                            </span>
+                          </Space>
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                            Açmak için tüm aktif kullanıcıların geçerli cep telefonu (05xxxxxxxxx)
+                            tanımlı olmalıdır.
+                          </Typography.Text>
                         </Space>
                       </Card>
                     ),

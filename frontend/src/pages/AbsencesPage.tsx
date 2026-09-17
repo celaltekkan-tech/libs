@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { App, Button, Card, DatePicker, Input, Modal, Select, Space, Table, Tabs, Tag, Typography } from 'antd'
+import { App, Button, Card, DatePicker, Input, Modal, Select, Space, Tabs, Tag, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import { DeleteOutlined, DownloadOutlined, FileTextOutlined, HistoryOutlined, SaveOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
@@ -30,6 +31,7 @@ import { DykAttendancePanel } from './DykPage'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { tablePagination } from '../utils/tablePagination'
+import { nestedPersonNameSorter, personNameSorter, SORT_AZ } from '../utils/tableSort'
 import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 export function AbsencesPage() {
@@ -204,7 +206,12 @@ export function AbsencesPage() {
 
   const studentColumns: ColumnsType<Student> = [
     { title: 'Öğrenci No', dataIndex: 'student_number' },
-    { title: 'Ad Soyad', render: (_: unknown, s: Student) => `${s.first_name} ${s.last_name}` },
+    {
+      title: 'Ad Soyad',
+      sorter: personNameSorter<Student>(),
+      sortDirections: [...SORT_AZ],
+      render: (_: unknown, s: Student) => `${s.first_name} ${s.last_name}`,
+    },
     {
       title: 'Sınıf',
       render: (_: unknown, s: Student) => (s.class_level && s.section ? `${s.class_level}/${s.section}` : '—'),
@@ -326,7 +333,7 @@ export function AbsencesPage() {
                             />
                           </Card>
                         )}
-                        <Table
+                        <SortableTable
                           rowKey="id"
                           loading={loading}
                           columns={studentColumns}
@@ -346,7 +353,7 @@ export function AbsencesPage() {
                                 </Button>
                               )}
                             </Space>
-                            <Table
+                            <SortableTable
                               size="small"
                               rowKey="id"
                               dataSource={records}
@@ -355,6 +362,8 @@ export function AbsencesPage() {
                               columns={[
                                 {
                                   title: 'Öğrenci',
+                                  sorter: nestedPersonNameSorter((r: StudentAbsence) => r.Student),
+                                  sortDirections: [...SORT_AZ],
                                   render: (_: unknown, r: StudentAbsence) =>
                                     r.Student ? `${r.Student.first_name} ${r.Student.last_name}` : '—',
                                 },
@@ -388,7 +397,7 @@ export function AbsencesPage() {
                     key: 'warnings',
                     label: `Eşik Uyarıları (${warnings.length})`,
                     children: (
-                      <Table
+                      <SortableTable
                         rowKey="student_id"
                         columns={warningColumns}
                         dataSource={warnings}

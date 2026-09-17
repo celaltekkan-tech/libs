@@ -15,6 +15,7 @@ const COLUMN_LABELS = {
   national_id: 'T.C. Kimlik No',
   first_name: 'Ad',
   last_name: 'Soyad',
+  full_name: 'Ad Soyad',
   class_level: 'Sınıf',
   section: 'Şube',
   gender: 'Cinsiyet',
@@ -278,6 +279,7 @@ function normalizeExtraContacts(contacts) {
 }
 
 function formatCellValue(student, key) {
+  if (key === 'full_name') return `${student.first_name || ''} ${student.last_name || ''}`.trim();
   const value = student[key];
   if (key === 'extra_contacts') return formatExtraContacts(value);
   if (value == null || value === '') return '';

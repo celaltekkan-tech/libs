@@ -38,6 +38,9 @@ import { DisciplinePage } from './pages/DisciplinePage'
 import { GuidancePage } from './pages/GuidancePage'
 import { TeacherDocumentsPage } from './pages/TeacherDocumentsPage'
 import { OtherPersonnelPage } from './pages/OtherPersonnelPage'
+import { WorkTasksPage } from './pages/WorkTasksPage'
+import { CalendarPage } from './pages/CalendarPage'
+import { MessageLogsPage } from './pages/MessageLogsPage'
 
 function ThemedApp() {
   const { mode } = useThemeMode()
@@ -80,6 +83,9 @@ function ThemedApp() {
                     <Route path="/audit-logs" element={<AuditLogsPage />} />
                   </Route>
                   <Route path="/feedback" element={<FeedbackPage />} />
+                  <Route path="/work-tasks" element={<WorkTasksPage />} />
+                  <Route path="/calendar" element={<CalendarPage />} />
+                  <Route path="/message-logs" element={<MessageLogsPage />} />
                   <Route element={<ModuleRoute module="schools" />}>
                     <Route path="/schools" element={<SchoolsPage />} />
                   </Route>

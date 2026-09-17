@@ -1,16 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  App,
-  Button,
-  Checkbox,
-  Form,
-  Input,
-  Modal,
-  Space,
-  Table,
-  Tag,
-  Typography,
-} from 'antd'
+import { App, Button, Checkbox, Form, Input, Modal, Space, Tag, Typography } from 'antd'
+import { SortableTable } from './SortableTable'
 import { CopyOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import {
@@ -234,7 +224,7 @@ export function RoleGroupsPanel() {
         </Space>
       </Space>
 
-      <Table rowKey="id" loading={loading} columns={columns} dataSource={roles} pagination={false} />
+      <SortableTable rowKey="id" loading={loading} columns={columns} dataSource={roles} pagination={false} />
 
       <Modal
         title={editing ? 'Yetki Grubunu Düzenle' : 'Yeni Yetki Grubu'}

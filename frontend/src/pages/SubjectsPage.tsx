@@ -1,18 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  App,
-  Button,
-  Form,
-  Input,
-  InputNumber,
-  List,
-  Modal,
-  Select,
-  Space,
-  Switch,
-  Table,
-  Typography,
-} from 'antd'
+import { App, Button, Form, Input, InputNumber, List, Modal, Select, Space, Switch, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import {
   ClockCircleOutlined,
   DeleteOutlined,
@@ -294,7 +282,7 @@ export function SubjectsPage() {
           style={{ maxWidth: 420, marginBottom: 16 }}
         />
 
-        <Table
+        <SortableTable
           rowKey="id"
           loading={loading}
           columns={columns}

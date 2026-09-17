@@ -37,6 +37,9 @@ const guidanceRoutes = require('./routes/guidance');
 const teacherDocumentsRoutes = require('./routes/teacherDocuments');
 const holidaysRoutes = require('./routes/holidays');
 const notificationsRoutes = require('./routes/notifications');
+const workTasksRoutes = require('./routes/workTasks');
+const calendarRoutes = require('./routes/calendar');
+const messageLogsRoutes = require('./routes/messageLogs');
 const backupsRoutes = require('./routes/backups');
 const errorHandler = require('./middlewares/errorHandler');
 const db = require('./models');
@@ -99,15 +102,27 @@ app.use(express.urlencoded({ extended: true }));
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  // SPA + bildirim/zorunlu-iş poll için 300 yetersiz kalıyordu.
+  max: Number(process.env.RATE_LIMIT_API_MAX || 2000),
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, code: 'RATE_LIMITED', message: 'Çok fazla istek gönderildi' },
+  // Giriş uçları ayrı authLimiter ile korunur; API kotası dolunca login kilitlenmesin.
+  skip: (req) => {
+    const path = String(req.originalUrl || req.url || '').split('?')[0];
+    return (
+      path === '/api/auth/login' ||
+      path === '/api/auth/register' ||
+      path === '/api/auth/verify-2fa' ||
+      path === '/api/auth/verify-sms' ||
+      path === '/api/auth/resend-sms'
+    );
+  },
 });
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: Number(process.env.RATE_LIMIT_AUTH_MAX || 30),
   skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
@@ -130,6 +145,8 @@ app.use('/api', apiLimiter);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/verify-2fa', authLimiter);
+app.use('/api/auth/verify-sms', authLimiter);
+app.use('/api/auth/resend-sms', authLimiter);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/teachers', teachersRoutes);
@@ -165,6 +182,9 @@ app.use('/api/guidance', guidanceRoutes);
 app.use('/api/teacher-documents', teacherDocumentsRoutes);
 app.use('/api/holidays', holidaysRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/work-tasks', workTasksRoutes);
+app.use('/api/calendar', calendarRoutes);
+app.use('/api/message-logs', messageLogsRoutes);
 app.use('/api/backups', backupsRoutes);
 
 app.use((req, res) => {

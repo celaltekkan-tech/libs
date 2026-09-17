@@ -38,9 +38,19 @@ export async function createTenant(payload: CreateTenantWizardPayload): Promise<
   await client.post('/api/tenants', payload)
 }
 
-export async function updateTenant(id: number, payload: UpdateTenantPayload): Promise<Tenant> {
-  const { data } = await client.put<Envelope<Tenant>>(`/api/tenants/${id}`, payload)
-  return data.data
+export async function updateTenant(
+  id: number,
+  payload: UpdateTenantPayload,
+): Promise<{ tenant: Tenant; usersPhoneSynced: number }> {
+  const { data } = await client.put<{
+    success: true
+    data: Tenant
+    meta?: { users_phone_synced?: number }
+  }>(`/api/tenants/${id}`, payload)
+  return {
+    tenant: data.data,
+    usersPhoneSynced: Number(data.meta?.users_phone_synced || 0),
+  }
 }
 
 export async function resetTenantTwoFactor(
@@ -59,6 +69,16 @@ export async function resetTenantUserTwoFactor(
   const { data } = await client.post<Envelope<{ user_id: number; totp_enabled: boolean }>>(
     `/api/tenants/${tenantId}/users/${userId}/reset-2fa`,
   )
+  return data.data
+}
+
+export async function resetTenantUserSmsLogin(
+  tenantId: number,
+  userId: number,
+): Promise<{ user_id: number; sms_login_requests_count: number }> {
+  const { data } = await client.post<
+    Envelope<{ user_id: number; sms_login_requests_count: number }>
+  >(`/api/tenants/${tenantId}/users/${userId}/reset-sms-login`)
   return data.data
 }
 

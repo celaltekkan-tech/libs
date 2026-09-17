@@ -1,22 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  App,
-  Button,
-  Col,
-  Collapse,
-  DatePicker,
-  Dropdown,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Row,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Typography,
-} from 'antd'
+import { App, Button, Checkbox, Col, Collapse, DatePicker, Dropdown, Form, Input, InputNumber, Modal, Row, Select, Space, Tag, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import {
   DeleteOutlined,
   DownloadOutlined,
@@ -31,6 +15,7 @@ import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { AppLayout } from '../components/AppLayout'
 import { MebbisImportModal } from '../components/MebbisImportModal'
+import { PersonnelDepartureModal } from '../components/PersonnelDepartureModal'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import { useActiveSchool } from '../auth/ActiveSchoolContext'
@@ -52,7 +37,9 @@ import { downloadBlob, exportFilename, type ExportFormat } from '../utils/downlo
 import { listPersonnelCategories } from '../api/personnelCategories'
 import type { PersonnelCategory } from '../types/personnelCategory'
 import { tablePagination } from '../utils/tablePagination'
+import { personNameSorter, sorterBy, SORT_AZ } from '../utils/tableSort'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
+import { addSalaryFormStarter } from '../utils/salaryFormAutoEntry'
 
 interface PromotionFormValues {
   new_degree: string
@@ -81,6 +68,7 @@ interface TeacherFormValues {
   service_start_date?: Dayjs | null
   annual_leave_quota?: number | null
   union_name?: string
+  add_to_salary_form?: boolean
 }
 
 export function TeachersPage() {
@@ -108,6 +96,7 @@ export function TeachersPage() {
   const [moving, setMoving] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkLoading, setBulkLoading] = useState(false)
+  const [departureTarget, setDepartureTarget] = useState<Teacher | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -151,6 +140,7 @@ export function TeachersPage() {
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
+    form.setFieldsValue({ add_to_salary_form: true })
     setModalOpen(true)
   }
 
@@ -184,8 +174,9 @@ export function TeachersPage() {
     if (!session) return
     setSubmitting(true)
     try {
+      const { add_to_salary_form, ...rest } = values
       const payload: TeacherPayload = {
-        ...values,
+        ...rest,
         personnel_type: 'ogretmen',
         personnel_category_id: null,
         degree_rank_date: values.degree_rank_date ? values.degree_rank_date.toISOString() : null,
@@ -196,8 +187,21 @@ export function TeachersPage() {
         await updateTeacher(editing.id, payload)
         message.success('Öğretmen güncellendi')
       } else {
-        await createTeacher(session.user.tenant_id, payload)
+        const created = await createTeacher(session.user.tenant_id, payload)
         message.success('Öğretmen oluşturuldu')
+        if (add_to_salary_form) {
+          const startDate = values.service_start_date || dayjs()
+          try {
+            await addSalaryFormStarter(startDate, {
+              personnel_no: created.personnel_no || undefined,
+              full_name: `${created.first_name} ${created.last_name}`,
+              national_id: created.national_id || undefined,
+              start_date: startDate.format('YYYY-MM-DD'),
+            })
+          } catch (err) {
+            message.warning('Öğretmen oluşturuldu ancak maaş değişikliği formuna eklenemedi: ' + getErrorMessage(err))
+          }
+        }
       }
       setModalOpen(false)
       void load()
@@ -298,9 +302,13 @@ export function TeachersPage() {
   }
 
   const onDownloadDocument = async (teacher: Teacher, type: TeacherDocumentType) => {
+    if (type === 'ayrilis') {
+      setDepartureTarget(teacher)
+      return
+    }
     try {
       const blob = await downloadTeacherDocument(teacher.id, type)
-      downloadBlob(blob, `${type}-${teacher.personnel_no || teacher.id}.pdf`)
+      downloadBlob(blob, `${type}-${teacher.personnel_no || teacher.id}.docx`)
     } catch (err) {
       message.error(getErrorMessage(err))
     }
@@ -347,11 +355,18 @@ export function TeachersPage() {
   const columns: ColumnsType<Teacher> = [
     {
       title: 'Ad soyad',
+      sorter: personNameSorter<Teacher>(),
+      sortDirections: [...SORT_AZ],
       render: (_: unknown, record) => `${record.first_name} ${record.last_name}`,
     },
     { title: 'Sicil No', dataIndex: 'personnel_no', render: (v: string | null) => v || '—' },
     { title: 'Unvan / Branş', dataIndex: 'title_branch', render: (v: string | null) => v || '—' },
-    { title: 'Okul', render: (_: unknown, record) => schoolName(record.school_id) },
+    {
+      title: 'Okul',
+      sorter: sorterBy((r: Teacher) => schoolName(r.school_id)),
+      sortDirections: [...SORT_AZ],
+      render: (_: unknown, record) => schoolName(record.school_id),
+    },
     { title: 'Şehir', dataIndex: 'city', render: (v: string | null) => v || '—' },
     { title: 'Sendika', dataIndex: 'union_name', render: (v: string | null) => v || '—' },
     {
@@ -364,7 +379,7 @@ export function TeachersPage() {
               items: [
                 { key: 'baslama', label: 'Göreve Başlama Yazısı' },
                 { key: 'gorevlendirme', label: 'Görevlendirme Yazısı' },
-                { key: 'ayrilis', label: 'Ayrılış Yazısı' },
+                { key: 'ayrilis', label: 'Ayrılış Ver...' },
               ],
               onClick: ({ key }) => void onDownloadDocument(record, key as TeacherDocumentType),
             }}
@@ -428,7 +443,7 @@ export function TeachersPage() {
           style={{ maxWidth: 420, marginBottom: 16 }}
         />
 
-        <Table
+        <SortableTable
           rowKey="id"
           loading={loading}
           columns={columns}
@@ -450,7 +465,7 @@ export function TeachersPage() {
                   </Space>
                 ),
                 children: (
-                  <Table
+                  <SortableTable
                     size="small"
                     rowKey="teacher_id"
                     pagination={false}
@@ -625,6 +640,14 @@ export function TeachersPage() {
               </Form.Item>
             </Col>
           </Row>
+          {!editing && (
+            <Form.Item name="add_to_salary_form" valuePropName="checked">
+              <Checkbox>
+                Maaş Değişikliği Bildirim Formuna ekle (C - Başlayan Personel). İşaret kaldırılırsa kurum
+                içi görevlendirme kabul edilir.
+              </Checkbox>
+            </Form.Item>
+          )}
         </Form>
       </Modal>
 
@@ -732,6 +755,14 @@ export function TeachersPage() {
         loading={bulkLoading}
         onCancel={() => setBulkOpen(false)}
         onConfirm={onBulkDelete}
+      />
+      <PersonnelDepartureModal
+        teacher={departureTarget}
+        onClose={() => setDepartureTarget(null)}
+        onDone={() => {
+          setDepartureTarget(null)
+          void load()
+        }}
       />
     </AppLayout>
   )

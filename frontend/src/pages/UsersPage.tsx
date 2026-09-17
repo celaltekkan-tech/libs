@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Button, Form, Input, Modal, Select, Space, Switch, Table, Tabs, Tag, Typography } from 'antd'
+import { App, Button, Form, Input, Modal, Select, Space, Switch, Tabs, Tag, Typography } from 'antd'
 import { DeleteOutlined, EditOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { SortableTable } from '../components/SortableTable'
 import { RoleGroupsPanel } from '../components/RoleGroupsPanel'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
@@ -11,16 +12,19 @@ import {
   deleteManagedUser,
   fetchUserFormOptions,
   listManagedUsers,
+  resetManagedUserSmsLogin,
   updateManagedUser,
 } from '../api/managedUsers'
 import { getErrorMessage } from '../api/client'
 import type { ManagedUser, ManagedUserPayload, UserFormOptions } from '../types/managedUser'
 import { tablePagination } from '../utils/tablePagination'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
+import { requiredMobilePhoneRule } from '../utils/phone'
 
 interface UserFormValues {
   full_name: string
   email: string
+  phone?: string
   password?: string
   school_id: number
   role_id: number
@@ -77,6 +81,11 @@ export function UsersPage() {
     })
   }, [users, search])
 
+  const deletableUsers = useMemo(
+    () => filteredUsers.filter((u) => u.id !== session?.user.id),
+    [filteredUsers, session?.user.id],
+  )
+
   const roleOptions = useMemo(
     () =>
       options.school_roles.map((r) => ({
@@ -113,6 +122,7 @@ export function UsersPage() {
       school_id: user.assigned_school_id || user.school_id || undefined,
       role_id: resolveRoleId(user),
       is_active: user.is_active,
+      phone: user.phone || undefined,
       password: undefined,
     })
     setModalOpen(true)
@@ -137,6 +147,7 @@ export function UsersPage() {
         role_id: values.role_id,
         school_role: roleMeta?.name || 'Memur',
         is_active: isSelf ? true : values.is_active,
+        phone: values.phone?.trim() || null,
       }
       if (values.password) payload.password = values.password
 
@@ -179,8 +190,26 @@ export function UsersPage() {
     })
   }
 
+  const onResetSmsLogin = (user: ManagedUser) => {
+    modal.confirm({
+      title: 'SMS giriş sayacını sıfırla',
+      content: `"${user.full_name}" için günlük SMS istek hakkı ve giriş kilidi sıfırlansın mı?`,
+      okText: 'Sıfırla',
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        try {
+          await resetManagedUserSmsLogin(user.id)
+          message.success('SMS giriş sayacı sıfırlandı')
+          void load()
+        } catch (err) {
+          message.error(getErrorMessage(err))
+        }
+      },
+    })
+  }
+
   const onBulkDelete = async () => {
-    const ids = filteredUsers.filter((u) => u.id !== session?.user.id).map((u) => u.id)
+    const ids = deletableUsers.map((u) => u.id)
     if (ids.length === 0) {
       message.warning('Silinecek kullanıcı yok (kendi hesabınız hariç tutulur)')
       setBulkOpen(false)
@@ -202,6 +231,7 @@ export function UsersPage() {
   const canCreate = hasPermission('users.create')
   const canUpdate = hasPermission('users.update')
   const canDelete = hasPermission('users.delete')
+  const smsLoginRequiresPhone = Boolean(session?.tenant_sms_login_enabled)
   const atUserLimit = options.user_limit != null && options.user_count >= options.user_limit
   const quotaLabel =
     options.user_limit == null
@@ -211,6 +241,7 @@ export function UsersPage() {
   const columns: ColumnsType<ManagedUser> = [
     { title: 'Ad soyad', dataIndex: 'full_name' },
     { title: 'E-posta', dataIndex: 'email' },
+    { title: 'Telefon', dataIndex: 'phone', render: (p: string | null) => p || '—' },
     {
       title: 'Yetki grubu',
       dataIndex: 'school_role',
@@ -235,6 +266,11 @@ export function UsersPage() {
                 {canUpdate && (
                   <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)} title="Düzenle" />
                 )}
+                {canUpdate && (
+                  <Button size="small" onClick={() => onResetSmsLogin(record)} title="SMS sayacı sıfırla">
+                    SMS sıfırla
+                  </Button>
+                )}
                 {canDelete && session?.user.id !== record.id && (
                   <Button
                     size="small"
@@ -253,7 +289,7 @@ export function UsersPage() {
 
   return (
     <AppLayout title="Kullanıcılar ve Yetkilendirme">
-      <div style={{ maxWidth: 1100 }}>
+      <div style={{ width: '100%' }}>
         <Typography.Title level={3} style={{ margin: 0, marginBottom: 4 }}>
           Kullanıcılar ve Yetkilendirme
         </Typography.Title>
@@ -282,9 +318,9 @@ export function UsersPage() {
                       onChange={(e) => setSearch(e.target.value)}
                       style={{ maxWidth: 420 }}
                     />
-                    {canDelete && filteredUsers.length > 0 && (
+                    {canDelete && deletableUsers.length > 0 && (
                       <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
-                        Toplu sil ({filteredUsers.length})
+                        Toplu sil ({deletableUsers.length})
                       </Button>
                     )}
                     {canCreate && (
@@ -310,7 +346,7 @@ export function UsersPage() {
                     </Typography.Paragraph>
                   )}
 
-                  <Table
+                  <SortableTable
                     rowKey="id"
                     loading={loading}
                     columns={columns}
@@ -349,6 +385,23 @@ export function UsersPage() {
             ]}
           >
             <Input placeholder="kullanici@okul.local" />
+          </Form.Item>
+          <Form.Item
+            name="phone"
+            label="Kullanıcı telefonu (SMS)"
+            extra={
+              smsLoginRequiresPhone
+                ? 'SMS ile giriş açık: geçerli cep telefonu zorunludur (05xxxxxxxxx).'
+                : 'SMS bildirimleri ve SMS giriş için kullanılır (05xxxxxxxxx).'
+            }
+            rules={[
+              ...(smsLoginRequiresPhone
+                ? [{ required: true, message: 'Telefon zorunludur' }]
+                : []),
+              requiredMobilePhoneRule(smsLoginRequiresPhone),
+            ]}
+          >
+            <Input placeholder="05xx xxx xx xx" maxLength={30} />
           </Form.Item>
           <Form.Item
             name="password"
@@ -393,7 +446,7 @@ export function UsersPage() {
       <TypedPhraseConfirmModal
         open={bulkOpen}
         title="Kullanıcıları toplu sil"
-        description={`Filtreye uyan ${filteredUsers.length} kullanıcı kaydı silinecek (kendi hesabınız hariç).`}
+        description={`Filtreye uyan ${deletableUsers.length} kullanıcı kaydı silinecek (kendi hesabınız hariç).`}
         loading={bulkLoading}
         onCancel={() => setBulkOpen(false)}
         onConfirm={onBulkDelete}
