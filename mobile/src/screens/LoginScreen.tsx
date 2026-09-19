@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { getErrorMessage } from '../api/client';
+import { useServerConfig } from '../context/ServerConfigContext';
+import { getApiBaseUrl, getErrorMessage } from '../api/client';
 
 // NOT: Bu ekran şimdilik mevcut web paneliyle aynı e-posta/şifre uçunu
 // (POST /api/auth/login) kullanıyor. Login akışının nasıl olacağı ayrıca
 // netleştirilecek; o zaman bu ekran değiştirilecek.
 export function LoginScreen() {
   const { login } = useAuth();
+  const { resetApiBaseUrl } = useServerConfig();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -54,6 +56,10 @@ export function LoginScreen() {
       <TouchableOpacity style={styles.button} onPress={onSubmit} disabled={submitting}>
         {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Giriş Yap</Text>}
       </TouchableOpacity>
+
+      <TouchableOpacity style={styles.serverLink} onPress={() => void resetApiBaseUrl()}>
+        <Text style={styles.serverLinkText}>Sunucu: {getApiBaseUrl()}  (değiştir)</Text>
+      </TouchableOpacity>
     </KeyboardAvoidingView>
   );
 }
@@ -79,4 +85,6 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   error: { color: '#d4380d', marginBottom: 12, textAlign: 'center' },
+  serverLink: { marginTop: 20, alignItems: 'center' },
+  serverLinkText: { color: '#98a2b3', fontSize: 12 },
 });

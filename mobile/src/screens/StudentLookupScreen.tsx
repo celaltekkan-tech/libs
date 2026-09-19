@@ -4,8 +4,7 @@ import { Image } from 'expo-image';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { lookupStudentByNumber } from '../api/students';
-import { getErrorMessage, getStoredToken } from '../api/client';
-import { API_BASE_URL } from '../config';
+import { getApiBaseUrl, getErrorMessage, getStoredToken } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import type { Student } from '../types/api';
 
@@ -77,7 +76,7 @@ export function StudentLookupScreen({ navigation }: Props) {
         <View style={styles.card}>
           {student.photo_url ? (
             <Image
-              source={{ uri: `${API_BASE_URL}${student.photo_url}`, headers: photoHeaders }}
+              source={{ uri: `${getApiBaseUrl() ?? ''}${student.photo_url}`, headers: photoHeaders }}
               style={styles.photo}
               contentFit="cover"
             />

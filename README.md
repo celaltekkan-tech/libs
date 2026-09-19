@@ -498,23 +498,54 @@ npm run build:frontend
 
 ## Mobil Uygulama (Expo)
 
-Öğretmenlerin sınıfta hızlıca öğrenci arayıp disiplin bildirimi (öğretmen notu) oluşturması için `mobile/` klasöründe React Native (Expo) uygulaması bulunur: giriş, öğrenci numarasıyla arama, hazır/serbest sebep etiketleriyle not oluşturma, kendi gönderdiği bildirimleri listeleme. Aynı backend uçlarını kullanır (`POST /api/auth/login`, `GET /api/auth/me`, `GET /api/students/lookup/:number`, `GET /api/teacher-notes/tag-options`, `POST /api/teacher-notes`, `GET /api/teacher-notes/mine`), ayrı bir API'si yoktur.
+Öğretmenlerin sınıfta hızlıca öğrenci arayıp disiplin bildirimi (öğretmen notu) oluşturması için `mobile/` klasöründe ayrı bir React Native (Expo) uygulaması bulunur: sunucu adresi girme, giriş, öğrenci numarasıyla arama, hazır/serbest sebep etiketleriyle not oluşturma, kendi gönderdiği bildirimleri listeleme. Aynı backend uçlarını kullanır (`POST /api/auth/login`, `GET /api/auth/me`, `GET /api/students/lookup/:number`, `GET /api/teacher-notes/tag-options`, `POST /api/teacher-notes`, `GET /api/teacher-notes/mine`), ayrı bir API'si yoktur. **Bu, web yönetim panelinden tamamen farklı, ayrı bir uygulamadır** — panelin URL'sini telefon tarayıcısında açmak bu deneyimi vermez, aşağıdaki gibi kurulmuş/başlatılmış olması gerekir.
+
+Backend adresi APK'ya gömülü değildir: uygulama ilk açılışta "Sunucu Adresi" ekranını gösterir, girilen adres yalnızca o cihazda saklanır. Adres değiştiğinde (örn. LAN IP'den `https://api.oids.com.tr`'ye geçince) uygulamayı yeniden kurmaya gerek yoktur — giriş ekranındaki **Sunucu: ... (değiştir)** bağlantısına dokunup yeni adresi girmek yeterlidir.
+
+### Geliştirme sırasında test etme (Expo Go)
+
+En hızlı yol — kurulum/build gerektirmez, günlük geliştirme için kullanılır:
 
 ```bash
+# 1) Backend'in telefonun erişebileceği bir adreste çalışıyor olması lazım
+npm run dev              # kök dizinde — http://<bilgisayarın-LAN-IP'si>:4000
+
+# 2) Mobil geliştirme sunucusu
 cd mobile
 npm install
-cp .env.example .env   # EXPO_PUBLIC_API_URL'i bilgisayarın LAN IP'sine göre düzenleyin
 npm start
 ```
 
-- Fiziksel cihazda `localhost` çalışmaz; `EXPO_PUBLIC_API_URL` backend'in çalıştığı makinenin LAN IP adresini göstermeli (örn. `http://192.168.1.100:4000`) ve backend `CORS_ORIGIN`'de bu adrese izin verilmeli.
-- Token `expo-secure-store` ile cihazda saklanır; açılışta `/api/auth/me` ile doğrulanır, geçersizse otomatik çıkış yapılır.
-- `discipline` modülü kapalıysa veya kullanıcının `teacher_notes.create` izni yoksa not oluşturma/listeleme uçları 403 döner. `GET /api/teacher-notes/mine` yalnızca isteği yapan öğretmenin kendi bildirimlerini döner (`discipline.read` gerektirmez); tüm okulun bildirimlerini görmek yönetici panelindeki disiplin ekranı üzerinden yapılır.
-- Gerçek cihaza kurulum (Expo Go dışında) için `eas.json` hazır: `npx eas login` sonrası `npx eas build:configure` ile proje EAS hesabınıza bağlanmalı, ardından `npm run build:preview` (APK) veya `npm run build:production` (mağaza) kullanılabilir.
-- Uygulama ikonu/splash görseli hâlâ Expo'nun varsayılanı; gerçek kurum logosu geldiğinde `mobile/assets/` altındaki dosyalar değiştirilmeli.
+1. Telefona **Expo Go** uygulamasını kurun (App Store / Play Store).
+2. Bilgisayar ve telefon **aynı Wi-Fi ağında** olmalı.
+3. `npm start` çıktısındaki QR kodu Expo Go ile (Android) veya kamerayla (iOS) okutun.
+4. Uygulama açılınca "Sunucu Adresi" ekranına bilgisayarın LAN IP'sini girin (örn. `http://192.168.1.10:4000`) — `ipconfig` (Windows) ile bulabilirsiniz.
+
+Bu yöntemle telefona kalıcı bir uygulama simgesi kurulmaz; Expo Go içinde çalışır, geliştirme bittiğinde kapatılır.
+
+### Gerçek cihaza kurulum — APK üretme ve indirme (EAS Build)
+
+Kalıcı olarak öğretmenlerin telefonuna kurulacak bir `.apk` üretmek için `mobile/eas.json` hazır. Bu adımlar **sizin** kendi bilgisayarınızdan, kendi Expo hesabınızla çalıştırmanız gerekir (bende bu hesaba erişim yok):
+
+```bash
+cd mobile
+npx eas login              # Expo hesabınızla giriş (yoksa expo.dev'den ücretsiz oluşturulur)
+npx eas build:configure    # Projeyi EAS hesabınıza bağlar (app.json'a projectId ekler)
+npm run build:preview      # APK üretir (profil: preview, platform: android)
+```
+
+Build birkaç dakika sürer ve Expo'nun bulut sunucularında çalışır (bilgisayarınızda Android Studio/SDK gerekmez). Bittiğinde:
+
+- Terminalde build'in bittiğine dair bir **indirme linki (.apk)** yazdırılır; o linki telefonda açıp dosyayı indirip kurabilirsiniz, veya
+- **expo.dev** üzerinde hesabınıza giriş yapıp projenizin **Builds** sekmesinden aynı APK'yı indirebilirsiniz.
+
+Android'de "bilinmeyen kaynaklardan yükleme" (Play Store dışı APK) izni açık olmalı; ilk kurulumda telefon bunu otomatik sorar.
+
+Adres netleştiğinde ve sabitlendiğinde tekrar build almanıza gerek yok — sadece uygulama içindeki "Sunucu Adresi" ekranından yeni adresi girmeniz yeterli. `npm run build:production` ise mağaza (Play Store/App Store) dağıtımı için `.aab`/ipa üretir; şimdilik gerekli değil.
 
 ### Kullanım (öğretmen için)
 
+0. **Sunucu Adresi** (yalnızca ilk açılışta): Okul yöneticisinin verdiği backend adresini girip **Kaydet ve Devam Et**'e basılır.
 1. **Giriş**: E-posta ve şifre ile giriş yapılır — panel ile aynı hesap kullanılır, ayrı bir mobil kayıt yoktur. Hesabında iki adımlı doğrulama (2FA) veya SMS girişi açıksa mobil uygulama şu an bunu desteklemez; okul yöneticisinden bu ayarın kapatılmasını isteyin.
 2. **Öğrenci arama**: "Öğrenci Ara" ekranında öğrenci numarası girilip **Ara**'ya basılır. Öğrenci bulunursa fotoğrafı, adı-soyadı ve sınıfı gösterilir.
 3. **Bildirim oluşturma**: Öğrenci kartındaki **Bildirim Oluştur**'a basılır. Açılan ekranda:
@@ -524,9 +555,13 @@ npm start
    - en az bir etiket/sebep veya not girildikten sonra **Gönder**'e basılır.
    Bildirim kaydedilince okul yönetiminin disiplin ekranına düşer.
 4. **Geçmiş bildirimler**: "Öğrenci Ara" ekranının sağ üstündeki **Geçmiş** bağlantısıyla, o öğretmenin daha önce gönderdiği tüm bildirimler (öğrenci, etiketler, not, tarih) listelenir; aşağı çekerek yenilenebilir.
-5. **Çıkış**: "Öğrenci Ara" ekranının sağ üstündeki **Çıkış** ile oturum kapatılır ve cihazdaki token silinir.
+5. **Çıkış**: "Öğrenci Ara" ekranının sağ üstündeki **Çıkış** ile oturum kapatılır ve cihazdaki token silinir (sunucu adresi silinmez).
 
 Uygulamayı kapatıp yeniden açtığınızda oturum açık kalır (token cihazda saklanır); şifre değiştirildiyse veya hesap pasifleştirildiyse bir sonraki açılışta otomatik çıkış yapılır.
+
+- `discipline` modülü kapalıysa veya kullanıcının `teacher_notes.create` izni yoksa not oluşturma/listeleme uçları 403 döner. `GET /api/teacher-notes/mine` yalnızca isteği yapan öğretmenin kendi bildirimlerini döner (`discipline.read` gerektirmez); tüm okulun bildirimlerini görmek yönetici panelindeki disiplin ekranı üzerinden yapılır.
+- Fiziksel cihazdan bağlanırken `localhost` çalışmaz; backend'in çalıştığı makinenin LAN IP'sini (veya prod domain'ini) girin ve backend `CORS_ORIGIN`'de bu adrese izin verildiğinden emin olun (not: native uygulama istekleri tarayıcı CORS kısıtına tabi değildir, bu ayar yalnızca web paneli için gereklidir).
+- Uygulama ikonu/splash görseli hâlâ Expo'nun varsayılanı; gerçek kurum logosu geldiğinde `mobile/assets/` altındaki dosyalar değiştirilmeli.
 
 ## Rol ve İzin Sistemi
 
