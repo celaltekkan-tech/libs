@@ -18,6 +18,7 @@ import {
   SunOutlined,
   UserOutlined,
   QuestionCircleOutlined,
+  SafetyCertificateOutlined,
   SearchOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons'
@@ -49,6 +50,7 @@ interface AppLayoutProps {
 const PLATFORM_ADMIN_ITEMS: NavNode[] = [
   { key: '/', icon: <HomeOutlined />, label: 'Ana Sayfa' },
   { key: '/platform/tenants', icon: <ApartmentOutlined />, label: 'Hesap Yönetimi' },
+  { key: '/platform/roles', icon: <SafetyCertificateOutlined />, label: 'Global Yetkiler' },
   { key: '/platform/licenses', icon: <IdcardOutlined />, label: 'Lisans Yönetimi' },
   { key: '/platform/feedback', icon: <CommentOutlined />, label: 'Geri Bildirimler' },
   { key: '/platform/notifications', icon: <BellOutlined />, label: 'Bildirimler' },

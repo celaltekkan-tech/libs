@@ -95,12 +95,17 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
         steps: [
           'Yeni Öğrenci ile formu açın.',
           'Kimlik, sınıf ve veli iletişim bilgilerini girin.',
+          'İsterseniz öğrenci fotoğrafı yükleyin.',
           'Kayıt durumunu seçip kaydedin.',
         ],
       },
       {
         title: 'Arama ve filtre',
         body: 'Ad, numara veya sınıf ile listede arama yapabilirsiniz.',
+      },
+      {
+        title: 'Yaş',
+        body: 'Doğum tarihi girildiğinde yaş hesaplanır. Kayıtlar her gece doğum gününe göre otomatik güncellenir.',
       },
     ],
   },
@@ -424,6 +429,24 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       {
         title: 'Detay',
         body: 'Hesap satırından detaya giderek kullanıcı, lisans ve okul özetini görürsünüz.',
+      },
+    ],
+  },
+  '/platform/roles': {
+    title: 'Global Yetkiler',
+    summary: 'Tüm kurumlarda kullanılan varsayılan yetki gruplarını (Müdür, Öğretmen vb.) düzenlersiniz.',
+    topics: [
+      {
+        title: 'Yetki düzenleme',
+        steps: [
+          'Listeden bir sistem rolünü açın.',
+          'Menü bazında görüntüle / ekle / düzenle / sil kutularını işaretleyin.',
+          'Kaydet; değişiklik bu role atanmış tüm kullanıcılara yansır.',
+        ],
+      },
+      {
+        title: 'Yeni global grup',
+        body: 'Yeni Yetki Grubu ile tüm kurumlarda seçilebilecek yeni bir sistem rolü tanımlayabilirsiniz.',
       },
     ],
   },

@@ -1,11 +1,5 @@
 import client from './client'
-import type {
-  Student,
-  StudentFilters,
-  StudentImportResult,
-  StudentPayload,
-  StudentImportPreview,
-} from '../types/student'
+import type { Student, StudentFilters, StudentImportResult, StudentPayload, StudentImportPreview } from '../types/student'
 import type { ExportFormat } from '../utils/download'
 
 interface Envelope<T> {
@@ -74,6 +68,7 @@ export async function importStudents(
     classroomId?: number | null
     headerRow?: number | null
     columnMapping?: Record<string, string>
+    columnSuggestions?: Record<string, string>
     classLevel?: string | null
     section?: string | null
   },
@@ -87,6 +82,9 @@ export async function importStudents(
   if (options?.section) form.append('section', options.section)
   if (options?.columnMapping) {
     form.append('column_mapping', JSON.stringify(options.columnMapping))
+  }
+  if (options?.columnSuggestions && Object.keys(options.columnSuggestions).length > 0) {
+    form.append('column_suggestions', JSON.stringify(options.columnSuggestions))
   }
   const { data } = await client.post<Envelope<StudentImportResult>>('/api/students/import', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -103,6 +101,24 @@ export async function exportStudents(payload: {
   const { data } = await client.post('/api/students/export', payload, {
     responseType: 'blob',
     timeout: 60000,
+  })
+  return data as Blob
+}
+
+export async function uploadStudentPhoto(id: number, file: File): Promise<{ photo_url: string | null }> {
+  const form = new FormData()
+  form.append('photo', file)
+  const { data } = await client.post<Envelope<{ photo_url: string | null }>>(`/api/students/${id}/photo`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60000,
+  })
+  return data.data
+}
+
+export async function fetchStudentPhotoBlob(id: number): Promise<Blob> {
+  const { data } = await client.get(`/api/students/${id}/photo`, {
+    responseType: 'blob',
+    timeout: 30000,
   })
   return data as Blob
 }

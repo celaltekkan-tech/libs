@@ -15,6 +15,7 @@ import { FeedbackListPage } from './pages/platform/FeedbackListPage'
 import { PlatformNotificationsPage } from './pages/platform/PlatformNotificationsPage'
 import { LicensesPage } from './pages/platform/LicensesPage'
 import { BackupsPage } from './pages/platform/BackupsPage'
+import { PlatformRolesPage } from './pages/platform/PlatformRolesPage'
 import { SchoolsPage } from './pages/SchoolsPage'
 import { TeachersPage } from './pages/TeachersPage'
 import { StudentsPage } from './pages/StudentsPage'
@@ -140,6 +141,7 @@ function ThemedApp() {
                 <Route element={<PlatformAdminRoute />}>
                   <Route path="/platform/tenants" element={<TenantsListPage />} />
                   <Route path="/platform/tenants/:id" element={<TenantDetailPage />} />
+                  <Route path="/platform/roles" element={<PlatformRolesPage />} />
                   <Route path="/platform/licenses" element={<LicensesPage />} />
                   <Route path="/platform/feedback" element={<FeedbackListPage />} />
                   <Route path="/platform/notifications" element={<PlatformNotificationsPage />} />

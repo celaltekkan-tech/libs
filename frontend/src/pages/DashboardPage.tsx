@@ -32,6 +32,30 @@ import { REGISTRATION_STATUS_OPTIONS } from '../types/student'
 import type { TenantListItem } from '../types/tenant'
 import type { License } from '../types/license'
 import type { WorkTask, WorkTaskDueState } from '../types/workTask'
+import {
+  FEEDBACK_STATUS_LABEL,
+  type Feedback,
+  type FeedbackStatus,
+} from '../types/feedback'
+
+const FEEDBACK_STATUS_ORDER: FeedbackStatus[] = [
+  'new',
+  'read',
+  'waiting',
+  'resolved',
+  'cancelled',
+]
+
+function countFeedbackByStatus(rows: Feedback[]): Record<FeedbackStatus, number> {
+  const counts = Object.fromEntries(FEEDBACK_STATUS_ORDER.map((s) => [s, 0])) as Record<
+    FeedbackStatus,
+    number
+  >
+  for (const row of rows) {
+    if (counts[row.status] != null) counts[row.status] += 1
+  }
+  return counts
+}
 
 const UPCOMING_HORIZON_DAYS = 7
 const UPCOMING_LIST_LIMIT = 8
@@ -97,7 +121,7 @@ function PlatformAdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [tenants, setTenants] = useState<TenantListItem[]>([])
   const [licenses, setLicenses] = useState<License[]>([])
-  const [pendingFeedback, setPendingFeedback] = useState<number | null>(null)
+  const [feedbackCounts, setFeedbackCounts] = useState<Record<FeedbackStatus, number> | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -105,11 +129,11 @@ function PlatformAdminDashboard() {
       const [tenantRows, licenseRows, feedbackRows] = await Promise.all([
         listTenants(),
         listLicenses(),
-        listFeedback({ status: 'pending' }).catch(() => []),
+        listFeedback().catch(() => [] as Feedback[]),
       ])
       setTenants(tenantRows)
       setLicenses(licenseRows)
-      setPendingFeedback(feedbackRows.length)
+      setFeedbackCounts(countFeedbackByStatus(feedbackRows))
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
@@ -196,6 +220,7 @@ function PlatformAdminDashboard() {
         summary.inactiveTenants > 0
           ? `${summary.activeTenants} aktif · ${summary.inactiveTenants} pasif`
           : `${summary.activeTenants} aktif`,
+      detail: null as React.ReactNode,
       icon: <ApartmentOutlined />,
       color: '#1d4e89',
       path: '/platform/tenants',
@@ -205,6 +230,7 @@ function PlatformAdminDashboard() {
       title: 'Okullar',
       value: summary.schoolTotal,
       hint: 'Tüm hesaplar toplamı',
+      detail: null as React.ReactNode,
       icon: <BankOutlined />,
       color: '#0f766e',
       path: '/platform/tenants',
@@ -214,6 +240,7 @@ function PlatformAdminDashboard() {
       title: 'Kullanıcılar',
       value: summary.userTotal,
       hint: 'Tüm hesaplar toplamı',
+      detail: null as React.ReactNode,
       icon: <UserOutlined />,
       color: '#7c3aed',
       path: '/platform/tenants',
@@ -226,15 +253,27 @@ function PlatformAdminDashboard() {
         summary.expiredLicenses > 0
           ? `${summary.expiredLicenses} süresi dolmuş · ${summary.cancelledLicenses} iptal`
           : `${summary.cancelledLicenses} iptal`,
+      detail: null as React.ReactNode,
       icon: <IdcardOutlined />,
       color: '#b45309',
       path: '/platform/licenses',
     },
     {
       key: 'feedback',
-      title: 'Bekleyen geri bildirim',
-      value: pendingFeedback,
-      hint: 'Yeni / inceleniyor',
+      title: 'Geri bildirim',
+      value: feedbackCounts
+        ? FEEDBACK_STATUS_ORDER.reduce((sum, s) => sum + feedbackCounts[s], 0)
+        : null,
+      hint: null as string | null,
+      detail: feedbackCounts ? (
+        <Space size={[4, 4]} wrap style={{ marginTop: 8 }}>
+          {FEEDBACK_STATUS_ORDER.map((status) => (
+            <Tag key={status} color={FEEDBACK_STATUS_LABEL[status].color}>
+              {FEEDBACK_STATUS_LABEL[status].text}: {feedbackCounts[status]}
+            </Tag>
+          ))}
+        </Space>
+      ) : null,
       icon: <CommentOutlined />,
       color: '#be123c',
       path: '/platform/feedback',
@@ -284,6 +323,7 @@ function PlatformAdminDashboard() {
                               {card.hint}
                             </Typography.Text>
                           )}
+                          {card.detail}
                         </div>
                         <span
                           style={{

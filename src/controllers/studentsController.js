@@ -1,6 +1,6 @@
 'use strict';
 
-const { Student, Classroom } = require('../models');
+const { Student, Classroom, Feedback } = require('../models');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
 const {
@@ -9,6 +9,8 @@ const {
   getMappedRows,
   parseClassSection,
 } = require('../services/excelImportService');
+const { isPhotoRosterWorkbook, parsePhotoRoster } = require('../services/photoRosterImportService');
+const { applyAgeFromBirthDate } = require('../services/studentAgeService');
 
 const COLUMN_LABELS = {
   student_number: 'Öğrenci No',
@@ -20,12 +22,14 @@ const COLUMN_LABELS = {
   section: 'Şube',
   gender: 'Cinsiyet',
   birth_date: 'Doğum Tarihi',
+  yasi: 'Yaşı',
   registration_status: 'Kayıt Durumu',
   parent_name: 'Veli Adı',
   parent_phone: 'Veli Telefon',
   extra_contacts: 'Ek İletişim',
   is_inclusion: 'Kaynaştırma',
   is_foreign: 'Yabancı Uyruklu',
+  boarding_status: 'Yurt Durumu',
   school_id: 'Okul ID',
 };
 
@@ -61,6 +65,26 @@ function parseColumnMapping(raw) {
   return mapping;
 }
 
+/** Kullanıcının eşleştirme ekranında sistemin tanımadığı bir sütun için yazdığı serbest not. */
+function parseColumnSuggestions(raw) {
+  if (raw == null || raw === '') return {};
+  let parsed = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+  const notes = {};
+  Object.entries(parsed).forEach(([col, note]) => {
+    const text = typeof note === 'string' ? note.trim() : '';
+    if (text) notes[String(col)] = text.slice(0, 300);
+  });
+  return notes;
+}
+
 function buildWhere(tenantId, filters = {}) {
   const where = {};
   if (tenantId) where.tenant_id = tenantId;
@@ -70,6 +94,7 @@ function buildWhere(tenantId, filters = {}) {
   if (filters.section) where.section = filters.section;
   if (filters.gender) where.gender = filters.gender;
   if (filters.registration_status) where.registration_status = filters.registration_status;
+  if (filters.boarding_status) where.boarding_status = filters.boarding_status;
   return where;
 }
 
@@ -320,6 +345,124 @@ function assertTenantAccess(req, student) {
   return true;
 }
 
+function photoUrlFor(student) {
+  return student.photo_path ? `/api/students/${student.id}/photo` : null;
+}
+
+function serializeStudent(student) {
+  const json = typeof student.toJSON === 'function' ? student.toJSON() : student;
+  return { ...json, photo_url: photoUrlFor(student) };
+}
+
+async function buildPhotoRosterPreview(buffer, tenantId) {
+  const parsed = parsePhotoRoster(buffer);
+  if (!parsed.students.length) {
+    const err = new Error('Dosyada tanınabilir bir öğrenci kaydı bulunamadı');
+    err.status = 400;
+    throw err;
+  }
+
+  const existingRows = await Student.findAll({ where: { tenant_id: tenantId } });
+  const maps = { byNationalId: new Map(), byStudentNumber: new Map() };
+  existingRows.forEach((s) => rememberStudent(maps, s));
+
+  const rows = parsed.students.map((s) => {
+    const match = findExistingStudent(
+      maps,
+      normalizeNationalId(s.national_id),
+      normalizeStudentNumber(s.student_number)
+    );
+    return {
+      row: s.rowNumber,
+      student_number: s.student_number,
+      full_name: s.full_name,
+      matched: Boolean(match),
+      current_name: match ? `${match.first_name} ${match.last_name}`.trim() : null,
+      has_photo: Boolean(s.photo),
+    };
+  });
+
+  return {
+    format: 'photo_roster',
+    sheet_name: parsed.sheetName,
+    total_rows: rows.length,
+    matched: rows.filter((r) => r.matched).length,
+    not_found: rows.filter((r) => !r.matched).length,
+    photos_found: rows.filter((r) => r.has_photo).length,
+    rows,
+  };
+}
+
+async function commitPhotoRosterImport(req) {
+  const parsed = parsePhotoRoster(req.file.buffer);
+  if (!parsed.students.length) {
+    const err = new Error('Dosyada tanınabilir bir öğrenci kaydı bulunamadı');
+    err.status = 400;
+    throw err;
+  }
+
+  const tenantId = req.user.tenant_id;
+  const existingRows = await Student.findAll({ where: { tenant_id: tenantId } });
+  const maps = { byNationalId: new Map(), byStudentNumber: new Map() };
+  existingRows.forEach((s) => rememberStudent(maps, s));
+
+  const photoUpload = require('../services/studentPhotoUpload');
+  let updated = 0;
+  let notFound = 0;
+  let photosSaved = 0;
+  const errors = [];
+
+  for (const s of parsed.students) {
+    try {
+      const nationalId = normalizeNationalId(s.national_id);
+      const studentNumber = normalizeStudentNumber(s.student_number);
+      const student = findExistingStudent(maps, nationalId, studentNumber);
+      if (!student) {
+        notFound += 1;
+        continue;
+      }
+
+      const incoming = {};
+      if (nationalId) incoming.national_id = nationalId;
+      if (s.first_name) incoming.first_name = s.first_name;
+      if (s.last_name) incoming.last_name = s.last_name;
+      const gender = normalizeGender(s.gender);
+      if (gender) incoming.gender = gender;
+      const birthDate = parseBirthDate(s.birth_date);
+      if (birthDate) incoming.birth_date = birthDate;
+      applyAgeFromBirthDate(incoming);
+
+      const patch = pickChangedFields(student, incoming);
+      if (Object.keys(patch).length > 0) {
+        await student.update(patch);
+      }
+
+      if (s.photo) {
+        const previousPath = student.photo_path;
+        const storedName = photoUpload.saveBuffer(student.id, {
+          originalname: `${studentNumber || student.id}.jpg`,
+          buffer: s.photo,
+        });
+        await student.update({ photo_path: storedName });
+        if (previousPath) photoUpload.removeStoredFile(previousPath);
+        photosSaved += 1;
+      }
+
+      updated += 1;
+    } catch (err) {
+      errors.push({ row: s.rowNumber, message: err.message || 'Satır işlenemedi' });
+    }
+  }
+
+  await audit.log(req, {
+    action: 'update',
+    entityType: 'student_photo_roster_import',
+    summary: `Fotoğraflı öğrenci listesinden içe aktarma: ${updated} güncellendi, ${photosSaved} fotoğraf kaydedildi, ${notFound} eşleşmeyen`,
+  });
+
+  return { format: 'photo_roster', updated, not_found: notFound, photos_saved: photosSaved, errors };
+}
+
 module.exports = {
   COLUMN_LABELS,
 
@@ -345,7 +488,7 @@ module.exports = {
         ],
         limit: 2000,
       });
-      res.json({ success: true, data: students });
+      res.json({ success: true, data: students.map(serializeStudent) });
     } catch (err) {
       next(err);
     }
@@ -360,7 +503,87 @@ module.exports = {
       if (!assertTenantAccess(req, student)) {
         return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
       }
-      res.json({ success: true, data: student });
+      res.json({ success: true, data: serializeStudent(student) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // Mobil uygulamada öğretmenin numarayla öğrenci aradığı ekran için:
+  // tek kayıt döner, tenant dışı/kayıt bulunamayan numaralarda 404 verir.
+  async lookupByNumber(req, res, next) {
+    try {
+      const tenantId = req.user && req.user.tenant_id;
+      const number = normalizeStudentNumber(req.params.number);
+      if (!number) {
+        return res.status(400).json({ success: false, message: 'Öğrenci numarası gerekli' });
+      }
+
+      const where = { student_number: number };
+      if (tenantId) where.tenant_id = tenantId;
+
+      const student = await Student.findOne({
+        where,
+        include: [{ model: Classroom, attributes: ['id', 'class_level', 'section'], required: false }],
+      });
+      if (!student) {
+        return res.status(404).json({ success: false, code: 'STUDENT_NOT_FOUND', message: 'Bu numarayla öğrenci bulunamadı' });
+      }
+
+      res.json({ success: true, data: serializeStudent(student) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async getPhoto(req, res, next) {
+    try {
+      const student = await Student.findByPk(req.params.id);
+      if (!student) return res.status(404).json({ success: false, message: 'Bulunamadı' });
+      if (!assertTenantAccess(req, student)) {
+        return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
+      }
+      if (!student.photo_path) {
+        return res.status(404).json({ success: false, message: 'Fotoğraf bulunamadı' });
+      }
+
+      const photoUpload = require('../services/studentPhotoUpload');
+      const filePath = photoUpload.absolutePath(student.photo_path);
+      res.setHeader('Content-Type', photoUpload.mimeTypeFor(student.photo_path));
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.sendFile(filePath, (err) => {
+        if (err) next(err);
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async uploadPhoto(req, res, next) {
+    try {
+      const student = await Student.findByPk(req.params.id);
+      if (!student) return res.status(404).json({ success: false, message: 'Bulunamadı' });
+      if (!assertTenantAccess(req, student)) {
+        return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
+      }
+      if (!req.file) {
+        return res.status(400).json({ success: false, message: 'Fotoğraf dosyası gerekli' });
+      }
+
+      const photoUpload = require('../services/studentPhotoUpload');
+      const previousPath = student.photo_path;
+      const storedName = photoUpload.saveBuffer(student.id, req.file);
+      await student.update({ photo_path: storedName });
+      if (previousPath) photoUpload.removeStoredFile(previousPath);
+
+      await audit.log(req, {
+        action: 'update',
+        entityType: 'student_photo',
+        entityId: student.id,
+        summary: `Öğrenci fotoğrafı güncellendi: ${student.first_name} ${student.last_name}`,
+      });
+
+      res.json({ success: true, data: { photo_url: photoUrlFor(student) } });
     } catch (err) {
       next(err);
     }
@@ -380,6 +603,7 @@ module.exports = {
         payload.extra_contacts = [];
       }
       await applyClassroomToPayload(payload, payload.tenant_id);
+      applyAgeFromBirthDate(payload);
       const student = await Student.create(payload);
       await audit.log(req, {
         action: 'create',
@@ -387,7 +611,7 @@ module.exports = {
         entityId: student.id,
         summary: `Öğrenci oluşturuldu: ${student.student_number || ''} ${student.first_name} ${student.last_name}`.trim(),
       });
-      res.status(201).json({ success: true, data: student });
+      res.status(201).json({ success: true, data: serializeStudent(student) });
     } catch (err) {
       if (err.status) {
         return res.status(err.status).json({
@@ -422,6 +646,7 @@ module.exports = {
       if (payload.classroom_id) {
         await applyClassroomToPayload(payload, payload.tenant_id || student.tenant_id);
       }
+      applyAgeFromBirthDate(payload, student.birth_date);
       await student.update(payload);
       await audit.log(req, {
         action: 'update',
@@ -429,7 +654,7 @@ module.exports = {
         entityId: student.id,
         summary: `Öğrenci güncellendi: ${student.student_number || ''} ${student.first_name} ${student.last_name}`.trim(),
       });
-      res.json({ success: true, data: student });
+      res.json({ success: true, data: serializeStudent(student) });
     } catch (err) {
       if (err.status) {
         return res.status(err.status).json({
@@ -455,7 +680,12 @@ module.exports = {
       }
       const label = `${student.student_number || ''} ${student.first_name} ${student.last_name}`.trim();
       const id = student.id;
+      const previousPath = student.photo_path;
       await student.destroy();
+      if (previousPath) {
+        const photoUpload = require('../services/studentPhotoUpload');
+        photoUpload.removeStoredFile(previousPath);
+      }
       await audit.log(req, {
         action: 'delete',
         entityType: 'student',
@@ -478,9 +708,14 @@ module.exports = {
         });
       }
 
+      if (isPhotoRosterWorkbook(req.file.buffer)) {
+        const data = await buildPhotoRosterPreview(req.file.buffer, req.user.tenant_id);
+        return res.json({ success: true, data });
+      }
+
       const headerRow = req.body.header_row ? Number(req.body.header_row) : null;
       const preview = previewWorkbook(req.file.buffer, { headerRow });
-      res.json({ success: true, data: preview });
+      res.json({ success: true, data: { format: 'table', ...preview } });
     } catch (err) {
       next(err);
     }
@@ -494,6 +729,11 @@ module.exports = {
           code: 'FILE_REQUIRED',
           message: 'Excel dosyası gerekli (.xls veya .xlsx)',
         });
+      }
+
+      if (isPhotoRosterWorkbook(req.file.buffer)) {
+        const data = await commitPhotoRosterImport(req);
+        return res.json({ success: true, data });
       }
 
       const tenantId = req.user.tenant_id;
@@ -571,7 +811,41 @@ module.exports = {
       const rows = getMappedRows(req.file.buffer, {
         headerRow: effectiveHeaderRow,
         columnMapping,
+        detectRepeatingClassBlocks: true,
       });
+
+      // Sistemin otomatik sütun tanıma sözlüğünün (IMPORT_HEADER_MAP) eşleştiremediği
+      // başlıklar için otomatik geri bildirim açılır — kullanıcının eşleme ekranında
+      // sonradan elle yaptığı/atladığı seçimlerden bağımsız olarak, sistemin kendi
+      // tanıyamadığı başlıklar esas alınır.
+      const autoMappedIndexes = new Set(Object.keys(preview.suggested_mapping || {}).map((k) => Number(k)));
+      const columnSuggestions = parseColumnSuggestions(req.body.column_suggestions);
+      const unmatchedHeaders = (preview.headers || []).filter((h) => !autoMappedIndexes.has(h.index));
+      const unmatchedColumns = unmatchedHeaders.map((h) => h.label);
+
+      let feedbackCreated = false;
+      if (unmatchedHeaders.length > 0) {
+        const columnLines = unmatchedHeaders
+          .map((h) => {
+            const suggestion = columnSuggestions[String(h.index)];
+            return suggestion ? `"${h.label}" (kullanıcı önerisi: "${suggestion}")` : `"${h.label}"`;
+          })
+          .join(', ');
+        try {
+          await Feedback.create({
+            tenant_id: tenantId,
+            user_id: req.user.user_id || null,
+            message:
+              `Öğrenci Excel içe aktarımında sistemdeki hiçbir alanla eşleştirilemeyen sütun(lar) tespit edildi: ` +
+              `${columnLines}. ` +
+              `Dosya: ${req.file.originalname || 'bilinmiyor'}, sayfa: ${preview.sheet_name}. ` +
+              `Bu alan(lar) için sistemde karşılık gelen bir alan tanımlanması değerlendirilebilir.`,
+          });
+          feedbackCreated = true;
+        } catch {
+          // Geri bildirim oluşturulamasa da içe aktarım engellenmemeli.
+        }
+      }
 
       const existingRows = await Student.findAll({ where: { tenant_id: tenantId } });
       const maps = { byNationalId: new Map(), byStudentNumber: new Map() };
@@ -662,6 +936,11 @@ module.exports = {
         if (gender) incoming.gender = gender;
         const birthDate = parseBirthDate(raw.birth_date);
         if (birthDate) incoming.birth_date = birthDate;
+        if (raw.yasi != null && raw.yasi !== '') {
+          const age = Number.parseInt(String(raw.yasi).trim(), 10);
+          if (Number.isFinite(age)) incoming.yasi = age;
+        }
+        applyAgeFromBirthDate(incoming);
         if (raw.registration_status) incoming.registration_status = raw.registration_status;
         if (raw.parent_name) incoming.parent_name = String(raw.parent_name).trim();
         if (raw.parent_phone) incoming.parent_phone = String(raw.parent_phone).trim();
@@ -671,6 +950,7 @@ module.exports = {
         if (raw.is_foreign != null && raw.is_foreign !== '') {
           incoming.is_foreign = normalizeBool(raw.is_foreign);
         }
+        if (raw.boarding_status) incoming.boarding_status = String(raw.boarding_status).trim();
 
         try {
           let existing = findExistingStudent(maps, nationalId, studentNumber);
@@ -727,7 +1007,14 @@ module.exports = {
 
       res.json({
         success: true,
-        data: { created, updated, errors },
+        data: {
+          format: 'table',
+          created,
+          updated,
+          errors,
+          unmatched_columns: unmatchedColumns,
+          feedback_created: feedbackCreated,
+        },
       });
     } catch (err) {
       next(err);

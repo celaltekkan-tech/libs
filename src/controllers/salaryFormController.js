@@ -1,7 +1,7 @@
 'use strict';
 
 const { Op } = require('sequelize');
-const { SalaryFormDraft, PromotionHistory, Teacher, School } = require('../models');
+const { SalaryFormDraft, PromotionHistory, Teacher, School, sequelize } = require('../models');
 const audit = require('../services/auditService');
 const { fillSalaryChangeForm, buildSalaryFormModel } = require('../services/promotionFormService');
 const { buildSalaryChangePdf } = require('../services/salaryFormPdfService');
@@ -148,6 +148,78 @@ module.exports = {
           payload: draft.payload,
           updated_at: draft.updated_at,
         },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  /**
+   * Personel ayrılış/yeni başlama akışları gibi otomasyonların kullandığı, tek satır
+   * ekleyen uç. upsertDraft'ın aksine tüm payload'ı istemciden almaz — satır DB'de
+   * transaction + row lock ile eklenir; böylece o an başka bir sekmede açık duran ve
+   * eski bir kopyayla "Kaydet"e basan Maaş Değişikliği modalı bu satırı ezemez.
+   */
+  async appendDraftRow(req, res, next) {
+    try {
+      const { month, year, section, row } = req.validatedBody || req.body;
+      const tenantId = req.user.tenant_id;
+      const userId = req.user.user_id || null;
+
+      const applyAppend = () =>
+        sequelize.transaction(async (transaction) => {
+          const existing = await SalaryFormDraft.findOne({
+            where: { tenant_id: tenantId, month, year },
+            transaction,
+            lock: transaction.LOCK.UPDATE,
+          });
+
+          if (!existing) {
+            return SalaryFormDraft.create(
+              {
+                tenant_id: tenantId,
+                month,
+                year,
+                payload: { ...EMPTY_PAYLOAD, [section]: [row] },
+                created_by: userId,
+                updated_by: userId,
+              },
+              { transaction }
+            );
+          }
+
+          const payload = { ...EMPTY_PAYLOAD, ...existing.payload };
+          const list = Array.isArray(payload[section]) ? payload[section].slice() : [];
+          list.push(row);
+          payload[section] = list;
+          await existing.update({ payload, updated_by: userId }, { transaction });
+          return existing;
+        });
+
+      let draft;
+      try {
+        draft = await applyAppend();
+      } catch (err) {
+        // İlk satır için iki istek aynı anda yeni taslak oluşturmaya çalışırsa unique
+        // constraint çakışabilir; bu durumda tekrar dener (artık satır mevcut olacağı
+        // için ikinci deneme update yoluna girer).
+        if (err.name === 'SequelizeUniqueConstraintError') {
+          draft = await applyAppend();
+        } else {
+          throw err;
+        }
+      }
+
+      await audit.log(req, {
+        action: 'update',
+        entityType: 'salary_form_draft',
+        entityId: draft.id,
+        summary: `Maaş değişikliği formuna otomatik satır eklendi (${section}): ${month}/${year}`,
+      });
+
+      res.json({
+        success: true,
+        data: { month, year, payload: draft.payload, updated_at: draft.updated_at },
       });
     } catch (err) {
       next(err);

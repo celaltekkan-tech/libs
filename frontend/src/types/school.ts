@@ -12,6 +12,7 @@ export interface School {
   name: string
   code: string
   school_type: SchoolType
+  daily_period_count: number
   created_at: string
   updated_at: string
 }
@@ -20,4 +21,5 @@ export interface SchoolPayload {
   name: string
   code: string
   school_type: SchoolType
+  daily_period_count?: number
 }

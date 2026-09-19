@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Form, Input, Modal, Select, Space, Typography } from 'antd'
+import { App, Button, Form, Input, InputNumber, Modal, Select, Space, Typography } from 'antd'
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
@@ -45,13 +45,18 @@ export function SchoolsPage() {
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
-    form.setFieldsValue({ school_type: 'lise' })
+    form.setFieldsValue({ school_type: 'lise', daily_period_count: 8 })
     setModalOpen(true)
   }
 
   const openEdit = (school: School) => {
     setEditing(school)
-    form.setFieldsValue({ name: school.name, code: school.code, school_type: school.school_type })
+    form.setFieldsValue({
+      name: school.name,
+      code: school.code,
+      school_type: school.school_type,
+      daily_period_count: school.daily_period_count,
+    })
     setModalOpen(true)
   }
 
@@ -213,6 +218,14 @@ export function SchoolsPage() {
             rules={[{ required: true, message: 'Okul kademesi zorunludur' }]}
           >
             <Select options={SCHOOL_TYPE_OPTIONS} placeholder="Kademe seçin" />
+          </Form.Item>
+          <Form.Item
+            name="daily_period_count"
+            label="Günlük ders saati sayısı"
+            tooltip="Ders programı ekranında bir günde gösterilecek saat sayısı (en fazla 12)."
+            rules={[{ required: true, message: 'Günlük ders saati sayısı zorunludur' }]}
+          >
+            <InputNumber min={1} max={12} style={{ width: '100%' }} />
           </Form.Item>
         </Form>
       </Modal>

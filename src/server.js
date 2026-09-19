@@ -2,10 +2,13 @@ require('dotenv').config();
 const cron = require('node-cron');
 const { app, connectDb } = require('./app');
 const { processWorkTaskReminders } = require('./services/workTaskReminderService');
+const { refreshStudentAges } = require('./services/studentAgeService');
 
 const PORT = process.env.PORT || 4000;
 const HOST = process.env.HOST || '0.0.0.0';
 const WORK_TASK_CRON = process.env.WORK_TASK_CRON || '*/15 * * * *';
+const STUDENT_AGE_CRON = process.env.STUDENT_AGE_CRON || '5 0 * * *';
+const STUDENT_AGE_TZ = 'Europe/Istanbul';
 
 function startWorkTaskReminderCron() {
   if (String(process.env.WORK_TASK_REMINDERS_ENABLED || 'true').toLowerCase() === 'false') {
@@ -31,8 +34,33 @@ function startWorkTaskReminderCron() {
   console.log(`Work task reminder cron scheduled: ${WORK_TASK_CRON}`);
 }
 
+function startStudentAgeCron() {
+  if (String(process.env.STUDENT_AGE_CRON_ENABLED || 'true').toLowerCase() === 'false') {
+    console.log('Student age cron disabled (STUDENT_AGE_CRON_ENABLED=false)');
+    return;
+  }
+  if (!cron.validate(STUDENT_AGE_CRON)) {
+    console.warn(`Invalid STUDENT_AGE_CRON "${STUDENT_AGE_CRON}", age refresh not scheduled`);
+    return;
+  }
+  cron.schedule(
+    STUDENT_AGE_CRON,
+    async () => {
+      try {
+        const result = await refreshStudentAges();
+        console.log(`[student-age] updated=${result.updated} checked=${result.checked}`);
+      } catch (err) {
+        console.error('[student-age] job failed:', err.message);
+      }
+    },
+    { timezone: STUDENT_AGE_TZ }
+  );
+  console.log(`Student age cron scheduled: ${STUDENT_AGE_CRON} (${STUDENT_AGE_TZ})`);
+}
+
 (async () => {
   await connectDb();
   startWorkTaskReminderCron();
+  startStudentAgeCron();
   app.listen(PORT, HOST, () => console.log(`Server listening ${HOST}:${PORT}`));
 })();

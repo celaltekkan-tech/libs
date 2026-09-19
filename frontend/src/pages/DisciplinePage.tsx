@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { App, Button, Dropdown, Form, Input, Modal, Select, Space, Tag, Typography } from 'antd'
+import dayjs from 'dayjs'
 import { SortableTable } from '../components/SortableTable'
 import { DeleteOutlined, FileTextOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -15,6 +16,7 @@ import {
   updateDisciplinaryCase,
 } from '../api/disciplinaryCases'
 import type { DisciplinaryDocumentType } from '../api/disciplinaryCases'
+import { deleteTeacherNote, listTeacherNotes } from '../api/teacherNotes'
 import { listStudents } from '../api/students'
 import { getErrorMessage } from '../api/client'
 import { nestedPersonNameSorter, SORT_AZ } from '../utils/tableSort'
@@ -25,6 +27,7 @@ import {
   SANCTION_LEVEL_OPTIONS,
 } from '../types/disciplinaryCase'
 import type { DisciplinaryCase, DisciplinaryCasePayload, DisciplinaryStats } from '../types/disciplinaryCase'
+import type { TeacherNote } from '../types/teacherNote'
 import type { Student } from '../types/student'
 import { downloadBlob } from '../utils/download'
 import { tablePagination } from '../utils/tablePagination'
@@ -35,6 +38,7 @@ export function DisciplinePage() {
   const { session, hasPermission } = useAuth()
 
   const [cases, setCases] = useState<DisciplinaryCase[]>([])
+  const [teacherNotes, setTeacherNotes] = useState<TeacherNote[]>([])
   const [students, setStudents] = useState<Student[]>([])
   const [stats, setStats] = useState<DisciplinaryStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -51,14 +55,16 @@ export function DisciplinePage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [caseData, studentData, statsData] = await Promise.all([
+      const [caseData, studentData, statsData, teacherNoteData] = await Promise.all([
         listDisciplinaryCases(),
         listStudents(),
         fetchDisciplinaryStats(),
+        listTeacherNotes(),
       ])
       setCases(caseData)
       setStudents(studentData)
       setStats(statsData)
+      setTeacherNotes(teacherNoteData)
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
@@ -143,6 +149,25 @@ export function DisciplinePage() {
     })
   }
 
+  const onDeleteTeacherNote = (row: TeacherNote) => {
+    modal.confirm({
+      title: 'Bildirimi sil',
+      content: 'Bu öğretmen bildirimini silmek istediğinize emin misiniz?',
+      okText: 'Sil',
+      okButtonProps: { danger: true },
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        try {
+          await deleteTeacherNote(row.id)
+          message.success('Silindi')
+          void load()
+        } catch (err) {
+          message.error(getErrorMessage(err))
+        }
+      },
+    })
+  }
+
   const onDownloadDocument = async (row: DisciplinaryCase, type: DisciplinaryDocumentType) => {
     try {
       const blob = await downloadDisciplinaryDocument(row.id, type)
@@ -200,6 +225,48 @@ export function DisciplinePage() {
     },
   ]
 
+  const teacherNoteColumns: ColumnsType<TeacherNote> = [
+    {
+      title: 'Öğrenci',
+      sorter: nestedPersonNameSorter((r: TeacherNote) => r.Student),
+      sortDirections: [...SORT_AZ],
+      render: (_: unknown, r: TeacherNote) => (r.Student ? `${r.Student.first_name} ${r.Student.last_name}` : '—'),
+    },
+    {
+      title: 'Sınıf',
+      render: (_: unknown, r: TeacherNote) =>
+        r.Student?.Classroom ? `${r.Student.Classroom.class_level}/${r.Student.Classroom.section}` : '—',
+    },
+    {
+      title: 'Bildiren Öğretmen',
+      render: (_: unknown, r: TeacherNote) => r.Teacher?.full_name || '—',
+    },
+    {
+      title: 'Sebepler',
+      render: (_: unknown, r: TeacherNote) => (
+        <Space wrap>
+          {r.tags.map((tag, i) => (
+            <Tag key={i}>{tag}</Tag>
+          ))}
+          {r.note && <span>{r.note}</span>}
+        </Space>
+      ),
+    },
+    {
+      title: 'Tarih',
+      dataIndex: 'created_at',
+      render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm'),
+    },
+    {
+      title: 'İşlemler',
+      width: 80,
+      render: (_: unknown, record: TeacherNote) =>
+        canDelete && (
+          <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onDeleteTeacherNote(record)} />
+        ),
+    },
+  ]
+
   return (
     <AppLayout title="Disiplin Modülü">
       <Typography.Title level={3} style={{ margin: 0, marginBottom: 16 }}>
@@ -233,6 +300,18 @@ export function DisciplinePage() {
         loading={loading}
         columns={columns}
         dataSource={cases}
+        pagination={tablePagination(20)}
+        scroll={{ x: 'max-content' }}
+      />
+
+      <Typography.Title level={4} style={{ margin: 0, marginTop: 32, marginBottom: 16 }}>
+        Öğretmen Bildirimleri (Mobil)
+      </Typography.Title>
+      <SortableTable
+        rowKey="id"
+        loading={loading}
+        columns={teacherNoteColumns}
+        dataSource={teacherNotes}
         pagination={tablePagination(20)}
         scroll={{ x: 'max-content' }}
       />

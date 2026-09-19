@@ -47,6 +47,11 @@ export async function cancelFeedback(id: number, cancelReason: string): Promise<
   return data.data
 }
 
+export async function addFeedbackUpdate(id: number, body: string): Promise<Feedback> {
+  const { data } = await client.post<Envelope<Feedback>>(`/api/feedback/${id}/updates`, { body })
+  return data.data
+}
+
 export async function fetchFeedbackAttachmentBlob(attachmentId: number): Promise<Blob> {
   const { data } = await client.get(`/api/feedback/attachments/${attachmentId}/download`, {
     responseType: 'blob',

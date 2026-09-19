@@ -21,14 +21,17 @@ import {
   EyeOutlined,
   InboxOutlined,
   PaperClipOutlined,
+  PlusOutlined,
   SendOutlined,
 } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
 import type { RcFile, UploadFile } from 'antd/es/upload/interface'
 import { AppLayout } from '../components/AppLayout'
 import { FilterBar } from '../components/FilterBar'
+import { FeedbackUpdatesBlock, FeedbackThreadBody } from '../components/FeedbackUpdatesBlock'
 import { FeedbackMessageHtml, RichTextEditor, sanitizeFeedbackHtml, stripHtml } from '../components/RichTextEditor'
 import {
+  addFeedbackUpdate,
   cancelFeedback,
   downloadFeedbackAttachment,
   listMyFeedback,
@@ -40,6 +43,8 @@ import {
   FEEDBACK_ACCEPT,
   FEEDBACK_FILTER_OPTIONS,
   FEEDBACK_STATUS_LABEL,
+  OPEN_FEEDBACK_STATUSES,
+  REVIEW_FEEDBACK_STATUSES,
   formatFileSize,
   isImageAttachment,
   isPdfAttachment,
@@ -66,6 +71,9 @@ export function FeedbackPage() {
   const [fileList, setFileList] = useState<UploadFile[]>([])
   const [cancelTarget, setCancelTarget] = useState<Feedback | null>(null)
   const [cancelSubmitting, setCancelSubmitting] = useState(false)
+  const [updateTarget, setUpdateTarget] = useState<Feedback | null>(null)
+  const [updateForm] = Form.useForm<{ body: string }>()
+  const [updateSubmitting, setUpdateSubmitting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -141,6 +149,32 @@ export function FeedbackPage() {
       if (err instanceof Error) message.error(getErrorMessage(err))
     } finally {
       setCancelSubmitting(false)
+    }
+  }
+
+  const openAddUpdate = (item: Feedback) => {
+    updateForm.resetFields()
+    setUpdateTarget(item)
+  }
+
+  const submitAddUpdate = async (values: { body: string }) => {
+    if (!updateTarget) return
+    const html = sanitizeFeedbackHtml(values.body || '')
+    if (stripHtml(html).length < 3) {
+      message.error('Gelişme metni en az 3 karakter olmalı')
+      return
+    }
+    setUpdateSubmitting(true)
+    try {
+      await addFeedbackUpdate(updateTarget.id, html)
+      message.success('Gelişme eklendi; kayıt beklemede')
+      setUpdateTarget(null)
+      updateForm.resetFields()
+      void load()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setUpdateSubmitting(false)
     }
   }
 
@@ -286,7 +320,17 @@ export function FeedbackPage() {
                       <Tag color={FEEDBACK_STATUS_LABEL[item.status].color}>
                         {FEEDBACK_STATUS_LABEL[item.status].text}
                       </Tag>
-                      {(item.status === 'new' || item.status === 'read') && (
+                      {REVIEW_FEEDBACK_STATUSES.includes(item.status) && (
+                        <Button
+                          size="small"
+                          type="link"
+                          icon={<PlusOutlined />}
+                          onClick={() => openAddUpdate(item)}
+                        >
+                          Gelişme ekle
+                        </Button>
+                      )}
+                      {OPEN_FEEDBACK_STATUSES.includes(item.status) && (
                         <Button
                           size="small"
                           danger
@@ -330,27 +374,52 @@ export function FeedbackPage() {
                       ))}
                     </Space>
                   )}
-                  {item.reply && (
-                    <Card size="small" type="inner" title="Yönetici cevabı">
-                      <FeedbackMessageHtml html={item.reply} />
-                      {item.replied_at && (
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          {new Date(item.replied_at).toLocaleString('tr-TR')}
-                        </Typography.Text>
-                      )}
-                    </Card>
-                  )}
-                  {item.status === 'cancelled' && item.cancel_reason && (
-                    <Card size="small" type="inner" title="İptal nedeni">
-                      <Typography.Paragraph style={{ marginBottom: 0 }}>{item.cancel_reason}</Typography.Paragraph>
-                    </Card>
-                  )}
+                  <FeedbackUpdatesBlock item={item} />
                 </Space>
               </Card>
             </List.Item>
           )}
         />
       </div>
+
+      <Modal
+        title="Gelişme ekle"
+        open={!!updateTarget}
+        onCancel={() => setUpdateTarget(null)}
+        onOk={() => updateForm.submit()}
+        confirmLoading={updateSubmitting}
+        okText="Gönder"
+        cancelText="Vazgeç"
+        destroyOnHidden
+        width={560}
+      >
+        {updateTarget && (
+          <div style={{ marginBottom: 12, maxHeight: 220, overflow: 'auto' }}>
+            <FeedbackThreadBody item={updateTarget} />
+          </div>
+        )}
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+          Ek bilgi veya gelişme ekleyebilirsiniz. Gönderim sonrası kayıt beklemede olur; süreç sonuçlanana kadar böyle devam eder.
+        </Typography.Paragraph>
+        <Form form={updateForm} layout="vertical" onFinish={submitAddUpdate}>
+          <Form.Item
+            name="body"
+            label="Gelişme"
+            rules={[
+              {
+                validator: async (_, value) => {
+                  if (stripHtml(value || '').length < 3) {
+                    throw new Error('Gelişme metni en az 3 karakter olmalı')
+                  }
+                  if ((value || '').length > 10000) throw new Error('Metin çok uzun')
+                },
+              },
+            ]}
+          >
+            <RichTextEditor minHeight={120} placeholder="Ek bilgi veya gelişme…" />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal
         title="Geri bildirimi iptal et"

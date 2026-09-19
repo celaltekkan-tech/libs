@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/salaryFormController');
 const validate = require('../middlewares/validate');
-const { upsertSalaryFormDraftSchema } = require('../validators/salaryForm.validator');
+const { upsertSalaryFormDraftSchema, appendSalaryFormRowSchema } = require('../validators/salaryForm.validator');
 const auth = require('../middlewares/auth');
 const requireModule = require('../middlewares/moduleGuard');
 const permission = require('../middlewares/permission');
@@ -19,5 +19,13 @@ router.put(
   ctrl.upsertDraft
 );
 router.get('/export', auth, moduleGuard, permission('norm_positions.read'), ctrl.export);
+router.post(
+  '/draft/append',
+  auth,
+  moduleGuard,
+  permission('norm_positions.update'),
+  validate(appendSalaryFormRowSchema),
+  ctrl.appendDraftRow
+);
 
 module.exports = router;

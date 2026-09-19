@@ -157,6 +157,13 @@ const MENU_PERMISSION_GROUPS = [
     permissions: ['discipline.read', 'discipline.create', 'discipline.update', 'discipline.delete'],
   },
   {
+    id: 'teacher_notes',
+    label: 'Öğretmen Bildirimleri (Mobil)',
+    group: 'Öğrenci İşleri',
+    module: 'discipline',
+    permissions: ['teacher_notes.create'],
+  },
+  {
     id: 'guidance',
     label: 'Rehberlik',
     group: 'Rehberlik',

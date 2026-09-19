@@ -29,6 +29,10 @@ module.exports = (sequelize, DataTypes) => {
       foreignKey: 'feedback_id',
       as: 'Attachments',
     });
+    Feedback.hasMany(models.FeedbackUpdate, {
+      foreignKey: 'feedback_id',
+      as: 'Updates',
+    });
   };
 
   return Feedback;

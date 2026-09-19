@@ -1,5 +1,10 @@
 import client from './client'
-import type { SalaryFormDraftPayload, SalaryFormDraftResponse } from '../types/salaryForm'
+import type {
+  SalaryFormDepartureRow,
+  SalaryFormDraftPayload,
+  SalaryFormDraftResponse,
+  SalaryFormStarterRow,
+} from '../types/salaryForm'
 
 interface Envelope<T> {
   success: true
@@ -25,6 +30,26 @@ export async function saveSalaryFormDraft(
     month,
     year,
     payload,
+  })
+  return data.data
+}
+
+/**
+ * Tek bir satırı (ayrılan/başlayan personel vb.) taslağa ekler. upsertDraft'tan farklı
+ * olarak tüm payload'ı göndermez — sunucuda transaction + row lock ile eklenir, böylece
+ * başka bir sekmede açık duran eski bir taslak kopyası bu satırı "Kaydet" ile ezemez.
+ */
+export async function appendSalaryFormRow(
+  month: number,
+  year: number,
+  section: 'departures' | 'starters',
+  row: SalaryFormDepartureRow | SalaryFormStarterRow,
+): Promise<SalaryFormDraftResponse> {
+  const { data } = await client.post<Envelope<SalaryFormDraftResponse>>('/api/salary-form/draft/append', {
+    month,
+    year,
+    section,
+    row,
   })
   return data.data
 }

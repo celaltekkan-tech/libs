@@ -136,6 +136,10 @@ export function SalaryFormDraftModal({ open, onClose, canSave }: Props) {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  // Bu taslağı en son ne zaman yükledik — kaydetmeden önce sunucudaki güncel
+  // updated_at ile karşılaştırılır. Aradan biri (ör. "Ayrılış Ver" otomasyonu) satır
+  // eklediyse, burada tutulan eski kopyayı geri yazıp o satırı silmemek için kullanılır.
+  const loadedAtRef = useRef<string | null>(null)
 
   const loadDraft = useCallback(
     async (value: Dayjs) => {
@@ -147,6 +151,7 @@ export function SalaryFormDraftModal({ open, onClose, canSave }: Props) {
         form.setFieldsValue({ ...EMPTY_PAYLOAD, ...data.payload })
         setPeriodLabel(data.period_label || '')
         setPromotionCount(data.promotion_count || 0)
+        loadedAtRef.current = data.updated_at || null
       } catch (err) {
         message.error(getErrorMessage(err))
         form.setFieldsValue(EMPTY_PAYLOAD)
@@ -156,6 +161,35 @@ export function SalaryFormDraftModal({ open, onClose, canSave }: Props) {
     },
     [form, message],
   )
+
+  /**
+   * Kaydetmeden hemen önce çağrılır: sunucudaki taslak biz yükledikten sonra
+   * değiştiyse (ör. otomasyon bir satır eklediyse), formu ezmek yerine tazeleyip
+   * kullanıcıyı uyarır — "Kaydet" böyle bir satırı sessizce silmez.
+   */
+  const guardAgainstStaleSave = async (): Promise<boolean> => {
+    const month = period.month() + 1
+    const year = period.year()
+    try {
+      const fresh = await getSalaryFormDraft(month, year)
+      if ((fresh.updated_at || null) !== loadedAtRef.current) {
+        message.warning(
+          'Bu taslak siz görüntülerken başka bir işlemle (ör. Ayrılış Ver / Yeni personel ekle) güncellendi. ' +
+            'Değişiklikleri kaybetmemek için form yeniden yüklendi; lütfen düzenlemenizi tekrar yapıp kaydedin.',
+          8,
+        )
+        form.setFieldsValue({ ...EMPTY_PAYLOAD, ...fresh.payload })
+        setPeriodLabel(fresh.period_label || '')
+        setPromotionCount(fresh.promotion_count || 0)
+        loadedAtRef.current = fresh.updated_at || null
+        return false
+      }
+      return true
+    } catch (err) {
+      message.error(getErrorMessage(err))
+      return false
+    }
+  }
 
   useEffect(() => {
     if (open) void loadDraft(period)
@@ -169,9 +203,11 @@ export function SalaryFormDraftModal({ open, onClose, canSave }: Props) {
 
   const ensureSaved = async () => {
     if (!canSave) return true
+    if (!(await guardAgainstStaleSave())) return false
     try {
       const values = await form.validateFields()
-      await saveSalaryFormDraft(period.month() + 1, period.year(), values)
+      const result = await saveSalaryFormDraft(period.month() + 1, period.year(), values)
+      loadedAtRef.current = result.updated_at || null
       return true
     } catch (err) {
       message.error(getErrorMessage(err))
@@ -189,7 +225,9 @@ export function SalaryFormDraftModal({ open, onClose, canSave }: Props) {
     const values = await form.validateFields()
     setSaving(true)
     try {
-      await saveSalaryFormDraft(period.month() + 1, period.year(), values)
+      if (!(await guardAgainstStaleSave())) return
+      const result = await saveSalaryFormDraft(period.month() + 1, period.year(), values)
+      loadedAtRef.current = result.updated_at || null
       message.success('Taslak kaydedildi')
     } catch (err) {
       message.error(getErrorMessage(err))
@@ -197,6 +235,10 @@ export function SalaryFormDraftModal({ open, onClose, canSave }: Props) {
       setSaving(false)
     }
   }
+  // Not: guardAgainstStaleSave, taslak sunucuda değişmişse formu taze veriyle
+  // değiştirir; bu durumda yukarıda validateFields() ile alınan `values` artık eski
+  // olur ve kasıtlı olarak kaydedilmez (return ile çıkılır) — kayıp veri yerine
+  // kullanıcıdan düzenlemeyi tekrar etmesini istemek tercih edilmiştir.
 
   const onExport = async (format: SalaryFormExportFormat) => {
     if (!(await ensureSaved())) return

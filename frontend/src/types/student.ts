@@ -1,5 +1,6 @@
 export type RegistrationStatus = 'aktif' | 'nakil_gelen' | 'nakil_giden' | 'kayit_silindi'
 export type StudentGender = 'K' | 'E'
+export type BoardingStatus = 'Yatılı' | 'Gündüzlü'
 
 export interface StudentExtraContact {
   label?: string | null
@@ -21,12 +22,15 @@ export interface Student {
   section: string | null
   gender: StudentGender | null
   birth_date: string | null
+  yasi: number | null
   registration_status: RegistrationStatus | null
   parent_name: string | null
   parent_phone: string | null
   extra_contacts: StudentExtraContact[]
   is_inclusion: boolean
   is_foreign: boolean
+  boarding_status: BoardingStatus | null
+  photo_url?: string | null
   created_at: string
   updated_at: string
 }
@@ -40,12 +44,14 @@ export interface StudentPayload {
   last_name: string
   gender?: StudentGender | null
   birth_date?: string | null
+  yasi?: number | null
   registration_status?: RegistrationStatus | null
   parent_name?: string | null
   parent_phone?: string | null
   extra_contacts?: StudentExtraContact[]
   is_inclusion?: boolean
   is_foreign?: boolean
+  boarding_status?: BoardingStatus | null
 }
 
 export interface StudentFilters {
@@ -56,12 +62,7 @@ export interface StudentFilters {
   section?: string
   gender?: StudentGender
   registration_status?: RegistrationStatus
-}
-
-export interface StudentImportResult {
-  created: number
-  updated: number
-  errors: Array<{ row: number; message: string }>
+  boarding_status?: BoardingStatus
 }
 
 export interface StudentImportField {
@@ -70,7 +71,18 @@ export interface StudentImportField {
   required: boolean
 }
 
-export interface StudentImportPreview {
+export interface PhotoRosterImportRow {
+  row: number
+  student_number: string | null
+  full_name: string | null
+  matched: boolean
+  current_name: string | null
+  has_photo: boolean
+}
+
+/** Normal, sütun başlıklı Excel dosyaları için içe aktarma önizlemesi/sonucu. */
+export interface StudentImportPreviewTable {
+  format: 'table'
   sheet_names: string[]
   sheet_name: string
   header_row: number
@@ -82,6 +94,39 @@ export interface StudentImportPreview {
   total_rows: number
 }
 
+export interface StudentImportResultTable {
+  format: 'table'
+  created: number
+  updated: number
+  errors: Array<{ row: number; message: string }>
+  unmatched_columns?: string[]
+  feedback_created?: boolean
+}
+
+/** E-Okul "Fotoğraflı Öğrenci Bilgileri" dökümü gibi öğrenci başına form/blok
+ * halinde basılan dosyalar için içe aktarma önizlemesi/sonucu — yalnızca sistemde
+ * numarası/kimliği eşleşen kayıtları günceller, yeni öğrenci oluşturmaz. */
+export interface StudentImportPreviewPhotoRoster {
+  format: 'photo_roster'
+  sheet_name: string
+  total_rows: number
+  matched: number
+  not_found: number
+  photos_found: number
+  rows: PhotoRosterImportRow[]
+}
+
+export interface StudentImportResultPhotoRoster {
+  format: 'photo_roster'
+  updated: number
+  not_found: number
+  photos_saved: number
+  errors: Array<{ row: number; message: string }>
+}
+
+export type StudentImportPreview = StudentImportPreviewTable | StudentImportPreviewPhotoRoster
+export type StudentImportResult = StudentImportResultTable | StudentImportResultPhotoRoster
+
 export const STUDENT_IMPORT_FIELD_OPTIONS = [
   { value: 'student_number', label: 'Öğrenci No' },
   { value: 'national_id', label: 'T.C. Kimlik No' },
@@ -91,11 +136,13 @@ export const STUDENT_IMPORT_FIELD_OPTIONS = [
   { value: 'section', label: 'Şube' },
   { value: 'gender', label: 'Cinsiyet' },
   { value: 'birth_date', label: 'Doğum Tarihi' },
+  { value: 'yasi', label: 'Yaşı' },
   { value: 'registration_status', label: 'Kayıt Durumu' },
   { value: 'parent_name', label: 'Veli Adı' },
   { value: 'parent_phone', label: 'Veli Telefon' },
   { value: 'is_inclusion', label: 'Kaynaştırma' },
   { value: 'is_foreign', label: 'Yabancı Uyruklu' },
+  { value: 'boarding_status', label: 'Yurt Durumu' },
 ] as const
 
 export const STUDENT_COLUMN_OPTIONS = [
@@ -108,13 +155,20 @@ export const STUDENT_COLUMN_OPTIONS = [
   { value: 'section', label: 'Şube' },
   { value: 'gender', label: 'Cinsiyet' },
   { value: 'birth_date', label: 'Doğum Tarihi' },
+  { value: 'yasi', label: 'Yaşı' },
   { value: 'registration_status', label: 'Kayıt Durumu' },
   { value: 'parent_name', label: 'Veli Adı' },
   { value: 'parent_phone', label: 'Veli Telefon' },
   { value: 'extra_contacts', label: 'Ek İletişim' },
   { value: 'is_inclusion', label: 'Kaynaştırma' },
   { value: 'is_foreign', label: 'Yabancı Uyruklu' },
+  { value: 'boarding_status', label: 'Yurt Durumu' },
 ] as const
+
+export const BOARDING_STATUS_OPTIONS: Array<{ value: BoardingStatus; label: string }> = [
+  { value: 'Yatılı', label: 'Yatılı' },
+  { value: 'Gündüzlü', label: 'Gündüzlü' },
+]
 
 export const REGISTRATION_STATUS_OPTIONS: Array<{ value: RegistrationStatus; label: string }> = [
   { value: 'aktif', label: 'Aktif' },

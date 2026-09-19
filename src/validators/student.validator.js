@@ -1,6 +1,7 @@
 const Joi = require('joi');
 
 const REGISTRATION_STATUSES = ['aktif', 'nakil_gelen', 'nakil_giden', 'kayit_silindi'];
+const BOARDING_STATUSES = ['Yatılı', 'Gündüzlü'];
 
 const extraContactSchema = Joi.object({
   label: Joi.string().allow('', null).max(100),
@@ -19,6 +20,7 @@ const createStudentSchema = Joi.object({
   last_name: Joi.string().required(),
   gender: Joi.string().valid('K', 'E', '', null).allow(null),
   birth_date: Joi.date().iso().allow(null),
+  yasi: Joi.number().integer().min(0).max(120).allow(null),
   registration_status: Joi.string()
     .valid(...REGISTRATION_STATUSES)
     .allow(null),
@@ -27,6 +29,9 @@ const createStudentSchema = Joi.object({
   extra_contacts: Joi.array().items(extraContactSchema).max(20).optional(),
   is_inclusion: Joi.boolean().allow(null),
   is_foreign: Joi.boolean().allow(null),
+  boarding_status: Joi.string()
+    .valid(...BOARDING_STATUSES, '')
+    .allow(null),
   meta: Joi.object().optional(),
 });
 
@@ -51,6 +56,9 @@ const exportStudentSchema = Joi.object({
     registration_status: Joi.string()
       .valid(...REGISTRATION_STATUSES)
       .optional(),
+    boarding_status: Joi.string()
+      .valid(...BOARDING_STATUSES)
+      .optional(),
   }).optional(),
 });
 
@@ -59,4 +67,5 @@ module.exports = {
   updateStudentSchema,
   exportStudentSchema,
   REGISTRATION_STATUSES,
+  BOARDING_STATUSES,
 };

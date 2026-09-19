@@ -298,6 +298,13 @@ Frontend: `/work-tasks` (Sistem → İş Takibi). İzinler: `work_tasks.read|cre
 | `WORK_TASK_CRON` | Cron ifadesi (varsayılan `*/15 * * * *`) |
 | `WORK_TASK_REMINDERS_ENABLED` | `false` ise cron kaydı yapılmaz |
 
+**Öğrenci yaşı:** `src/server.js` içinde `refreshStudentAges()` her gün `Europe/Istanbul` saatine göre çalışır; doğum tarihi olan kayıtlarda `yasi` alanı güncellenir.
+
+| Değişken | Açıklama |
+|---|---|
+| `STUDENT_AGE_CRON` | Cron ifadesi (varsayılan `5 0 * * *`, 00:05) |
+| `STUDENT_AGE_CRON_ENABLED` | `false` ise cron kaydı yapılmaz |
+
 Vade yaklaşınca ve zorunlu görev gecikince seçilen kanallarla bildirim gider. SMS için atanan
 kullanıcının `Users.phone` alanı dolu olmalı; yoksa SMS log’da başarısız sayılır, diğer kanallar
 denenmeye devam eder.
@@ -489,6 +496,38 @@ npm run smoke:cors   # frontend origin'inin CORS ayarlarıyla uyumunu test eder
 npm run build:frontend
 ```
 
+## Mobil Uygulama (Expo)
+
+Öğretmenlerin sınıfta hızlıca öğrenci arayıp disiplin bildirimi (öğretmen notu) oluşturması için `mobile/` klasöründe React Native (Expo) uygulaması bulunur: giriş, öğrenci numarasıyla arama, hazır/serbest sebep etiketleriyle not oluşturma, kendi gönderdiği bildirimleri listeleme. Aynı backend uçlarını kullanır (`POST /api/auth/login`, `GET /api/auth/me`, `GET /api/students/lookup/:number`, `GET /api/teacher-notes/tag-options`, `POST /api/teacher-notes`, `GET /api/teacher-notes/mine`), ayrı bir API'si yoktur.
+
+```bash
+cd mobile
+npm install
+cp .env.example .env   # EXPO_PUBLIC_API_URL'i bilgisayarın LAN IP'sine göre düzenleyin
+npm start
+```
+
+- Fiziksel cihazda `localhost` çalışmaz; `EXPO_PUBLIC_API_URL` backend'in çalıştığı makinenin LAN IP adresini göstermeli (örn. `http://192.168.1.100:4000`) ve backend `CORS_ORIGIN`'de bu adrese izin verilmeli.
+- Token `expo-secure-store` ile cihazda saklanır; açılışta `/api/auth/me` ile doğrulanır, geçersizse otomatik çıkış yapılır.
+- `discipline` modülü kapalıysa veya kullanıcının `teacher_notes.create` izni yoksa not oluşturma/listeleme uçları 403 döner. `GET /api/teacher-notes/mine` yalnızca isteği yapan öğretmenin kendi bildirimlerini döner (`discipline.read` gerektirmez); tüm okulun bildirimlerini görmek yönetici panelindeki disiplin ekranı üzerinden yapılır.
+- Gerçek cihaza kurulum (Expo Go dışında) için `eas.json` hazır: `npx eas login` sonrası `npx eas build:configure` ile proje EAS hesabınıza bağlanmalı, ardından `npm run build:preview` (APK) veya `npm run build:production` (mağaza) kullanılabilir.
+- Uygulama ikonu/splash görseli hâlâ Expo'nun varsayılanı; gerçek kurum logosu geldiğinde `mobile/assets/` altındaki dosyalar değiştirilmeli.
+
+### Kullanım (öğretmen için)
+
+1. **Giriş**: E-posta ve şifre ile giriş yapılır — panel ile aynı hesap kullanılır, ayrı bir mobil kayıt yoktur. Hesabında iki adımlı doğrulama (2FA) veya SMS girişi açıksa mobil uygulama şu an bunu desteklemez; okul yöneticisinden bu ayarın kapatılmasını isteyin.
+2. **Öğrenci arama**: "Öğrenci Ara" ekranında öğrenci numarası girilip **Ara**'ya basılır. Öğrenci bulunursa fotoğrafı, adı-soyadı ve sınıfı gösterilir.
+3. **Bildirim oluşturma**: Öğrenci kartındaki **Bildirim Oluştur**'a basılır. Açılan ekranda:
+   - Hazır sebep etiketlerinden istenildiği kadarı seçilir (çoklu seçim),
+   - gerekirse kendi sebebiniz yazılıp **Ekle**'ye basılır,
+   - isteğe bağlı bir not eklenebilir,
+   - en az bir etiket/sebep veya not girildikten sonra **Gönder**'e basılır.
+   Bildirim kaydedilince okul yönetiminin disiplin ekranına düşer.
+4. **Geçmiş bildirimler**: "Öğrenci Ara" ekranının sağ üstündeki **Geçmiş** bağlantısıyla, o öğretmenin daha önce gönderdiği tüm bildirimler (öğrenci, etiketler, not, tarih) listelenir; aşağı çekerek yenilenebilir.
+5. **Çıkış**: "Öğrenci Ara" ekranının sağ üstündeki **Çıkış** ile oturum kapatılır ve cihazdaki token silinir.
+
+Uygulamayı kapatıp yeniden açtığınızda oturum açık kalır (token cihazda saklanır); şifre değiştirildiyse veya hesap pasifleştirildiyse bir sonraki açılışta otomatik çıkış yapılır.
+
 ## Rol ve İzin Sistemi
 
 Sistemde iki katmanlı rol yapısı vardır:
@@ -568,6 +607,7 @@ Tenant (Kiracı)
 - `npm start` - Production modunda backend
 - `npm run dev` - Backend geliştirme (nodemon, port 4000)
 - `npm run dev:frontend` - Yönetici paneli (Vite, port 5173)
+- `npm run dev:mobile` - Öğretmen mobil uygulaması (Expo)
 - `npm run dev:all` - Backend ve frontend birlikte
 - `npm run migrate` - Migration'ları çalıştır
 - `npm run migrate:undo` - Tüm migration'ları geri al

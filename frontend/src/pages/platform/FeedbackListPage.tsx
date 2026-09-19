@@ -21,13 +21,15 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EyeOutlined,
-  MessageOutlined,
   PaperClipOutlined,
+  PlusOutlined,
 } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
 import { AppLayout } from '../../components/AppLayout'
-import { FeedbackMessageHtml, RichTextEditor, sanitizeFeedbackHtml } from '../../components/RichTextEditor'
+import { FeedbackUpdatesBlock, FeedbackThreadBody } from '../../components/FeedbackUpdatesBlock'
+import { FeedbackMessageHtml, RichTextEditor, sanitizeFeedbackHtml, stripHtml } from '../../components/RichTextEditor'
 import {
+  addFeedbackUpdate,
   deleteFeedback,
   downloadFeedbackAttachment,
   listFeedback,
@@ -39,6 +41,7 @@ import { getErrorMessage } from '../../api/client'
 import {
   FEEDBACK_FILTER_OPTIONS,
   FEEDBACK_STATUS_LABEL,
+  OPEN_FEEDBACK_STATUSES,
   formatFileSize,
   isPdfAttachment,
   type Feedback,
@@ -57,11 +60,11 @@ export function FeedbackListPage() {
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([])
   const [tenants, setTenants] = useState<TenantListItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [statusFilter, setStatusFilter] = useState<FeedbackStatusFilter>('pending')
+  const [statusFilter, setStatusFilter] = useState<FeedbackStatusFilter>('new')
   const [tenantFilter, setTenantFilter] = useState<number | undefined>(undefined)
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs] | null>(null)
   const [replyTarget, setReplyTarget] = useState<Feedback | null>(null)
-  const [replyForm] = Form.useForm<{ status: FeedbackStatus; reply: string }>()
+  const [replyForm] = Form.useForm<{ status: FeedbackStatus; body: string }>()
   const [replySubmitting, setReplySubmitting] = useState(false)
 
   useEffect(() => {
@@ -117,18 +120,27 @@ export function FeedbackListPage() {
   const openReply = (record: Feedback) => {
     setReplyTarget(record)
     replyForm.setFieldsValue({
-      status: record.status === 'new' || record.status === 'read' ? 'resolved' : record.status,
-      reply: record.reply || '',
+      status: record.status === 'new' ? 'read' : record.status,
+      body: '',
     })
   }
 
-  const submitReply = async (values: { status: FeedbackStatus; reply: string }) => {
+  const submitReply = async (values: { status: FeedbackStatus; body: string }) => {
     if (!replyTarget) return
+    const html = values.body ? sanitizeFeedbackHtml(values.body) : ''
+    const hasBody = stripHtml(html).length >= 3
     setReplySubmitting(true)
     try {
-      const reply = values.reply ? sanitizeFeedbackHtml(values.reply) : ''
-      await updateFeedback(replyTarget.id, { status: values.status, reply: reply || null })
-      message.success('Cevap gönderildi')
+      if (hasBody) {
+        await addFeedbackUpdate(replyTarget.id, html)
+      }
+      if (values.status !== replyTarget.status) {
+        await updateFeedback(replyTarget.id, { status: values.status })
+      } else if (!hasBody) {
+        message.warning('Durum değişmedi ve gelişme metni girilmedi')
+        return
+      }
+      message.success(hasBody ? 'Gelişme eklendi' : 'Durum güncellendi')
       setReplyTarget(null)
       void load()
     } catch (err) {
@@ -303,33 +315,21 @@ export function FeedbackListPage() {
                           </Space>
                         )}
 
-                        {item.reply && (
-                          <Card size="small" type="inner" title="Verilen cevap">
-                            <FeedbackMessageHtml html={item.reply} />
-                            {item.replied_at && (
-                              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                                {new Date(item.replied_at).toLocaleString('tr-TR')}
-                              </Typography.Text>
-                            )}
-                          </Card>
-                        )}
-
-                        {item.status === 'cancelled' && item.cancel_reason && (
-                          <Card size="small" type="inner" title="Kullanıcının iptal nedeni">
-                            <Typography.Paragraph style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>
-                              {item.cancel_reason}
-                            </Typography.Paragraph>
-                          </Card>
-                        )}
+                        <FeedbackUpdatesBlock item={item} />
 
                         <Space wrap>
-                          <Button type="primary" icon={<MessageOutlined />} onClick={() => openReply(item)}>
-                            Yanıtla
-                          </Button>
-                          {item.status !== 'read' && item.status !== 'cancelled' && (
+                          {OPEN_FEEDBACK_STATUSES.includes(item.status) && (
+                            <Button type="primary" icon={<PlusOutlined />} onClick={() => openReply(item)}>
+                              Gelişme ekle
+                            </Button>
+                          )}
+                          {item.status !== 'read' && OPEN_FEEDBACK_STATUSES.includes(item.status) && (
                             <Button icon={<EyeOutlined />} onClick={() => void changeStatus(item.id, 'read')}>
                               İnceleniyor
                             </Button>
+                          )}
+                          {item.status !== 'waiting' && OPEN_FEEDBACK_STATUSES.includes(item.status) && (
+                            <Button onClick={() => void changeStatus(item.id, 'waiting')}>Beklemede</Button>
                           )}
                           {item.status !== 'resolved' && (
                             <Button
@@ -362,12 +362,12 @@ export function FeedbackListPage() {
       </div>
 
       <Modal
-        title="Geri Bildirimi Yanıtla"
+        title="Gelişme ekle"
         open={!!replyTarget}
         onCancel={() => setReplyTarget(null)}
         onOk={() => replyForm.submit()}
         confirmLoading={replySubmitting}
-        okText="Gönder"
+        okText="Kaydet"
         cancelText="Vazgeç"
         destroyOnHidden
         width={560}
@@ -378,9 +378,9 @@ export function FeedbackListPage() {
               {replyTarget.Tenant?.name || `Hesap #${replyTarget.tenant_id}`}
               {replyTarget.User ? ` · ${replyTarget.User.full_name}` : ''}
             </Typography.Paragraph>
-            <Card size="small" style={{ marginBottom: 16 }}>
-              <FeedbackMessageHtml html={replyTarget.message} />
-            </Card>
+            <div style={{ marginBottom: 16, maxHeight: 280, overflow: 'auto' }}>
+              <FeedbackThreadBody item={replyTarget} />
+            </div>
             {!!replyTarget.Attachments?.length && (
               <Space direction="vertical" size={4} style={{ marginBottom: 16, width: '100%' }}>
                 <Typography.Text strong>Ekler</Typography.Text>
@@ -418,25 +418,26 @@ export function FeedbackListPage() {
                   options={[
                     { value: 'new', label: FEEDBACK_STATUS_LABEL.new.text },
                     { value: 'read', label: FEEDBACK_STATUS_LABEL.read.text },
+                    { value: 'waiting', label: FEEDBACK_STATUS_LABEL.waiting.text },
                     { value: 'resolved', label: FEEDBACK_STATUS_LABEL.resolved.text },
                     { value: 'cancelled', label: FEEDBACK_STATUS_LABEL.cancelled.text },
                   ]}
                 />
               </Form.Item>
               <Form.Item
-                name="reply"
-                label="Cevabınız"
+                name="body"
+                label="Yeni gelişme"
                 rules={[
                   {
                     validator: async (_, value) => {
-                      if ((value || '').length > 10000) throw new Error('Cevap çok uzun')
+                      if ((value || '').length > 10000) throw new Error('Metin çok uzun')
                     },
                   },
                 ]}
               >
                 <RichTextEditor
                   minHeight={120}
-                  placeholder="Kullanıcıya iletilecek cevap… (madde imi için araç çubuğunu kullanın)"
+                  placeholder="Kullanıcıya iletilecek gelişme… (boş bırakıp yalnızca durum da güncelleyebilirsiniz)"
                 />
               </Form.Item>
             </Form>

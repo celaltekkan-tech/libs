@@ -6,6 +6,7 @@ import { DeleteOutlined, DownloadOutlined, InboxOutlined, PlusOutlined, UploadOu
 import { AppLayout } from '../components/AppLayout'
 import { FilterBar } from '../components/FilterBar'
 import { useAuth } from '../auth/AuthContext'
+import { useActiveSchool } from '../auth/ActiveSchoolContext'
 import {
   createScheduleEntry,
   deleteScheduleEntry,
@@ -29,13 +30,14 @@ import type { Teacher } from '../types/teacher'
 import type { Classroom } from '../types/classroom'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
 
-const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8]
+const DEFAULT_PERIOD_COUNT = 8
 
 type ViewMode = 'classroom' | 'teacher'
 
 export function SchedulePage() {
   const { message, modal } = App.useApp()
   const { session, hasPermission } = useAuth()
+  const { schools, activeSchool } = useActiveSchool()
 
   const [classrooms, setClassrooms] = useState<Classroom[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
@@ -149,6 +151,20 @@ export function SchedulePage() {
     entries.forEach((entry) => map.set(`${entry.day_of_week}-${entry.period_no}`, entry))
     return map
   }, [entries])
+
+  const periodCount = useMemo(() => {
+    const selectedClassroom = classrooms.find((c) => c.id === selectedClassroomId)
+    const schoolForCount =
+      viewMode === 'classroom' && selectedClassroom
+        ? schools.find((s) => s.id === selectedClassroom.school_id)
+        : activeSchool
+    return schoolForCount?.daily_period_count || DEFAULT_PERIOD_COUNT
+  }, [classrooms, selectedClassroomId, viewMode, schools, activeSchool])
+
+  const PERIODS = useMemo(
+    () => Array.from({ length: periodCount }, (_, i) => i + 1),
+    [periodCount],
+  )
 
   const usedImportFields = useMemo(
     () => new Set(Object.values(importMapping).filter(Boolean)),

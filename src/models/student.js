@@ -13,6 +13,7 @@ module.exports = (sequelize, DataTypes) => {
       section: DataTypes.STRING,
       gender: DataTypes.STRING(1),
       birth_date: DataTypes.DATEONLY,
+      yasi: DataTypes.INTEGER,
       registration_status: DataTypes.STRING,
       parent_name: DataTypes.STRING,
       parent_phone: DataTypes.STRING,
@@ -23,6 +24,8 @@ module.exports = (sequelize, DataTypes) => {
       },
       is_inclusion: DataTypes.BOOLEAN,
       is_foreign: DataTypes.BOOLEAN,
+      boarding_status: DataTypes.STRING,
+      photo_path: DataTypes.STRING,
       meta: DataTypes.JSONB,
     },
     {
@@ -43,6 +46,7 @@ module.exports = (sequelize, DataTypes) => {
     Student.hasMany(models.ParentConsent, { foreignKey: 'student_id' });
     Student.hasMany(models.SeatAssignment, { foreignKey: 'student_id' });
     Student.hasMany(models.DisciplinaryCase, { foreignKey: 'student_id' });
+    Student.hasMany(models.TeacherNote, { foreignKey: 'student_id' });
     Student.hasMany(models.GuidanceSession, { foreignKey: 'student_id' });
   };
 

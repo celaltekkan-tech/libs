@@ -33,6 +33,7 @@ const parentConsentsRoutes = require('./routes/parentConsents');
 const examsRoutes = require('./routes/exams');
 const kelebekRoutes = require('./routes/kelebek');
 const disciplinaryCasesRoutes = require('./routes/disciplinaryCases');
+const teacherNotesRoutes = require('./routes/teacherNotes');
 const guidanceRoutes = require('./routes/guidance');
 const teacherDocumentsRoutes = require('./routes/teacherDocuments');
 const holidaysRoutes = require('./routes/holidays');
@@ -41,6 +42,7 @@ const workTasksRoutes = require('./routes/workTasks');
 const calendarRoutes = require('./routes/calendar');
 const messageLogsRoutes = require('./routes/messageLogs');
 const backupsRoutes = require('./routes/backups');
+const platformRolesRoutes = require('./routes/platformRoles');
 const errorHandler = require('./middlewares/errorHandler');
 const db = require('./models');
 
@@ -178,6 +180,7 @@ app.use('/api/parent-consents', parentConsentsRoutes);
 app.use('/api/exams', examsRoutes);
 app.use('/api/kelebek', kelebekRoutes);
 app.use('/api/disciplinary-cases', disciplinaryCasesRoutes);
+app.use('/api/teacher-notes', teacherNotesRoutes);
 app.use('/api/guidance', guidanceRoutes);
 app.use('/api/teacher-documents', teacherDocumentsRoutes);
 app.use('/api/holidays', holidaysRoutes);
@@ -186,6 +189,7 @@ app.use('/api/work-tasks', workTasksRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/message-logs', messageLogsRoutes);
 app.use('/api/backups', backupsRoutes);
+app.use('/api/platform/roles', platformRolesRoutes);
 
 app.use((req, res) => {
   res.status(404).json({

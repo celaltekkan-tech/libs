@@ -21,6 +21,11 @@ module.exports = (sequelize, DataTypes) => {
           allowNull: false,
           defaultValue: 'lise',
         },
+        daily_period_count: {
+          type: DataTypes.INTEGER,
+          allowNull: false,
+          defaultValue: 8,
+        },
         meta: {
           type: DataTypes.JSONB,
           allowNull: true,

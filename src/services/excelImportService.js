@@ -11,11 +11,13 @@ const IMPORTABLE_FIELDS = [
   { key: 'section', label: 'Şube', required: false },
   { key: 'gender', label: 'Cinsiyet', required: false },
   { key: 'birth_date', label: 'Doğum Tarihi', required: false },
+  { key: 'yasi', label: 'Yaşı', required: false },
   { key: 'registration_status', label: 'Kayıt Durumu', required: false },
   { key: 'parent_name', label: 'Veli Adı', required: false },
   { key: 'parent_phone', label: 'Veli Telefon', required: false },
   { key: 'is_inclusion', label: 'Kaynaştırma', required: false },
   { key: 'is_foreign', label: 'Yabancı Uyruklu', required: false },
+  { key: 'boarding_status', label: 'Yurt Durumu', required: false },
 ];
 
 const IMPORT_HEADER_MAP = {
@@ -61,6 +63,12 @@ const IMPORT_HEADER_MAP = {
   cinsiyet: 'gender',
   'doğum tarihi': 'birth_date',
   'dogum tarihi': 'birth_date',
+  yasi: 'yasi',
+  yaşı: 'yasi',
+  yas: 'yasi',
+  yaş: 'yasi',
+  'öğrenci yaşı': 'yasi',
+  'ogrenci yasi': 'yasi',
   'kayıt durumu': 'registration_status',
   'kayit durumu': 'registration_status',
   'veli adı': 'parent_name',
@@ -71,6 +79,9 @@ const IMPORT_HEADER_MAP = {
   kaynastirma: 'is_inclusion',
   'yabancı uyruklu': 'is_foreign',
   'yabanci uyruklu': 'is_foreign',
+  'pansiyon durum': 'boarding_status',
+  'pansiyon durumu': 'boarding_status',
+  'yurt durumu': 'boarding_status',
 };
 
 function normalizeHeader(header) {
@@ -229,17 +240,50 @@ function parseClassSection(classLevel, section) {
   return { class_level: String(level), section: sec };
 }
 
+/** Bir satırın herhangi bir hücresinde "N. Sınıf / Şube" biçimli bir başlık arar. */
+function detectRowClassInfo(row) {
+  for (const cell of row || []) {
+    const text = cellToDisplay(cell);
+    const parsed = parseClassFromText(text);
+    if (parsed) return { ...parsed, source_text: text };
+  }
+  return null;
+}
+
 function detectClassInfo(matrix, headerRowIndex) {
   const scanUntil = Math.min(headerRowIndex, 15);
   for (let i = 0; i < scanUntil; i += 1) {
-    const row = matrix[i] || [];
-    for (const cell of row) {
-      const text = cellToDisplay(cell);
-      const parsed = parseClassFromText(text);
-      if (parsed) return { ...parsed, source_text: text };
-    }
+    const found = detectRowClassInfo(matrix[i] || []);
+    if (found) return found;
   }
   return null;
+}
+
+/**
+ * MEB e-okul "Sınıf Listesi" dökümlerinde tek sayfada birden çok sınıf/şube art arda
+ * basılır: her blok "N. Sınıf / X Şubesi ... Sınıf Listesi" başlığıyla açılır, ardından
+ * "Sınıf Öğretmeni/Müdür Yrd" satırları, tablo başlığının tekrarı, öğrenci satırları ve
+ * "... Öğrenci Sayısı" özet satırıyla kapanır — sonra yeni blok başlar. Bu yardımcılar,
+ * öğrenci sütun eşlemesinde ayrı bir Sınıf/Şube sütunu olmayan böyle dosyalarda her
+ * öğrenciyi ait olduğu bloğun sınıfına atayabilmek için "veri olmayan" satırları ayıklar.
+ */
+function isMetaOrSummaryRow(row) {
+  const text = (row || [])
+    .map((c) => cellToDisplay(c))
+    .filter(Boolean)
+    .join(' ');
+  if (!text) return false;
+  return /^(Sınıf Öğretmeni|Sınıf Müdür|Sınıf Başkan)/i.test(text.trim()) || /Öğrenci Sayısı/i.test(text);
+}
+
+function isRepeatedHeaderRow(row, headerCells) {
+  if (!headerCells.length || !row) return false;
+  let matches = 0;
+  headerCells.forEach(({ index, label }) => {
+    const cellLabel = cellToDisplay(row[index]);
+    if (cellLabel && normalizeHeader(cellLabel) === normalizeHeader(label)) matches += 1;
+  });
+  return matches / headerCells.length >= 0.6;
 }
 
 /** Birleşik hücrelerde değer başlığın sağındaki boş sütunda olabilir. */
@@ -303,7 +347,12 @@ function previewWorkbook(buffer, options = {}) {
   };
 }
 
-function getMappedRows(buffer, { headerRow, columnMapping }) {
+/**
+ * @param {boolean} [opts.detectRepeatingClassBlocks] Sadece öğrenci içe aktarımında
+ *   kullanılır (bkz. isMetaOrSummaryRow yorumu). Diğer içe aktarımları (ders programı vb.)
+ *   bu davranışı istemediği için varsayılan kapalıdır.
+ */
+function getMappedRows(buffer, { headerRow, columnMapping, detectRepeatingClassBlocks = false }) {
   const { matrix } = readSheetMatrix(buffer);
   const headerRowIndex = Math.max(0, Number(headerRow || 1) - 1);
   const mappingEntries = Object.entries(columnMapping || {})
@@ -314,6 +363,8 @@ function getMappedRows(buffer, { headerRow, columnMapping }) {
   const headerCells = extractHeaders(matrix[headerRowIndex] || []);
   const headerIndexes = headerCells.map((h) => h.index).sort((a, b) => a - b);
 
+  let currentBlockClass = detectRepeatingClassBlocks ? detectClassInfo(matrix, headerRowIndex) : null;
+
   const rows = [];
   for (let r = headerRowIndex + 1; r < matrix.length; r += 1) {
     const row = matrix[r] || [];
@@ -322,6 +373,25 @@ function getMappedRows(buffer, { headerRow, columnMapping }) {
       const nextHeader = headerIndexes.find((idx) => idx > col);
       raw[field] = readMappedCell(row, col, nextHeader != null ? nextHeader : null);
     });
+
+    if (detectRepeatingClassBlocks) {
+      // Bu kontroller, satırın eşlenen sütunlarında (readMappedCell'in ileri tarama
+      // davranışı yüzünden) tesadüfen sayı/metin olsa bile önce çalışmalı — aksi halde
+      // özet/başlık tekrarı satırları sahte "öğrenci" kaydı gibi görünebilir.
+      if (isMetaOrSummaryRow(row) || isRepeatedHeaderRow(row, headerCells)) {
+        continue;
+      }
+      const blockClass = detectRowClassInfo(row);
+      if (blockClass) {
+        currentBlockClass = blockClass;
+        continue;
+      }
+      if (currentBlockClass) {
+        if (raw.class_level == null || raw.class_level === '') raw.class_level = currentBlockClass.class_level;
+        if (raw.section == null || raw.section === '') raw.section = currentBlockClass.section;
+      }
+    }
+
     const hasAny = Object.values(raw).some((v) => v != null && v !== '');
     if (!hasAny) continue;
     rows.push({ rowNumber: r + 1, raw });
@@ -338,4 +408,6 @@ module.exports = {
   getMappedRows,
   parseClassFromText,
   parseClassSection,
+  cellToDisplay,
+  readSheetMatrix,
 };

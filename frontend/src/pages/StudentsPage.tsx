@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Alert, Button, Checkbox, Col, DatePicker, Form, Input, InputNumber, Modal, Row, Select, Space, Steps, Typography, Upload } from 'antd'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { App, Alert, Button, Checkbox, Col, DatePicker, Form, Input, InputNumber, Modal, Row, Select, Space, Steps, Tag, Typography, Upload } from 'antd'
 import { SortableTable } from '../components/SortableTable'
 import {
   DeleteOutlined,
@@ -10,6 +10,7 @@ import {
   PlusOutlined,
   SearchOutlined,
   UploadOutlined,
+  UserOutlined,
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import type { UploadFile } from 'antd/es/upload/interface'
@@ -23,10 +24,12 @@ import {
   createStudent,
   deleteStudent,
   exportStudents,
+  fetchStudentPhotoBlob,
   importStudents,
   listStudents,
   previewStudentImport,
   updateStudent,
+  uploadStudentPhoto,
 } from '../api/students'
 import { createExportTemplate, deleteExportTemplate, listExportTemplates } from '../api/exportTemplates'
 import type { ExportTemplate } from '../api/exportTemplates'
@@ -37,6 +40,8 @@ import type { School } from '../types/school'
 import type { Classroom } from '../types/classroom'
 import { classroomLabel } from '../types/classroom'
 import type {
+  BoardingStatus,
+  PhotoRosterImportRow,
   RegistrationStatus,
   Student,
   StudentExtraContact,
@@ -46,6 +51,7 @@ import type {
   StudentPayload,
 } from '../types/student'
 import {
+  BOARDING_STATUS_OPTIONS,
   REGISTRATION_STATUS_OPTIONS,
   STUDENT_COLUMN_OPTIONS,
   STUDENT_IMPORT_FIELD_OPTIONS,
@@ -64,12 +70,14 @@ interface StudentFormValues {
   national_id?: string
   gender?: StudentGender | null
   birth_date?: Dayjs | null
+  yasi?: number | null
   registration_status?: RegistrationStatus
   parent_name?: string
   parent_phone?: string
   extra_contacts?: StudentExtraContact[]
   is_inclusion?: boolean
   is_foreign?: boolean
+  boarding_status?: BoardingStatus | null
 }
 
 const STATUS_LABEL: Record<RegistrationStatus, string> = {
@@ -77,6 +85,18 @@ const STATUS_LABEL: Record<RegistrationStatus, string> = {
   nakil_gelen: 'Nakil gelen',
   nakil_giden: 'Nakil giden',
   kayit_silindi: 'Kayıt silindi',
+}
+
+const PHOTO_MAX_BYTES = 3 * 1024 * 1024
+const PHOTO_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp'])
+
+function validateStudentPhotoFile(file: File): string | null {
+  const name = file.name.toLowerCase()
+  const extOk = name.endsWith('.png') || name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.webp')
+  const typeOk = !file.type || PHOTO_TYPES.has(file.type)
+  if (!extOk || !typeOk) return 'Yalnızca PNG, JPG veya WEBP resim dosyaları yüklenebilir'
+  if (file.size > PHOTO_MAX_BYTES) return 'Fotoğraf en fazla 3 MB olabilir'
+  return null
 }
 
 export function StudentsPage() {
@@ -100,6 +120,7 @@ export function StudentsPage() {
   const [importPreview, setImportPreview] = useState<StudentImportPreview | null>(null)
   const [importHeaderRow, setImportHeaderRow] = useState<number>(1)
   const [importMapping, setImportMapping] = useState<Record<string, string>>({})
+  const [importColumnSuggestions, setImportColumnSuggestions] = useState<Record<string, string>>({})
   const [previewLoading, setPreviewLoading] = useState(false)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx')
   const [exportColumns, setExportColumns] = useState<string[]>([
@@ -114,7 +135,49 @@ export function StudentsPage() {
   const [search, setSearch] = useState('')
   const [templates, setTemplates] = useState<ExportTemplate[]>([])
   const [saveTemplateName, setSaveTemplateName] = useState('')
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null)
+  const [pendingPhotoFile, setPendingPhotoFile] = useState<File | null>(null)
+  const [photoLoading, setPhotoLoading] = useState(false)
+  const photoPreviewRef = useRef<string | null>(null)
+  const photoLoadGen = useRef(0)
   const [form] = Form.useForm<StudentFormValues>()
+
+  const replacePhotoPreview = useCallback((url: string | null) => {
+    if (photoPreviewRef.current) URL.revokeObjectURL(photoPreviewRef.current)
+    photoPreviewRef.current = url
+    setPhotoPreviewUrl(url)
+  }, [])
+
+  const clearPhotoState = useCallback(() => {
+    photoLoadGen.current += 1
+    setPendingPhotoFile(null)
+    setPhotoLoading(false)
+    replacePhotoPreview(null)
+  }, [replacePhotoPreview])
+
+  useEffect(() => {
+    return () => {
+      if (photoPreviewRef.current) URL.revokeObjectURL(photoPreviewRef.current)
+    }
+  }, [])
+
+  const loadStudentPhoto = useCallback(
+    async (studentId: number) => {
+      const gen = ++photoLoadGen.current
+      setPhotoLoading(true)
+      try {
+        const blob = await fetchStudentPhotoBlob(studentId)
+        if (gen !== photoLoadGen.current) return
+        if (!blob.type.startsWith('image/')) return
+        replacePhotoPreview(URL.createObjectURL(blob))
+      } catch {
+        if (gen !== photoLoadGen.current) return
+      } finally {
+        if (gen === photoLoadGen.current) setPhotoLoading(false)
+      }
+    },
+    [replacePhotoPreview],
+  )
 
   const canSchools = hasModule('schools')
 
@@ -190,6 +253,7 @@ export function StudentsPage() {
 
   const openCreate = () => {
     setEditing(null)
+    clearPhotoState()
     form.resetFields()
     form.setFieldsValue({
       registration_status: 'aktif',
@@ -202,6 +266,7 @@ export function StudentsPage() {
 
   const openEdit = (student: Student) => {
     setEditing(student)
+    clearPhotoState()
     form.setFieldsValue({
       first_name: student.first_name,
       last_name: student.last_name,
@@ -211,14 +276,29 @@ export function StudentsPage() {
       national_id: student.national_id || undefined,
       gender: student.gender,
       birth_date: student.birth_date ? dayjs(student.birth_date) : null,
+      yasi: student.yasi ?? undefined,
       registration_status: student.registration_status || 'aktif',
       parent_name: student.parent_name || undefined,
       parent_phone: student.parent_phone || undefined,
       extra_contacts: student.extra_contacts?.length ? student.extra_contacts : [],
       is_inclusion: student.is_inclusion,
       is_foreign: student.is_foreign,
+      boarding_status: student.boarding_status || undefined,
     })
     setModalOpen(true)
+    if (student.photo_url) void loadStudentPhoto(student.id)
+  }
+
+  const onSelectPhoto = (file: File) => {
+    const error = validateStudentPhotoFile(file)
+    if (error) {
+      message.error(error)
+      return
+    }
+    photoLoadGen.current += 1
+    setPhotoLoading(false)
+    setPendingPhotoFile(file)
+    replacePhotoPreview(URL.createObjectURL(file))
   }
 
   const onFinish = async (values: StudentFormValues) => {
@@ -230,20 +310,37 @@ export function StudentsPage() {
         classroom_id: values.classroom_id,
         student_number: values.student_number.trim(),
         birth_date: values.birth_date ? values.birth_date.format('YYYY-MM-DD') : null,
+        yasi: values.yasi ?? null,
         gender: values.gender || null,
         extra_contacts: (values.extra_contacts || []).filter(
           (c) => c.label || c.phone || c.address || c.description,
         ),
       }
 
+      let savedId: number
       if (editing) {
         await updateStudent(editing.id, payload)
-        message.success('Öğrenci güncellendi')
+        savedId = editing.id
       } else {
-        await createStudent(session.user.tenant_id, payload)
-        message.success('Öğrenci oluşturuldu')
+        const created = await createStudent(session.user.tenant_id, payload)
+        savedId = created.id
       }
+
+      if (pendingPhotoFile) {
+        try {
+          await uploadStudentPhoto(savedId, pendingPhotoFile)
+        } catch (photoErr) {
+          message.warning(`Kayıt kaydedildi ancak fotoğraf yüklenemedi: ${getErrorMessage(photoErr)}`)
+          setModalOpen(false)
+          clearPhotoState()
+          void load()
+          return
+        }
+      }
+
+      message.success(editing ? 'Öğrenci güncellendi' : 'Öğrenci oluşturuldu')
       setModalOpen(false)
+      clearPhotoState()
       void load()
     } catch (err) {
       message.error(getErrorMessage(err))
@@ -296,6 +393,7 @@ export function StudentsPage() {
     setImportPreview(null)
     setImportHeaderRow(1)
     setImportMapping({})
+    setImportColumnSuggestions({})
     setPreviewLoading(false)
   }
 
@@ -323,18 +421,21 @@ export function StudentsPage() {
     try {
       const preview = await previewStudentImport(file, { headerRow })
       setImportPreview(preview)
-      setImportHeaderRow(preview.header_row)
-      setImportMapping({ ...preview.suggested_mapping })
 
-      if (preview.detected_class) {
-        const match = classrooms.find(
-          (c) =>
-            String(c.class_level) === String(preview.detected_class?.class_level) &&
-            String(c.section).toLocaleUpperCase('tr-TR') ===
-              String(preview.detected_class?.section).toLocaleUpperCase('tr-TR') &&
-            (!importSchoolId || c.school_id === importSchoolId),
-        )
-        if (match) setImportClassroomId(match.id)
+      if (preview.format === 'table') {
+        setImportHeaderRow(preview.header_row)
+        setImportMapping({ ...preview.suggested_mapping })
+
+        if (preview.detected_class) {
+          const match = classrooms.find(
+            (c) =>
+              String(c.class_level) === String(preview.detected_class?.class_level) &&
+              String(c.section).toLocaleUpperCase('tr-TR') ===
+                String(preview.detected_class?.section).toLocaleUpperCase('tr-TR') &&
+              (!importSchoolId || c.school_id === importSchoolId),
+          )
+          if (match) setImportClassroomId(match.id)
+        }
       }
       setImportStep(1)
     } catch (err) {
@@ -354,6 +455,42 @@ export function StudentsPage() {
       message.warning('Lütfen bir .xls veya .xlsx dosyası seçin')
       return
     }
+
+    if (importPreview?.format === 'photo_roster') {
+      setSubmitting(true)
+      try {
+        const result = await importStudents(file, {})
+        if (result.format === 'photo_roster') {
+          message.success(
+            `İçe aktarma tamamlandı: ${result.updated} öğrenci güncellendi, ${result.photos_saved} fotoğraf kaydedildi` +
+              (result.not_found ? `, ${result.not_found} kayıt eşleşmedi` : ''),
+          )
+          if (result.errors.length) {
+            modal.info({
+              title: 'İçe aktarma hataları',
+              content: (
+                <ul style={{ maxHeight: 240, overflow: 'auto', paddingLeft: 18 }}>
+                  {result.errors.slice(0, 30).map((e) => (
+                    <li key={`${e.row}-${e.message}`}>
+                      Satır {e.row}: {e.message}
+                    </li>
+                  ))}
+                </ul>
+              ),
+            })
+          }
+        }
+        setImportOpen(false)
+        resetImportState()
+        void load()
+      } catch (err) {
+        message.error(getErrorMessage(err))
+      } finally {
+        setSubmitting(false)
+      }
+      return
+    }
+
     const fields = Object.values(importMapping)
     if (!fields.includes('first_name') || !fields.includes('last_name')) {
       message.warning('Ad ve Soyad sütunlarını eşleştirin')
@@ -366,7 +503,7 @@ export function StudentsPage() {
     if (
       !mappingHasClassColumns &&
       !importClassroomId &&
-      !importPreview?.detected_class?.class_level
+      !(importPreview?.format === 'table' && importPreview.detected_class?.class_level)
     ) {
       message.warning('Excelde sınıf/şube yoksa varsayılan sınıf/şube seçin')
       return
@@ -374,14 +511,20 @@ export function StudentsPage() {
 
     setSubmitting(true)
     try {
+      const columnSuggestions = Object.fromEntries(
+        Object.entries(importColumnSuggestions).filter(([col]) => !importMapping[col]),
+      )
+      const detectedClass = importPreview?.format === 'table' ? importPreview.detected_class : null
       const result = await importStudents(file, {
         schoolId: importSchoolId,
         classroomId: importClassroomId,
         headerRow: importHeaderRow,
         columnMapping: importMapping,
-        classLevel: importPreview?.detected_class?.class_level ?? null,
-        section: importPreview?.detected_class?.section ?? null,
+        columnSuggestions,
+        classLevel: detectedClass?.class_level ?? null,
+        section: detectedClass?.section ?? null,
       })
+      if (result.format !== 'table') return
       message.success(
         `İçe aktarma tamamlandı: ${result.created} yeni, ${result.updated} güncellendi` +
           (result.errors.length ? `, ${result.errors.length} hata` : ''),
@@ -397,6 +540,23 @@ export function StudentsPage() {
                 </li>
               ))}
             </ul>
+          ),
+        })
+      }
+      if (result.unmatched_columns && result.unmatched_columns.length > 0) {
+        modal.info({
+          title: 'Eşleştirilemeyen sütunlar',
+          content: (
+            <>
+              <Typography.Paragraph>
+                Dosyada sistemin tanıyamadığı şu sütun(lar) vardı: {result.unmatched_columns.join(', ')}.
+              </Typography.Paragraph>
+              <Typography.Paragraph type="secondary">
+                {result.feedback_created
+                  ? 'Bu durum otomatik olarak Geri Bildirim olarak kaydedildi; yönetici değerlendirecek.'
+                  : 'Bu sütunlar içe aktarıma dahil edilmedi.'}
+              </Typography.Paragraph>
+            </>
           ),
         })
       }
@@ -505,6 +665,12 @@ export function StudentsPage() {
       title: 'Cinsiyet',
       dataIndex: 'gender',
       render: (v: StudentGender | null) => (v === 'K' ? 'Kız' : v === 'E' ? 'Erkek' : '—'),
+    },
+    {
+      title: 'Yaşı',
+      dataIndex: 'yasi',
+      width: 80,
+      render: (v: number | null) => (v != null ? v : '—'),
     },
     {
       title: 'Durum',
@@ -631,7 +797,10 @@ export function StudentsPage() {
       <Modal
         title={editing ? 'Öğrenciyi Düzenle' : 'Yeni Öğrenci'}
         open={modalOpen}
-        onCancel={() => setModalOpen(false)}
+        onCancel={() => {
+          setModalOpen(false)
+          clearPhotoState()
+        }}
         onOk={() => form.submit()}
         confirmLoading={submitting}
         okText={editing ? 'Kaydet' : 'Oluştur'}
@@ -640,6 +809,64 @@ export function StudentsPage() {
         width={720}
       >
         <Form form={form} layout="vertical" onFinish={onFinish}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+            <Upload
+              accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
+              showUploadList={false}
+              beforeUpload={(file) => {
+                onSelectPhoto(file)
+                return false
+              }}
+            >
+              <div
+                style={{
+                  width: 104,
+                  height: 128,
+                  border: '1px dashed #d9d9d9',
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: '#fafafa',
+                  cursor: 'pointer',
+                }}
+              >
+                {photoPreviewUrl ? (
+                  <img
+                    src={photoPreviewUrl}
+                    alt="Öğrenci fotoğrafı"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                ) : (
+                  <div style={{ textAlign: 'center', color: '#8c8c8c' }}>
+                    <UserOutlined style={{ fontSize: 28 }} />
+                    <div style={{ marginTop: 8, fontSize: 12 }}>{photoLoading ? 'Yükleniyor...' : 'Fotoğraf'}</div>
+                  </div>
+                )}
+              </div>
+            </Upload>
+            <div>
+              <Typography.Text strong style={{ display: 'block' }}>
+                Öğrenci fotoğrafı
+              </Typography.Text>
+              <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+                PNG, JPG veya WEBP. En fazla 3 MB. Seçilen fotoğraf kaydettiğinizde yüklenir.
+              </Typography.Text>
+              <Upload
+                accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  onSelectPhoto(file)
+                  return false
+                }}
+              >
+                <Button icon={<UploadOutlined />} loading={photoLoading}>
+                  {photoPreviewUrl ? 'Fotoğrafı değiştir' : 'Fotoğraf yükle'}
+                </Button>
+              </Upload>
+            </div>
+          </div>
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="first_name" label="Ad" rules={[{ required: true, message: 'Ad zorunludur' }]}>
@@ -694,9 +921,25 @@ export function StudentsPage() {
               options={classroomOptions}
             />
           </Form.Item>
-          <Form.Item name="birth_date" label="Doğum Tarihi">
-            <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="birth_date" label="Doğum Tarihi">
+                <DatePicker
+                  style={{ width: '100%' }}
+                  format="DD.MM.YYYY"
+                  onChange={(value) => {
+                    if (!value) return
+                    form.setFieldValue('yasi', Math.max(0, dayjs().diff(value, 'year')))
+                  }}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="yasi" label="Yaşı">
+                <InputNumber min={0} max={120} style={{ width: '100%' }} placeholder="Örn. 15" />
+              </Form.Item>
+            </Col>
+          </Row>
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="gender" label="Cinsiyet">
@@ -820,6 +1063,9 @@ export function StudentsPage() {
               </Form.Item>
             </Col>
           </Row>
+          <Form.Item name="boarding_status" label="Yurt Durumu">
+            <Select allowClear placeholder="Seçin" options={BOARDING_STATUS_OPTIONS} />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -855,10 +1101,15 @@ export function StudentsPage() {
                   loading={previewLoading}
                   onClick={() => void onPreviewImport()}
                 >
-                  Devam — Sütun Eşle
+                  Devam
                 </Button>
               ) : (
-                <Button type="primary" loading={submitting} onClick={() => void onImport()}>
+                <Button
+                  type="primary"
+                  loading={submitting}
+                  disabled={importPreview?.format === 'photo_roster' && importPreview.matched === 0}
+                  onClick={() => void onImport()}
+                >
                   İçe Aktar
                 </Button>
               )}
@@ -870,14 +1121,20 @@ export function StudentsPage() {
           size="small"
           current={importStep}
           style={{ marginBottom: 20 }}
-          items={[{ title: 'Dosya' }, { title: 'Sütun eşleme' }]}
+          items={[
+            { title: 'Dosya' },
+            { title: importPreview?.format === 'photo_roster' ? 'Önizleme' : 'Sütun eşleme' },
+          ]}
         />
 
         {importStep === 0 && (
           <>
             <Typography.Paragraph type="secondary">
-              e-Okul sınıf listesi (.xls) veya düz başlıklı (.xlsx) dosyalar desteklenir. Farklı
-              şablonlarda bir sonraki adımda Excel sütunlarını sistem alanlarıyla eşleştirirsiniz.
+              e-Okul sınıf listesi (.xls), düz başlıklı (.xlsx) veya e-Okul "Fotoğraflı Öğrenci
+              Bilgileri" dökümü (.xls) yüklenebilir — dosya türü otomatik tanınır. Fotoğraflı
+              dökümde yalnızca öğrenci numarası sistemde eşleşen kayıtlar güncellenir ve
+              fotoğraflar öğrenci kartına kaydedilir; sütun eşlemesi gerektiren normal dosyalarda
+              bir sonraki adımda sütunları sistem alanlarıyla eşleştirirsiniz.
             </Typography.Paragraph>
             <Form layout="vertical">
               <Form.Item label="Okul (tüm satırlara uygulanır)">
@@ -918,7 +1175,7 @@ export function StudentsPage() {
           </>
         )}
 
-        {importStep === 1 && importPreview && (
+        {importStep === 1 && importPreview && importPreview.format === 'table' && (
           <>
             {importPreview.detected_class && (
               <Alert
@@ -988,7 +1245,8 @@ export function StudentsPage() {
 
             <Typography.Text strong>Sütun → alan eşlemesi</Typography.Text>
             <Typography.Paragraph type="secondary" style={{ marginTop: 4 }}>
-              Her Excel başlığını bir öğrenci alanına bağlayın. Kullanılmayan sütunları boş bırakın.
+              Her Excel başlığını bir öğrenci alanına bağlayın. Sistemin tanımadığı bir sütun için ne anlama
+              geldiğini "Öneriniz" kutusuna yazabilirsiniz; bu bilgi yöneticiye geri bildirim olarak iletilir.
             </Typography.Paragraph>
 
             <SortableTable
@@ -1037,6 +1295,29 @@ export function StudentsPage() {
                     />
                   ),
                 },
+                {
+                  title: 'Öneriniz (sistem tanımıyorsa)',
+                  width: 220,
+                  render: (_, row) => {
+                    const isMapped = Boolean(importMapping[String(row.index)])
+                    return (
+                      <Input
+                        disabled={isMapped}
+                        placeholder={isMapped ? 'Eşleşti' : 'Bu sütun ne anlama geliyor?'}
+                        value={importColumnSuggestions[String(row.index)] || ''}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setImportColumnSuggestions((prev) => {
+                            const next = { ...prev }
+                            if (!v) delete next[String(row.index)]
+                            else next[String(row.index)] = v
+                            return next
+                          })
+                        }}
+                      />
+                    )
+                  },
+                },
               ]}
             />
 
@@ -1064,6 +1345,52 @@ export function StudentsPage() {
                 />
               </>
             )}
+          </>
+        )}
+
+        {importStep === 1 && importPreview && importPreview.format === 'photo_roster' && (
+          <>
+            <Typography.Paragraph>
+              {importPreview.total_rows} kayıt bulundu — {importPreview.matched} kayıt sistemde eşleşti ve
+              güncellenecek, {importPreview.not_found} kayıt sistemde bulunamadığından atlanacak. Dosyada{' '}
+              {importPreview.photos_found} fotoğraf var.
+            </Typography.Paragraph>
+            {importPreview.matched === 0 && (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 16 }}
+                message="Eşleşen kayıt yok"
+                description="Dosyadaki hiçbir öğrenci numarası sistemdeki kayıtlarla eşleşmedi, güncelleme yapılamaz."
+              />
+            )}
+            <SortableTable
+              rowKey="row"
+              size="small"
+              pagination={tablePagination(10)}
+              scroll={{ x: 700 }}
+              dataSource={importPreview.rows}
+              columns={[
+                { title: 'Öğrenci No', dataIndex: 'student_number', width: 120 },
+                { title: 'Dosyadaki Ad Soyad', dataIndex: 'full_name' },
+                {
+                  title: 'Fotoğraf',
+                  width: 100,
+                  render: (_: unknown, row: PhotoRosterImportRow) =>
+                    row.has_photo ? <Tag color="blue">Var</Tag> : <Tag>Yok</Tag>,
+                },
+                {
+                  title: 'Durum',
+                  width: 220,
+                  render: (_: unknown, row: PhotoRosterImportRow) =>
+                    row.matched ? (
+                      <Tag color="gold">Güncellenecek ({row.current_name})</Tag>
+                    ) : (
+                      <Tag color="default">Sistemde bulunamadı</Tag>
+                    ),
+                },
+              ]}
+            />
           </>
         )}
       </Modal>
