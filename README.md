@@ -510,10 +510,10 @@ En hızlı yol — kurulum/build gerektirmez, günlük geliştirme için kullan�
 # 1) Backend'in telefonun erişebileceği bir adreste çalışıyor olması lazım
 npm run dev              # kök dizinde — http://<bilgisayarın-LAN-IP'si>:4000
 
-# 2) Mobil geliştirme sunucusu
+# 2) Mobil geliştirme sunucusu (Expo Go ile test için --go zorunlu)
 cd mobile
 npm install
-npm start
+npm run start:go
 ```
 
 1. Telefona **Expo Go** uygulamasını kurun (App Store / Play Store).
@@ -522,6 +522,8 @@ npm start
 4. Uygulama açılınca "Sunucu Adresi" ekranına bilgisayarın LAN IP'sini girin (örn. `http://192.168.1.10:4000`) — `ipconfig` (Windows) ile bulabilirsiniz.
 
 Bu yöntemle telefona kalıcı bir uygulama simgesi kurulmaz; Expo Go içinde çalışır, geliştirme bittiğinde kapatılır.
+
+> **Not:** `mobile/package.json`'da `expo-dev-client` paketi bulunduğu için düz `npm start`/`expo start` komutu artık varsayılan olarak "development build" moduna geçer ve düz Expo Go ile bağlanınca "Something went wrong" hatası verir. Expo Go ile test ederken mutlaka `npm run start:go` kullanın.
 
 ### Gerçek cihaza kurulum — APK üretme ve indirme (EAS Build)
 
