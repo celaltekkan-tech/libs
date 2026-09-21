@@ -1,5 +1,6 @@
 'use strict';
 
+const { Op } = require('sequelize');
 const { Student, Classroom, Feedback } = require('../models');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
@@ -704,6 +705,29 @@ module.exports = {
     }
   },
 
+  async bulkRegistrationStatus(req, res, next) {
+    try {
+      const tenantId = req.user && req.user.tenant_id;
+      const updates = (req.validatedBody || req.body).updates || [];
+      const ids = updates.map((row) => row.id);
+      const students = await Student.findAll({
+        where: { id: { [Op.in]: ids }, ...(tenantId ? { tenant_id: tenantId } : {}) },
+      });
+      const byId = new Map(students.map((student) => [student.id, student]));
+      let updated = 0;
+      for (const row of updates) {
+        const student = byId.get(row.id);
+        if (!student) continue;
+        if (student.registration_status === row.registration_status) continue;
+        await student.update({ registration_status: row.registration_status });
+        updated += 1;
+      }
+      res.json({ success: true, data: { updated } });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async update(req, res, next) {
     try {
       const student = await Student.findByPk(req.params.id);
@@ -958,6 +982,19 @@ module.exports = {
       let created = 0;
       let updated = 0;
       const errors = [];
+      const seenStudentIds = new Set();
+      const touchedClassrooms = new Map();
+
+      function markImported(student, classroom) {
+        if (student && student.id) seenStudentIds.add(student.id);
+        if (classroom && classroom.id) {
+          touchedClassrooms.set(classroom.id, {
+            classroom_id: classroom.id,
+            class_level: classroom.class_level,
+            section: classroom.section,
+          });
+        }
+      }
 
       for (const { rowNumber, raw } of rows) {
         if (!raw.first_name && !raw.last_name && !raw.national_id && !raw.student_number) {
@@ -1053,6 +1090,7 @@ module.exports = {
         try {
           let existing = findExistingStudent(maps, nationalId, studentNumber);
           if (existing) {
+            markImported(existing, classroom);
             const patch = pickChangedFields(existing, incoming);
             if (Object.keys(patch).length > 0) {
               await existing.update(patch);
@@ -1072,6 +1110,7 @@ module.exports = {
             meta: { import_row: rowNumber },
           });
           rememberStudent(maps, createdStudent);
+          markImported(createdStudent, classroom);
           created += 1;
         } catch (err) {
           if (err.name === 'SequelizeUniqueConstraintError') {
@@ -1089,6 +1128,7 @@ module.exports = {
                 await again.update(patch);
               }
               rememberStudent(maps, again);
+              markImported(again, classroom);
               updated += 1;
               continue;
             }
@@ -1103,6 +1143,41 @@ module.exports = {
         }
       }
 
+      const classroomIds = [...touchedClassrooms.keys()];
+      let missingByClass = [];
+      if (classroomIds.length) {
+        const absent = await Student.findAll({
+          where: {
+            tenant_id: tenantId,
+            classroom_id: { [Op.in]: classroomIds },
+            id: { [Op.notIn]: seenStudentIds.size ? [...seenStudentIds] : [0] },
+            [Op.or]: [{ registration_status: 'aktif' }, { registration_status: null }],
+          },
+          attributes: ['id', 'first_name', 'last_name', 'student_number', 'classroom_id'],
+          order: [
+            ['last_name', 'ASC'],
+            ['first_name', 'ASC'],
+          ],
+        });
+        const groups = new Map();
+        absent.forEach((student) => {
+          const meta = touchedClassrooms.get(student.classroom_id);
+          if (!meta) return;
+          if (!groups.has(student.classroom_id)) groups.set(student.classroom_id, { ...meta, students: [] });
+          groups.get(student.classroom_id).students.push({
+            id: student.id,
+            first_name: student.first_name,
+            last_name: student.last_name,
+            student_number: student.student_number,
+          });
+        });
+        missingByClass = [...groups.values()].sort((a, b) => {
+          const level = String(a.class_level).localeCompare(String(b.class_level), 'tr', { numeric: true });
+          if (level) return level;
+          return String(a.section || '').localeCompare(String(b.section || ''), 'tr');
+        });
+      }
+
       res.json({
         success: true,
         data: {
@@ -1112,6 +1187,7 @@ module.exports = {
           errors,
           unmatched_columns: unmatchedColumns,
           feedback_created: feedbackCreated,
+          missing_by_class: missingByClass,
         },
       });
     } catch (err) {

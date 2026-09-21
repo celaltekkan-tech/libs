@@ -121,7 +121,15 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
     topics: [
       {
         title: 'Öğretmen kaydı',
-        steps: ['Yeni Öğretmen butonunu kullanın.', 'Kimlik, branş ve iletişim bilgilerini doldurun.', 'Kaydedin.'],
+        steps: [
+          'Yeni Öğretmen butonunu kullanın.',
+          'Kimlik, doğum tarihi, branş ve iletişim bilgilerini doldurun.',
+          'Kaydedin.',
+        ],
+      },
+      {
+        title: 'Satır detayı',
+        body: 'Öğretmen satırının herhangi bir yerine tıkladığınızda listede görünmeyen bilgiler açılır. Okul müdürü, seçili okula müdür rolüyle atanmış hesaptan gelir.',
       },
       {
         title: 'Liste filtreleri',
@@ -183,7 +191,7 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
     topics: [
       {
         title: 'Yıllık kademe ilerlemesi',
-        body: 'Kademe tarihi dolan personelin sıradaki terfisini "Terfiyi Uygula" ile onaylayın; form otomatik indirilir.',
+        body: 'Ay seçerek o dönemin terfilerini görün. Dönem, seçilen ayın 14’ü ile bir önceki ayın 15’i arasıdır. "Terfiyi Uygula" formu indirir.',
       },
       {
         title: '8 yıllık kontrol',
@@ -273,11 +281,26 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
   },
   '/exams': {
     title: 'Sınav Programı Hazırlama',
-    summary: 'Sınav tarih, ders ve salon planlamasını yönetirsiniz.',
+    summary: 'Ortak sınav ve sorumluluk sınavı programını derslere göre takvime yerleştirirsiniz.',
     topics: [
       {
-        title: 'Sınav ekleme',
-        steps: ['Yeni sınav kaydı oluşturun.', 'Tarih, ders ve sınıf bilgilerini girin.', 'Kaydedin.'],
+        title: 'Ortak sınav',
+        steps: [
+          'Ders programından gelen bir dersi seçin.',
+          'Takvimde güne tıklayarak ortak sınavı yerleştirin.',
+          'İsterseniz tarih aralığı seçip otomatik program oluşturun.',
+        ],
+      },
+      {
+        title: 'Sorumluluk sınavı',
+        steps: [
+          'MEBBİS «Öğrencilerin Sorumlu Olduğu Dersler» Excel’ini (.xls / .xlsx) içe aktarın.',
+          'Önizlemede öğrenci ve ders eşleşmelerini kontrol edin. Katalogda olmayan dersler önce eklenir, sonra kayıtlar içe aktarılır.',
+          'Sorumlu olunan dersi seçip takvimde güne tıklayarak tüm öğrenciler için sınavı tarihlendirin. Yerleşen dersi basılı tutup başka güne sürükleyebilir, «Saat ekle» ile saat girebilirsiniz.',
+          'Komisyon başkanı seçili okulun müdürüdür. Üye, ders branşına göre önerilir. Her 30 öğrenci için bir gözetmen önerilir.',
+          'İngilizce, ikinci yabancı dil, Türk Dili ve Edebiyatı ve Türkçe derslerinde yazılı ve sözlü ayrı günlere konur. Sözlüde gözetmen yoktur.',
+          'Aynı öğrencinin iki sınavı aynı güne gelirse sistem uyarır.',
+        ],
       },
     ],
   },

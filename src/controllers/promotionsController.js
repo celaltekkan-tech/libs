@@ -5,7 +5,7 @@ const { Teacher, PromotionHistory, School, sequelize } = require('../models');
 const audit = require('../services/auditService');
 const { fillPromotionForm, fillSalaryChangeForm } = require('../services/promotionFormService');
 const { getSalaryPeriodRange } = require('../utils/salaryPeriod');
-const { advanceDegreeRank, addYears, eightYearProgress } = require('../utils/promotionEngine');
+const { advanceDegreeRank, addYears, eightYearProgress, nextKariyerTitle } = require('../utils/promotionEngine');
 
 function assertTenantAccess(req, row) {
   return !(req.user && req.user.tenant_id && row.tenant_id !== req.user.tenant_id);
@@ -69,6 +69,7 @@ module.exports = {
             rank: new_rank,
             degree_rank_date: nextDegreeRankDate,
             degree_rank_anchor_date: nextAnchor,
+            ...(type === 'kariyer' ? { kariyer: nextKariyerTitle(teacher.kariyer) || teacher.kariyer } : {}),
           },
           { transaction },
         );

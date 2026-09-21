@@ -265,6 +265,9 @@ export function FeedbackListPage() {
                                 : 'Silinmiş kullanıcı'}
                               {' · '}
                               {new Date(item.created_at).toLocaleString('tr-TR')}
+                              {item.page_title || item.page_path
+                                ? ` · ${item.page_title || item.page_path}`
+                                : ''}
                             </Typography.Text>
                           </Space>
                           <Tag color={statusMeta.color}>{statusMeta.text}</Tag>

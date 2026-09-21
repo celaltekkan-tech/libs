@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Button, Checkbox, Col, DatePicker, Dropdown, Form, Input, InputNumber, Modal, Row, Select, Space, Typography } from 'antd'
+import { App, Button, Checkbox, Col, DatePicker, Descriptions, Dropdown, Form, Input, InputNumber, Modal, Row, Select, Space, Typography } from 'antd'
 import { SortableTable } from '../components/SortableTable'
 import {
   DeleteOutlined,
@@ -26,6 +26,7 @@ import {
   deleteTeacher,
   downloadTeacherDocument,
   exportTeachers,
+  fetchSchoolPrincipal,
   listTeachers,
   updateTeacher,
 } from '../api/teachers'
@@ -35,14 +36,12 @@ import type { Teacher, TeacherPayload } from '../types/teacher'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
 import { listPersonnelCategories } from '../api/personnelCategories'
 import type { PersonnelCategory } from '../types/personnelCategory'
-import { listDistricts, listProvinces } from '../api/geo'
-import type { District, Province } from '../types/geo'
 import { tablePagination } from '../utils/tablePagination'
 import { personNameSorter, SORT_AZ } from '../utils/tableSort'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
 import { addSalaryFormStarter } from '../utils/salaryFormAutoEntry'
 import { KARIYER_OPTIONS, teacherTitleParts } from '../utils/teacherTitle'
-import { uniqueSelectOptions, trSelectFilter } from '../utils/uniqueSelectOptions'
+import { uniqueSelectOptions } from '../utils/uniqueSelectOptions'
 import { DynamicListFilters, isActiveFilterValue, matchesListFilter, type ListFilterValue } from '../components/DynamicListFilters'
 import { useVisibleFilterFields } from '../hooks/useVisibleFilterFields'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
@@ -64,8 +63,8 @@ const TEACHER_FILTER_FIELDS = [
   'rank',
   'pension_degree',
   'degree_rank_date',
+  'birth_date',
   'last_graduated_school',
-  'class_level',
   'school_principal',
   'union',
   'first_duty_date',
@@ -88,13 +87,54 @@ const TEACHER_FILTER_OPTIONS: FilterFieldOption<TeacherFilterField>[] = [
   { key: 'rank', label: 'Kademe' },
   { key: 'pension_degree', label: 'Emekli Sicil No' },
   { key: 'degree_rank_date', label: 'Kademe Tarihi', kind: 'dateRange' },
+  { key: 'birth_date', label: 'Doğum Tarihi', kind: 'dateRange' },
   { key: 'last_graduated_school', label: 'Mezun Olunan Okul' },
-  { key: 'class_level', label: 'Sınıf / Kademe' },
   { key: 'school_principal', label: 'Okul Müdürü' },
   { key: 'union', label: 'Sendika' },
   { key: 'first_duty_date', label: 'İşe ilk başlama', kind: 'dateRange' },
   { key: 'service_start_date', label: 'Kuruma başlama', kind: 'dateRange' },
 ]
+
+function formatTrDate(value: string | null | undefined): string {
+  if (!value) return '—'
+  const parsed = dayjs(value)
+  return parsed.isValid() ? parsed.format('DD.MM.YYYY') : '—'
+}
+
+function TeacherRowDetail({ teacher, principalName }: { teacher: Teacher; principalName: string | null }) {
+  const parts = teacherTitleParts(teacher)
+  return (
+    <Descriptions size="small" column={3} bordered>
+      <Descriptions.Item label="Sicil No">{teacher.personnel_no || '—'}</Descriptions.Item>
+      <Descriptions.Item label="TC Kimlik No">{teacher.national_id || '—'}</Descriptions.Item>
+      <Descriptions.Item label="Doğum Tarihi">{formatTrDate(teacher.birth_date)}</Descriptions.Item>
+      <Descriptions.Item label="Telefon">{teacher.phone || '—'}</Descriptions.Item>
+      <Descriptions.Item label="E-posta">{teacher.email || '—'}</Descriptions.Item>
+      <Descriptions.Item label="Unvan">{parts.unvan || '—'}</Descriptions.Item>
+      <Descriptions.Item label="Branş">{parts.brans || '—'}</Descriptions.Item>
+      <Descriptions.Item label="Kariyer">{parts.kariyer || '—'}</Descriptions.Item>
+      <Descriptions.Item label="Personel Türü">Öğretmen</Descriptions.Item>
+      <Descriptions.Item label="Personel Kategorisi">{teacher.PersonnelCategory?.name || '—'}</Descriptions.Item>
+      <Descriptions.Item label="Çalıştığı Kurum">{teacher.working_institution || '—'}</Descriptions.Item>
+      <Descriptions.Item label="Derece">{teacher.degree || '—'}</Descriptions.Item>
+      <Descriptions.Item label="Kademe">{teacher.rank || '—'}</Descriptions.Item>
+      <Descriptions.Item label="Emekli Sicil No">{teacher.pension_degree || '—'}</Descriptions.Item>
+      <Descriptions.Item label="Sendika">{teacher.union_name || '—'}</Descriptions.Item>
+      <Descriptions.Item label="Son Mezun Olduğu Okul">{teacher.last_graduated_school || '—'}</Descriptions.Item>
+      <Descriptions.Item label="İl / İlçe">
+        {teacher.city || teacher.district ? `${teacher.city || '—'} / ${teacher.district || '—'}` : '—'}
+      </Descriptions.Item>
+      <Descriptions.Item label="Okul Müdürü">{principalName || teacher.school_principal || '—'}</Descriptions.Item>
+      <Descriptions.Item label="Yıllık İzin Kotası">{teacher.annual_leave_quota ?? '—'}</Descriptions.Item>
+      <Descriptions.Item label="Hizmet Başlangıç Tarihi">{formatTrDate(teacher.service_start_date)}</Descriptions.Item>
+      <Descriptions.Item label="İlk Görev Tarihi">{formatTrDate(teacher.first_duty_date)}</Descriptions.Item>
+      <Descriptions.Item label="Kademe Tarihi">{formatTrDate(teacher.degree_rank_date)}</Descriptions.Item>
+      <Descriptions.Item label="8 Yıl Başlangıç Tarihi">{formatTrDate(teacher.eight_year_base_date)}</Descriptions.Item>
+      <Descriptions.Item label="Sözleşme Başlangıç">{formatTrDate(teacher.contract_start_date)}</Descriptions.Item>
+      <Descriptions.Item label="Sözleşme Bitiş">{formatTrDate(teacher.contract_end_date)}</Descriptions.Item>
+    </Descriptions>
+  )
+}
 
 function teacherFieldValue(teacher: Teacher, key: TeacherFilterField): string {
   const parts = teacherTitleParts(teacher)
@@ -108,6 +148,7 @@ function teacherFieldValue(teacher: Teacher, key: TeacherFilterField): string {
     case 'union':
       return teacher.union_name || ''
     case 'degree_rank_date':
+    case 'birth_date':
     case 'first_duty_date':
     case 'service_start_date':
       return String(teacher[key] || '').slice(0, 10)
@@ -127,7 +168,7 @@ interface TeacherFormValues {
   city?: string
   district?: string
   last_graduated_school?: string
-  class_level?: string
+  birth_date?: Dayjs | null
   unvan?: string
   brans?: string
   kariyer?: string
@@ -173,10 +214,8 @@ export function TeachersPage() {
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkLoading, setBulkLoading] = useState(false)
   const [departureTarget, setDepartureTarget] = useState<Teacher | null>(null)
-  const [provinces, setProvinces] = useState<Province[]>([])
-  const [districts, setDistricts] = useState<District[]>([])
-  const selectedCity = Form.useWatch('city', form)
-  const selectedDistrict = Form.useWatch('district', form)
+  const [expandedKeys, setExpandedKeys] = useState<number[]>([])
+  const [principalName, setPrincipalName] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -195,29 +234,14 @@ export function TeachersPage() {
   }, [load])
 
   useEffect(() => {
-    void listProvinces()
-      .then(setProvinces)
-      .catch((err) => message.error(getErrorMessage(err)))
-  }, [message])
-
-  useEffect(() => {
-    const province = provinces.find((p) => p.name === selectedCity)
-    if (!province) {
-      setDistricts([])
+    if (!activeSchoolId) {
+      setPrincipalName(null)
       return
     }
-    let cancelled = false
-    void listDistricts(province.id)
-      .then((rows) => {
-        if (!cancelled) setDistricts(rows)
-      })
-      .catch(() => {
-        if (!cancelled) setDistricts([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [selectedCity, provinces])
+    void fetchSchoolPrincipal(activeSchoolId)
+      .then(setPrincipalName)
+      .catch(() => setPrincipalName(null))
+  }, [activeSchoolId])
 
   const filterOptionsByKey = useMemo(() => {
     return {
@@ -238,7 +262,6 @@ export function TeachersPage() {
       rank: uniqueSelectOptions(teachers.map((t) => t.rank)),
       pension_degree: uniqueSelectOptions(teachers.map((t) => t.pension_degree)),
       last_graduated_school: uniqueSelectOptions(teachers.map((t) => t.last_graduated_school)),
-      class_level: uniqueSelectOptions(teachers.map((t) => t.class_level)),
       school_principal: uniqueSelectOptions(teachers.map((t) => t.school_principal)),
       union: uniqueSelectOptions(teachers.map((t) => t.union_name)),
     } satisfies Partial<Record<TeacherFilterField, Array<{ value: string | number; label: string }>>>
@@ -251,6 +274,7 @@ export function TeachersPage() {
   const filteredTeachers = useMemo(() => {
     const q = searchQuery.trim().toLocaleLowerCase('tr-TR')
     return teachers.filter((t) => {
+      if (activeSchoolId && t.school_id && t.school_id !== activeSchoolId) return false
       for (const key of TEACHER_FILTER_FIELDS) {
         const selected = filterValues[key]
         if (!isActiveFilterValue(selected)) continue
@@ -275,12 +299,19 @@ export function TeachersPage() {
         (t.email || '').toLocaleLowerCase('tr-TR').includes(q)
       )
     })
-  }, [teachers, searchQuery, filterValues])
+  }, [teachers, searchQuery, filterValues, activeSchoolId])
 
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
-    form.setFieldsValue({ add_to_salary_form: true, school_id: activeSchoolId ?? undefined, kariyer: 'Öğretmen' })
+    form.setFieldsValue({
+      add_to_salary_form: true,
+      school_id: activeSchoolId ?? undefined,
+      kariyer: 'Öğretmen',
+      city: activeSchool?.Province?.name || undefined,
+      district: activeSchool?.District?.name || undefined,
+      school_principal: session?.user.full_name || undefined,
+    })
     setModalOpen(true)
   }
 
@@ -294,10 +325,10 @@ export function TeachersPage() {
       national_id: teacher.national_id || undefined,
       phone: teacher.phone || undefined,
       email: teacher.email || undefined,
-      city: teacher.city || undefined,
-      district: teacher.district || undefined,
+      city: teacher.city || activeSchool?.Province?.name || undefined,
+      district: teacher.district || activeSchool?.District?.name || undefined,
       last_graduated_school: teacher.last_graduated_school || undefined,
-      class_level: teacher.class_level || undefined,
+      birth_date: teacher.birth_date ? dayjs(teacher.birth_date) : null,
       unvan: teacher.unvan || teacherTitleParts(teacher).unvan || undefined,
       brans: teacher.brans || teacherTitleParts(teacher).brans || undefined,
       kariyer: teacher.kariyer || teacherTitleParts(teacher).kariyer,
@@ -306,7 +337,7 @@ export function TeachersPage() {
       pension_degree: teacher.pension_degree || undefined,
       rank: teacher.rank || undefined,
       degree_rank_date: teacher.degree_rank_date ? dayjs(teacher.degree_rank_date) : null,
-      school_principal: teacher.school_principal || undefined,
+      school_principal: teacher.school_principal || session?.user.full_name || undefined,
       service_start_date: teacher.service_start_date ? dayjs(teacher.service_start_date) : null,
       first_duty_date: teacher.first_duty_date ? dayjs(teacher.first_duty_date) : null,
       annual_leave_quota: teacher.annual_leave_quota,
@@ -330,6 +361,7 @@ export function TeachersPage() {
         brans: values.brans || null,
         kariyer: values.kariyer || 'Öğretmen',
         degree_rank_date: values.degree_rank_date ? values.degree_rank_date.toISOString() : null,
+        birth_date: values.birth_date ? values.birth_date.format('YYYY-MM-DD') : null,
         service_start_date: values.service_start_date ? values.service_start_date.format('YYYY-MM-DD') : null,
         first_duty_date: values.first_duty_date ? values.first_duty_date.format('YYYY-MM-DD') : null,
       }
@@ -508,7 +540,7 @@ export function TeachersPage() {
       title: 'İşlemler',
       width: 160,
       render: (_: unknown, record: Teacher) => (
-        <Space>
+        <Space onClick={(event) => event.stopPropagation()}>
           <Dropdown
             menu={{
               items: [
@@ -615,6 +647,19 @@ export function TeachersPage() {
           dataSource={filteredTeachers}
           pagination={tablePagination(20)}
           scroll={{ x: 'max-content' }}
+          onRow={(record) => ({
+            onClick: () => {
+              setExpandedKeys((keys) => (keys[0] === record.id ? [] : [record.id]))
+            },
+            style: { cursor: 'pointer' },
+          })}
+          expandable={{
+            expandedRowKeys: expandedKeys,
+            showExpandColumn: false,
+            expandedRowRender: (record) => (
+              <TeacherRowDetail teacher={record} principalName={principalName} />
+            ),
+          }}
         />
 
       </div>
@@ -682,44 +727,12 @@ export function TeachersPage() {
               </Form.Item>
             </Col>
           </Row>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="city" label="İl">
-                <Select
-                  allowClear
-                  showSearch
-                  placeholder="İl seçin"
-                  optionFilterProp="label"
-                  filterOption={trSelectFilter}
-                  options={[
-                    ...provinces.map((p) => ({ value: p.name, label: p.name })),
-                    ...(selectedCity && !provinces.some((p) => p.name === selectedCity)
-                      ? [{ value: selectedCity, label: selectedCity }]
-                      : []),
-                  ]}
-                  onChange={() => form.setFieldValue('district', undefined)}
-                />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="district" label="İlçe">
-                <Select
-                  allowClear
-                  showSearch
-                  placeholder={selectedCity ? 'İlçe seçin' : 'Önce il seçin'}
-                  disabled={!selectedCity}
-                  optionFilterProp="label"
-                  filterOption={trSelectFilter}
-                  options={[
-                    ...districts.map((d) => ({ value: d.name, label: d.name })),
-                    ...(selectedDistrict && !districts.some((d) => d.name === selectedDistrict)
-                      ? [{ value: selectedDistrict, label: selectedDistrict }]
-                      : []),
-                  ]}
-                />
-              </Form.Item>
-            </Col>
-          </Row>
+          <Form.Item name="city" hidden>
+            <Input />
+          </Form.Item>
+          <Form.Item name="district" hidden>
+            <Input />
+          </Form.Item>
           <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="unvan" label="Unvan">
@@ -776,22 +789,21 @@ export function TeachersPage() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="class_level" label="Sınıf / Kademe">
-                <Input />
+              <Form.Item name="birth_date" label="Doğum Tarihi">
+                <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" placeholder="Tarih seç" />
               </Form.Item>
             </Col>
           </Row>
+          <Form.Item name="school_principal" hidden>
+            <Input />
+          </Form.Item>
           <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="school_principal" label="Okul Müdürü">
-                <Input />
-              </Form.Item>
-            </Col>
             <Col span={12}>
               <Form.Item name="union_name" label="Sendika">
                 <Input placeholder="Sendika adı (isteğe bağlı)" />
               </Form.Item>
             </Col>
+            <Col span={12} />
           </Row>
           <Row gutter={16}>
             <Col span={12}>
@@ -827,8 +839,8 @@ export function TeachersPage() {
           {!editing && (
             <Form.Item name="add_to_salary_form" valuePropName="checked">
               <Checkbox>
-                Maaş Değişikliği Bildirim Formuna ekle (C - Başlayan Personel). İşaret kaldırılırsa kurum
-                içi görevlendirme kabul edilir.
+                Maaş Değişikliği Bildirim Formuna ekle (C - Başlayan Personel). İşaret kaldırılırsa
+                görevlendirme kabul edilir.
               </Checkbox>
             </Form.Item>
           )}

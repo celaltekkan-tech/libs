@@ -19,6 +19,13 @@ export interface TeacherFilters {
   scope?: 'teachers' | 'staff' | 'all'
 }
 
+export async function fetchSchoolPrincipal(schoolId: number): Promise<string | null> {
+  const { data } = await client.get<Envelope<{ full_name: string | null }>>('/api/teachers/school-principal', {
+    params: { school_id: schoolId },
+  })
+  return data.data.full_name
+}
+
 export async function listTeachers(params?: {
   scope?: 'teachers' | 'staff' | 'all'
   category_id?: number
@@ -77,6 +84,7 @@ export interface UpcomingPromotion {
   kariyer: string | null
   kariyer_eligible: boolean
   kariyer_suggested_degree: string | null
+  kariyer_suggested_title: string | null
 }
 
 export async function fetchUpcomingPromotions(

@@ -10,6 +10,7 @@ module.exports = (sequelize, DataTypes) => {
     email: DataTypes.STRING,
     first_name: DataTypes.STRING,
     last_name: DataTypes.STRING,
+    birth_date: DataTypes.DATEONLY,
     last_graduated_school: DataTypes.STRING,
     class_level: DataTypes.STRING,
     title_branch: DataTypes.STRING,
@@ -60,6 +61,7 @@ module.exports = (sequelize, DataTypes) => {
     Teacher.hasMany(models.TeacherDocument, { foreignKey: 'teacher_id' });
     Teacher.hasMany(models.PromotionHistory, { foreignKey: 'teacher_id' });
     Teacher.hasMany(models.User, { foreignKey: 'teacher_id' });
+    Teacher.hasMany(models.ResponsibilityExamItem, { foreignKey: 'teacher_id' });
     };
     
     

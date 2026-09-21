@@ -1,5 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Button, Col, DatePicker, Form, Input, Modal, Radio, Row, Select, Space, Tag, Typography } from 'antd'
+import {
+  App,
+  Button,
+  Col,
+  DatePicker,
+  Descriptions,
+  Form,
+  Input,
+  Modal,
+  Radio,
+  Row,
+  Select,
+  Space,
+  Tag,
+  Typography,
+} from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { AppLayout } from '../components/AppLayout'
@@ -7,15 +22,23 @@ import { FilterBar } from '../components/FilterBar'
 import { ClearFiltersButton } from '../components/ClearFiltersButton'
 import { SortableTable } from '../components/SortableTable'
 import { useAuth } from '../auth/AuthContext'
+import { useActiveSchool } from '../auth/ActiveSchoolContext'
 import {
   applyPromotion,
   downloadPromotionForm,
+  fetchSchoolPrincipal,
   fetchUpcomingPromotions,
+  listTeachers,
   reportEightYearCheck,
 } from '../api/teachers'
 import type { UpcomingPromotion } from '../api/teachers'
 import { getErrorMessage } from '../api/client'
-import type { ApplyPromotionPayload, PromotionType, ReportEightYearCheckPayload } from '../types/teacher'
+import type {
+  ApplyPromotionPayload,
+  PromotionType,
+  ReportEightYearCheckPayload,
+  Teacher,
+} from '../types/teacher'
 import { downloadBlob } from '../utils/download'
 import { tablePagination } from '../utils/tablePagination'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
@@ -35,27 +58,56 @@ interface EightYearCheckValues {
   note?: string
 }
 
+/** Seçilen ayın terfi dönemi: önceki ayın 15'i – bu ayın 14'ü. */
+function promotionPeriod(month: dayjs.Dayjs) {
+  const end = month.date(14)
+  const start = month.subtract(1, 'month').date(15)
+  return { start, end }
+}
+
+/** Terfi tarihi, göreve ilk başlama / kademe tarihinin yıl dönümüdür. */
+function anniversaryInPeriod(base: string, start: dayjs.Dayjs, end: dayjs.Dayjs): dayjs.Dayjs | null {
+  const parsed = dayjs(base.slice(0, 10))
+  if (!parsed.isValid()) return null
+  const month = parsed.month()
+  const day = parsed.date()
+  for (let year = start.year(); year <= end.year(); year += 1) {
+    const daysInMonth = dayjs(new Date(year, month, 1)).daysInMonth()
+    const candidate = dayjs(new Date(year, month, Math.min(day, daysInMonth)))
+    if (!candidate.isBefore(start, 'day') && !candidate.isAfter(end, 'day')) return candidate
+  }
+  return null
+}
+
 function isDue(row: UpcomingPromotion) {
   return row.kariyer_eligible || row.eight_year_due || row.in_current_period
 }
 
-function applyModalTitle(type: PromotionType) {
+function applyModalTitle(type: PromotionType, row?: UpcomingPromotion) {
   if (type === 'yillik') return 'Yıllık Kademe İlerlemesini Uygula'
-  if (type === 'kariyer') return 'Kariyer Terfisini Uygula (Derece -1)'
+  if (type === 'kariyer') {
+    const target = row?.kariyer_suggested_title
+    return target ? `Kariyer Terfisini Uygula (Derece -1, ${target})` : 'Kariyer Terfisini Uygula (Derece -1)'
+  }
   return 'Terfi Tarihini Değiştir'
 }
 
 export function PromotionsPage() {
   const { message } = App.useApp()
   const { hasPermission } = useAuth()
+  const { activeSchoolId } = useActiveSchool()
   const canUpdate = hasPermission('teachers.update')
 
   const [rows, setRows] = useState<UpcomingPromotion[]>([])
+  const [teachers, setTeachers] = useState<Teacher[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const searchQuery = useDebouncedValue(search)
   const [typeFilter, setTypeFilter] = useState<string | undefined>()
   const [onlyDue, setOnlyDue] = useState(false)
+  const [expandedKeys, setExpandedKeys] = useState<number[]>([])
+  const [principalName, setPrincipalName] = useState<string | null>(null)
+  const [periodMonth, setPeriodMonth] = useState<dayjs.Dayjs | null>(null)
 
   const [applyTarget, setApplyTarget] = useState<{ row: UpcomingPromotion; type: PromotionType } | null>(null)
   const [applySubmitting, setApplySubmitting] = useState(false)
@@ -69,8 +121,12 @@ export function PromotionsPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await fetchUpcomingPromotions({ all: true })
+      const [data, teacherRows] = await Promise.all([
+        fetchUpcomingPromotions({ all: true }),
+        listTeachers({ scope: 'all' }),
+      ])
       setRows(data)
+      setTeachers(teacherRows)
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
@@ -82,11 +138,34 @@ export function PromotionsPage() {
     void load()
   }, [load])
 
-  const hasActiveFilters = Boolean(search.trim() || typeFilter || onlyDue)
+  useEffect(() => {
+    if (!activeSchoolId) {
+      setPrincipalName(null)
+      return
+    }
+    void fetchSchoolPrincipal(activeSchoolId)
+      .then(setPrincipalName)
+      .catch(() => setPrincipalName(null))
+  }, [activeSchoolId])
+
+  const teachersById = useMemo(() => new Map(teachers.map((t) => [t.id, t])), [teachers])
+
+  const hasActiveFilters = Boolean(search.trim() || typeFilter || onlyDue || periodMonth)
+
+  const period = periodMonth ? promotionPeriod(periodMonth) : null
 
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLocaleLowerCase('tr-TR')
     return rows.filter((r) => {
+      if (activeSchoolId) {
+        const teacher = teachersById.get(r.teacher_id)
+        if (teacher?.school_id && teacher.school_id !== activeSchoolId) return false
+      }
+      if (period) {
+        if (!r.degree_rank_date || !anniversaryInPeriod(r.degree_rank_date, period.start, period.end)) {
+          return false
+        }
+      }
       if (typeFilter && r.personnel_type !== typeFilter) return false
       if (onlyDue && !isDue(r)) return false
       if (!q) return true
@@ -95,7 +174,7 @@ export function PromotionsPage() {
         (r.personnel_no || '').toLocaleLowerCase('tr-TR').includes(q)
       )
     })
-  }, [rows, searchQuery, typeFilter, onlyDue])
+  }, [rows, searchQuery, typeFilter, onlyDue, period, activeSchoolId, teachersById])
 
   const openApply = (row: UpcomingPromotion, type: PromotionType) => {
     setApplyTarget({ row, type })
@@ -180,8 +259,20 @@ export function PromotionsPage() {
     }
   }
 
+  const toggleExpand = (teacherId: number) => {
+    setExpandedKeys((prev) =>
+      prev.includes(teacherId) ? prev.filter((id) => id !== teacherId) : [...prev, teacherId],
+    )
+  }
+
   const columns: ColumnsType<UpcomingPromotion> = [
-    { title: 'Ad Soyad', dataIndex: 'teacher_name' },
+    {
+      title: 'Ad Soyad',
+      dataIndex: 'teacher_name',
+      render: (v: string, r) => (
+        <Typography.Link onClick={() => toggleExpand(r.teacher_id)}>{v}</Typography.Link>
+      ),
+    },
     {
       title: 'Tür',
       dataIndex: 'personnel_type',
@@ -200,31 +291,24 @@ export function PromotionsPage() {
     { title: 'Kademe Tarihi', dataIndex: 'degree_rank_date', render: (v: string | null) => (v ? dayjs(v).format('DD.MM.YYYY') : '—') },
     {
       title: 'Sıradaki Yıllık Terfi',
-      render: (_: unknown, r: UpcomingPromotion) =>
-        r.next_promotion_date ? (
+      render: (_: unknown, r: UpcomingPromotion) => {
+        const inPeriod =
+          period && r.degree_rank_date
+            ? anniversaryInPeriod(r.degree_rank_date, period.start, period.end)
+            : null
+        const shown = inPeriod || (r.next_promotion_date ? dayjs(r.next_promotion_date) : null)
+        if (!shown) return '—'
+        return (
           <Space>
-            <span>{dayjs(r.next_promotion_date).format('DD.MM.YYYY')}</span>
-            {r.days_remaining != null && (
+            <span>{shown.format('DD.MM.YYYY')}</span>
+            {!inPeriod && r.days_remaining != null && (
               <Tag color={r.days_remaining <= 30 ? 'red' : r.in_current_period ? 'orange' : 'blue'}>
                 {r.days_remaining} gün
               </Tag>
             )}
           </Space>
-        ) : (
-          '—'
-        ),
-    },
-    {
-      title: '8 Yıl Kontrolü',
-      render: (_: unknown, r: UpcomingPromotion) =>
-        r.eight_year_next_checkpoint ? (
-          <Space>
-            <span>{dayjs(r.eight_year_next_checkpoint).format('DD.MM.YYYY')}</span>
-            {r.eight_year_due && <Tag color="red">Kontrol Gerekiyor</Tag>}
-          </Space>
-        ) : (
-          '—'
-        ),
+        )
+      },
     },
     ...(canUpdate
       ? [
@@ -237,7 +321,7 @@ export function PromotionsPage() {
                     Terfiyi Uygula
                   </Button>
                 )}
-                {r.eight_year_due && (
+                {!r.at_ceiling && r.eight_year_due && (
                   <Button size="small" onClick={() => openEightYear(r)}>
                     8 Yıl Kontrolü
                   </Button>
@@ -247,9 +331,11 @@ export function PromotionsPage() {
                     Kariyer Terfisi Uygula
                   </Button>
                 )}
-                <Button size="small" onClick={() => openApply(r, 'manuel')}>
-                  Terfi Tarihini Değiştir
-                </Button>
+                {!r.at_ceiling && (
+                  <Button size="small" onClick={() => openApply(r, 'manuel')}>
+                    Terfi Tarihini Değiştir
+                  </Button>
+                )}
               </Space>
             ),
           },
@@ -292,12 +378,26 @@ export function PromotionsPage() {
           onChange={(v) => setOnlyDue(v === 'due')}
           options={[{ value: 'due', label: 'Sadece işlem gerekenler' }]}
         />
+        <DatePicker
+          picker="month"
+          value={periodMonth}
+          format="MM.YYYY"
+          allowClear
+          placeholder="Terfi ayı"
+          onChange={(value) => setPeriodMonth(value ? value.startOf('month') : null)}
+        />
+        {period && (
+          <Typography.Text type="secondary">
+            {period.start.format('DD.MM.YYYY')} – {period.end.format('DD.MM.YYYY')}
+          </Typography.Text>
+        )}
         <ClearFiltersButton
           active={hasActiveFilters}
           onClick={() => {
             setSearch('')
             setTypeFilter(undefined)
             setOnlyDue(false)
+            setPeriodMonth(null)
           }}
         />
       </FilterBar>
@@ -307,12 +407,77 @@ export function PromotionsPage() {
         loading={loading}
         columns={columns}
         dataSource={filteredRows}
+        locale={{
+            emptyText: period
+            ? 'Bu dönemde yıl dönümü olan personel yok. Terfi tarihi, göreve ilk başlama günüdür.'
+            : 'Kayıt yok',
+        }}
         pagination={tablePagination(20)}
         scroll={{ x: 'max-content' }}
+        expandable={{
+          expandedRowKeys: expandedKeys,
+          onExpandedRowsChange: (keys) => setExpandedKeys(keys as number[]),
+          showExpandColumn: false,
+          expandedRowRender: (r) => {
+            const t = teachersById.get(r.teacher_id)
+            if (!t) return <Typography.Text type="secondary">Öğretmen bilgisi bulunamadı</Typography.Text>
+            return (
+              <Descriptions size="small" column={3} bordered>
+                <Descriptions.Item label="Sicil No">{t.personnel_no || '—'}</Descriptions.Item>
+                <Descriptions.Item label="TC Kimlik No">{t.national_id || '—'}</Descriptions.Item>
+                <Descriptions.Item label="Telefon">{t.phone || '—'}</Descriptions.Item>
+                <Descriptions.Item label="E-posta">{t.email || '—'}</Descriptions.Item>
+                <Descriptions.Item label="Unvan">{t.unvan || '—'}</Descriptions.Item>
+                <Descriptions.Item label="Branş">{t.brans || '—'}</Descriptions.Item>
+                <Descriptions.Item label="Kariyer">{t.kariyer || '—'}</Descriptions.Item>
+                <Descriptions.Item label="Personel Türü">
+                  {t.personnel_type === 'ogretmen' ? 'Öğretmen' : 'Memur'}
+                </Descriptions.Item>
+                <Descriptions.Item label="Personel Kategorisi">
+                  {t.PersonnelCategory?.name || '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="Çalıştığı Kurum">{t.working_institution || '—'}</Descriptions.Item>
+                <Descriptions.Item label="Emekli Sicil No">{t.pension_degree || '—'}</Descriptions.Item>
+                <Descriptions.Item label="Sendika">{t.union_name || '—'}</Descriptions.Item>
+                <Descriptions.Item label="Son Mezun Olduğu Okul">
+                  {t.last_graduated_school || '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="İl / İlçe">
+                  {t.city || t.district ? `${t.city || '—'} / ${t.district || '—'}` : '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="Okul Müdürü">
+                  {principalName || t.school_principal || '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="Yıllık İzin Kotası">
+                  {t.annual_leave_quota ?? '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="Hizmet Başlangıç Tarihi">
+                  {t.service_start_date ? dayjs(t.service_start_date).format('DD.MM.YYYY') : '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="İlk Görev Tarihi">
+                  {t.first_duty_date ? dayjs(t.first_duty_date).format('DD.MM.YYYY') : '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="8 Yıl Başlangıç Tarihi">
+                  {t.eight_year_base_date ? dayjs(t.eight_year_base_date).format('DD.MM.YYYY') : '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="Sözleşme Başlangıç">
+                  {t.contract_start_date ? dayjs(t.contract_start_date).format('DD.MM.YYYY') : '—'}
+                </Descriptions.Item>
+                <Descriptions.Item label="Sözleşme Bitiş">
+                  {t.contract_end_date ? dayjs(t.contract_end_date).format('DD.MM.YYYY') : '—'}
+                </Descriptions.Item>
+              </Descriptions>
+            )
+          },
+        }}
       />
 
       <Modal
-        title={applyTarget ? `${applyModalTitle(applyTarget.type)} — ${applyTarget.row.teacher_name}` : ''}
+        title={
+          applyTarget
+            ? `${applyModalTitle(applyTarget.type, applyTarget.row)} — ${applyTarget.row.teacher_name}`
+            : ''
+        }
         open={Boolean(applyTarget)}
         onCancel={() => setApplyTarget(null)}
         onOk={() => applyForm.submit()}

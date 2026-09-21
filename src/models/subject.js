@@ -26,6 +26,7 @@ module.exports = (sequelize, DataTypes) => {
     Subject.hasMany(models.DykCourse, { foreignKey: 'subject_id' });
     Subject.hasMany(models.Exam, { foreignKey: 'subject_id' });
     Subject.hasMany(models.SubjectClassHour, { foreignKey: 'subject_id', as: 'ClassHours' });
+    Subject.hasMany(models.ResponsibilityExamItem, { foreignKey: 'subject_id' });
   };
 
   return Subject;

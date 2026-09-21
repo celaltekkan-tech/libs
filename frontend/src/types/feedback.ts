@@ -31,6 +31,8 @@ export interface Feedback {
   tenant_id: number
   user_id: number | null
   message: string
+  page_path: string | null
+  page_title: string | null
   status: FeedbackStatus
   reply: string | null
   replied_at: string | null

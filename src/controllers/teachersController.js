@@ -1,7 +1,7 @@
 'use strict';
 
 const PDFDocument = require('pdfkit');
-const { Teacher, School, PersonnelCategory, PromotionHistory, sequelize } = require('../models');
+const { Teacher, School, PersonnelCategory, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
@@ -11,6 +11,7 @@ const { registerUnicodeFonts } = require('../utils/pdfFonts');
 const { buildPersonnelDocumentDocx } = require('../services/personnelDocumentService');
 const { applyTitleFields, titleFieldsFromMebbisRow } = require('../utils/teacherTitle');
 const { ensureSubjectFromTeacher, ensureSubjectsForBranches, branchFromTeacher } = require('../services/subjectFromBranchService');
+const { resolvePrincipalName } = require('../services/schoolPrincipalService');
 
 const PERSONNEL_DOCUMENT_TITLES = {
   gorevlendirme: 'GÖREVLENDİRME YAZISI',
@@ -37,6 +38,7 @@ const COLUMN_LABELS = {
   rank: 'Kademe',
   pension_degree: 'Emekli Sicil No',
   last_graduated_school: 'Mezun Olunan Okul',
+  birth_date: 'Doğum Tarihi',
   class_level: 'Sınıf / Kademe',
   school_principal: 'Okul Müdürü',
   service_start_date: 'Kuruma başlama tarihi',
@@ -171,6 +173,54 @@ function addYears(date, years) {
   return d;
 }
 
+function toDateOnly(value) {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    const match = /^(\d{4}-\d{2}-\d{2})/.exec(value);
+    return match ? match[1] : null;
+  }
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${month}-${day}`;
+}
+
+function clampDateOnly(year, month, day) {
+  const last = new Date(year, month, 0).getDate();
+  const clamped = Math.min(day, last);
+  return `${year}-${String(month).padStart(2, '0')}-${String(clamped).padStart(2, '0')}`;
+}
+
+/** Göreve ilk başlama (veya kademe) tarihinin, bugünden sonraki ilk yıl dönümü. */
+function nextAnniversary(baseIso, from = new Date()) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(baseIso || '');
+  if (!match) return null;
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const fromIso = toDateOnly(from);
+  let year = Number(fromIso.slice(0, 4));
+  let candidate = clampDateOnly(year, month, day);
+  if (candidate < fromIso) candidate = clampDateOnly(year + 1, month, day);
+  return candidate;
+}
+
+function anniversaryInPeriod(baseIso, period) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(baseIso || '');
+  if (!match || !period) return null;
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const startIso = toDateOnly(period.start);
+  const endIso = toDateOnly(new Date(period.endExclusive.getTime() - 86400000));
+  const startYear = Number(startIso.slice(0, 4));
+  const endYear = Number(endIso.slice(0, 4));
+  for (let year = startYear; year <= endYear; year += 1) {
+    const candidate = clampDateOnly(year, month, day);
+    if (candidate >= startIso && candidate <= endIso) return candidate;
+  }
+  return null;
+}
+
 function splitIlIlce(ilIlce) {
   const parts = String(ilIlce || '')
     .split('/')
@@ -191,6 +241,7 @@ function buildTeacherPayloadFromMebbisRow(row, tenantId, schoolId) {
     national_id: row.national_id || null,
     first_name: row.first_name,
     last_name: row.last_name,
+    birth_date: row.dogum_tarihi || null,
     ...titleFields,
     working_institution: row.kurum_adi || null,
     pension_degree: row.emekli_sicil_no || null,
@@ -405,7 +456,13 @@ module.exports = {
     try {
       const tenantId = req.user && req.user.tenant_id;
       const { getSalaryPeriodForDate, getSalaryPeriodRange } = require('../utils/salaryPeriod');
-      const { advanceDegreeRank, applyCareerDegreeDrop, isAtCeiling, eightYearProgress } = require('../utils/promotionEngine');
+      const {
+        advanceDegreeRank,
+        applyCareerDegreeDrop,
+        nextKariyerTitle,
+        isAtCeiling,
+        eightYearProgress,
+      } = require('../utils/promotionEngine');
 
       const periodMonth = req.query.month ? Number(req.query.month) : null;
       const periodYear = req.query.year ? Number(req.query.year) : null;
@@ -429,14 +486,6 @@ module.exports = {
         order: [['degree_rank_date', 'ASC']],
       });
 
-      const kariyerAppliedRows = teachers.length
-        ? await PromotionHistory.findAll({
-            where: { teacher_id: { [Op.in]: teachers.map((t) => t.id) }, type: 'kariyer' },
-            attributes: ['teacher_id'],
-          })
-        : [];
-      const kariyerAppliedSet = new Set(kariyerAppliedRows.map((r) => r.teacher_id));
-
       const allRows = teachers.map((t) => {
         const atCeiling = isAtCeiling(t.degree, t.rank);
         const suggested = advanceDegreeRank(t.degree, t.rank);
@@ -444,19 +493,24 @@ module.exports = {
         let nextDate = null;
         let daysRemaining = null;
         let inCurrentPeriod = false;
-        if (t.degree_rank_date) {
-          nextDate = addYears(t.degree_rank_date, 1);
-          daysRemaining = Math.round((nextDate.getTime() - today.getTime()) / 86400000);
-          inCurrentPeriod = nextDate >= period.start && nextDate < period.endExclusive;
+        // Kademe tarihi yoksa göreve ilk başlama tarihi terfi tarihidir; yıl dönümü esas alınır.
+        const promotionBase = toDateOnly(t.degree_rank_date) || toDateOnly(t.first_duty_date);
+        if (promotionBase) {
+          const nextIso = nextAnniversary(promotionBase, today);
+          nextDate = nextIso ? new Date(`${nextIso}T00:00:00`) : null;
+          if (nextDate) {
+            const todayIso = toDateOnly(today);
+            daysRemaining = Math.round((new Date(`${nextIso}T00:00:00`).getTime() - new Date(`${todayIso}T00:00:00`).getTime()) / 86400000);
+          }
+          inCurrentPeriod = Boolean(anniversaryInPeriod(promotionBase, period));
         }
 
         const eightYear = eightYearProgress(t.eight_year_base_date || t.first_duty_date, today);
 
         const kariyerEligible =
-          !atCeiling &&
-          !kariyerAppliedSet.has(t.id) &&
-          (t.kariyer === 'Uzman Öğretmen' || t.kariyer === 'Başöğretmen');
+          !atCeiling && (t.kariyer === 'Öğretmen' || t.kariyer === 'Uzman Öğretmen');
         const kariyerSuggestedDegree = kariyerEligible ? applyCareerDegreeDrop(t.degree).degree : null;
+        const kariyerSuggestedTitle = kariyerEligible ? nextKariyerTitle(t.kariyer) : null;
 
         return {
           teacher_id: t.id,
@@ -468,8 +522,8 @@ module.exports = {
           at_ceiling: atCeiling,
           suggested_degree: suggested.degree,
           suggested_rank: suggested.rank,
-          degree_rank_date: t.degree_rank_date,
-          next_promotion_date: nextDate ? nextDate.toISOString().slice(0, 10) : null,
+          degree_rank_date: promotionBase,
+          next_promotion_date: nextDate ? toDateOnly(nextDate) : null,
           days_remaining: daysRemaining,
           in_current_period: inCurrentPeriod,
           eight_year_base_date: t.eight_year_base_date || t.first_duty_date || null,
@@ -480,6 +534,7 @@ module.exports = {
           kariyer: t.kariyer || null,
           kariyer_eligible: kariyerEligible,
           kariyer_suggested_degree: kariyerSuggestedDegree,
+          kariyer_suggested_title: kariyerSuggestedTitle,
         };
       });
 
@@ -520,6 +575,23 @@ module.exports = {
           },
         },
       });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async schoolPrincipal(req, res, next) {
+    try {
+      const tenantId = req.user && req.user.tenant_id;
+      const schoolId = req.query.school_id ? Number(req.query.school_id) : null;
+      if (schoolId) {
+        const school = await School.findByPk(schoolId);
+        if (!school || (tenantId && school.tenant_id !== tenantId)) {
+          return res.status(404).json({ success: false, message: 'Okul bulunamadı' });
+        }
+      }
+      const name = await resolvePrincipalName(tenantId, schoolId, { fallback: false });
+      res.json({ success: true, data: { full_name: name || null } });
     } catch (err) {
       next(err);
     }

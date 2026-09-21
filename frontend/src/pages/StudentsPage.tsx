@@ -19,6 +19,7 @@ import { AppLayout } from '../components/AppLayout'
 import { ClearFiltersButton } from '../components/ClearFiltersButton'
 import { FilterBar } from '../components/FilterBar'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
+import { StudentImportAbsenceModal } from '../components/StudentImportAbsenceModal'
 import { useAuth } from '../auth/AuthContext'
 import { useActiveSchool } from '../auth/ActiveSchoolContext'
 import {
@@ -46,6 +47,7 @@ import type {
   StudentExtraContact,
   StudentFilters,
   StudentGender,
+  ImportMissingClass,
   StudentImportPreview,
   StudentPayload,
 } from '../types/student'
@@ -189,6 +191,7 @@ export function StudentsPage() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [missingGroups, setMissingGroups] = useState<ImportMissingClass[]>([])
   const [exportOpen, setExportOpen] = useState(false)
   const [editing, setEditing] = useState<Student | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -701,6 +704,8 @@ export function StudentsPage() {
       setImportOpen(false)
       resetImportState()
       void load()
+      const missing = (result.missing_by_class || []).filter((group) => group.students.length > 0)
+      if (missing.length) setMissingGroups(missing)
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
@@ -1605,6 +1610,15 @@ export function StudentsPage() {
           </Typography.Text>
         </Form>
       </Modal>
+      <StudentImportAbsenceModal
+        open={missingGroups.length > 0}
+        groups={missingGroups}
+        onClose={() => setMissingGroups([])}
+        onSaved={() => {
+          setMissingGroups([])
+          void load()
+        }}
+      />
       <TypedPhraseConfirmModal
         open={bulkOpen}
         title="Öğrencileri toplu sil"

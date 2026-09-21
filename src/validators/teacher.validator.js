@@ -12,6 +12,7 @@ const createTeacherSchema = Joi.object({
   first_name: Joi.string().required(),
   last_name: Joi.string().required(),
   last_graduated_school: Joi.string().allow('', null),
+  birth_date: Joi.date().iso().allow(null),
   class_level: Joi.string().allow('', null),
   title_branch: Joi.string().allow('', null),
   unvan: Joi.string().allow('', null),

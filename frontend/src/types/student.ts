@@ -101,6 +101,20 @@ export interface StudentImportPreviewTable {
   total_rows: number
 }
 
+export interface ImportMissingStudent {
+  id: number
+  first_name: string
+  last_name: string
+  student_number: string | null
+}
+
+export interface ImportMissingClass {
+  classroom_id: number
+  class_level: string
+  section: string
+  students: ImportMissingStudent[]
+}
+
 export interface StudentImportResultTable {
   format: 'table'
   created: number
@@ -108,6 +122,7 @@ export interface StudentImportResultTable {
   errors: Array<{ row: number; message: string }>
   unmatched_columns?: string[]
   feedback_created?: boolean
+  missing_by_class?: ImportMissingClass[]
 }
 
 /** E-Okul "Fotoğraflı Öğrenci Bilgileri" dökümü gibi öğrenci başına form/blok

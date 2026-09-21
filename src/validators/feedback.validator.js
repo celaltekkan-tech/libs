@@ -10,6 +10,8 @@ const REVIEW_FEEDBACK_STATUSES = ['read', 'waiting'];
 
 const createFeedbackSchema = Joi.object({
   message: Joi.string().trim().min(5).max(10000).required(),
+  page_path: Joi.string().trim().max(300).allow('', null),
+  page_title: Joi.string().trim().max(120).allow('', null),
 });
 
 const updateFeedbackSchema = Joi.object({

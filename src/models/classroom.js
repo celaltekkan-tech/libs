@@ -29,6 +29,7 @@ module.exports = (sequelize, DataTypes) => {
     Classroom.hasMany(models.Student, { foreignKey: 'classroom_id' });
     Classroom.hasMany(models.ScheduleEntry, { foreignKey: 'classroom_id' });
     Classroom.hasMany(models.Exam, { foreignKey: 'classroom_id' });
+    Classroom.hasMany(models.ResponsibilityExamItem, { foreignKey: 'classroom_id' });
   };
 
   Classroom.prototype.displayName = function () {

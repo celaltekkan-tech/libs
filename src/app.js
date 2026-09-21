@@ -32,7 +32,11 @@ const announcementsRoutes = require('./routes/announcements');
 const parentConsentsRoutes = require('./routes/parentConsents');
 const examsRoutes = require('./routes/exams');
 const kelebekRoutes = require('./routes/kelebek');
-const disciplinaryCasesRoutes = require('./routes/disciplinaryCases');
+const disciplineIncidentsRoutes = require('./routes/disciplineIncidents');
+const disciplineFormsRoutes = require('./routes/disciplineForms');
+const disciplineDecisionsRoutes = require('./routes/disciplineDecisions');
+const disciplineBehaviorPointsRoutes = require('./routes/disciplineBehaviorPoints');
+const disciplineRegulationArticlesRoutes = require('./routes/disciplineRegulationArticles');
 const teacherNotesRoutes = require('./routes/teacherNotes');
 const guidanceRoutes = require('./routes/guidance');
 const teacherDocumentsRoutes = require('./routes/teacherDocuments');
@@ -44,6 +48,7 @@ const messageLogsRoutes = require('./routes/messageLogs');
 const backupsRoutes = require('./routes/backups');
 const platformRolesRoutes = require('./routes/platformRoles');
 const geoRoutes = require('./routes/geo');
+const regulationsRoutes = require('./routes/regulations');
 const errorHandler = require('./middlewares/errorHandler');
 const db = require('./models');
 
@@ -185,7 +190,11 @@ app.use('/api/announcements', announcementsRoutes);
 app.use('/api/parent-consents', parentConsentsRoutes);
 app.use('/api/exams', examsRoutes);
 app.use('/api/kelebek', kelebekRoutes);
-app.use('/api/disciplinary-cases', disciplinaryCasesRoutes);
+app.use('/api/discipline/incidents', disciplineIncidentsRoutes);
+app.use('/api/discipline/forms', disciplineFormsRoutes);
+app.use('/api/discipline/decisions', disciplineDecisionsRoutes);
+app.use('/api/discipline/behavior-points', disciplineBehaviorPointsRoutes);
+app.use('/api/discipline/regulation-articles', disciplineRegulationArticlesRoutes);
 app.use('/api/teacher-notes', teacherNotesRoutes);
 app.use('/api/guidance', guidanceRoutes);
 app.use('/api/teacher-documents', teacherDocumentsRoutes);
@@ -197,6 +206,7 @@ app.use('/api/message-logs', messageLogsRoutes);
 app.use('/api/backups', backupsRoutes);
 app.use('/api/platform/roles', platformRolesRoutes);
 app.use('/api/geo', geoRoutes);
+app.use('/api/regulations', regulationsRoutes);
 
 app.use((req, res) => {
   res.status(404).json({

@@ -5,6 +5,8 @@ module.exports = (sequelize, DataTypes) => {
       tenant_id: { type: DataTypes.INTEGER, allowNull: false },
       user_id: { type: DataTypes.INTEGER, allowNull: true },
       message: { type: DataTypes.TEXT, allowNull: false },
+      page_path: { type: DataTypes.STRING(300), allowNull: true },
+      page_title: { type: DataTypes.STRING(120), allowNull: true },
       status: {
         type: DataTypes.STRING,
         allowNull: false,

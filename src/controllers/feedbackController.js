@@ -88,6 +88,8 @@ module.exports = {
             tenant_id: req.user.tenant_id,
             user_id: req.user.user_id,
             message: payload.message,
+            page_path: payload.page_path || null,
+            page_title: payload.page_title || null,
           },
           { transaction }
         );

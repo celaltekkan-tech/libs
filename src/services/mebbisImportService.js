@@ -123,7 +123,8 @@ function parseDurumRow(row) {
   for (const v of vals) {
     const m = DURUM_RE.exec(String(v).trim());
     if (m) {
-      return { durum: m[1], kademe: Number(m[2]), derece: Number(m[3]) };
+      // MEBBİS: "Görevde 9-1" = derece 9, kademe 1 (ilk sayı derece, ikinci kademe).
+      return { durum: m[1], derece: Number(m[2]), kademe: Number(m[3]) };
     }
   }
   return null;

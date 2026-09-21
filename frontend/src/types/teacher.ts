@@ -10,6 +10,7 @@ export interface Teacher {
   email: string | null
   first_name: string
   last_name: string
+  birth_date: string | null
   last_graduated_school: string | null
   class_level: string | null
   title_branch: string | null
@@ -84,6 +85,7 @@ export interface TeacherPayload {
   email?: string | null
   first_name: string
   last_name: string
+  birth_date?: string | null
   last_graduated_school?: string | null
   class_level?: string | null
   title_branch?: string | null

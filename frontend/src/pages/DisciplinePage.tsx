@@ -1,50 +1,67 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { App, Button, Dropdown, Form, Input, Modal, Select, Space, Tabs, Tag, Typography } from 'antd'
-import dayjs from 'dayjs'
-import { SortableTable } from '../components/SortableTable'
-import { DeleteOutlined, FileTextOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
+import { App, Button, Card, Col, Empty, Input, List, Row, Select, Space, Statistic, Tabs, Tag, Typography } from 'antd'
+import { DeleteOutlined, DownloadOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
-import { AppLayout } from '../components/AppLayout'
+import { SortableTable } from '../components/SortableTable'
 import { ClearFiltersButton } from '../components/ClearFiltersButton'
 import { FilterBar } from '../components/FilterBar'
+import { AppLayout } from '../components/AppLayout'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
+import { DisciplineIncidentWizardModal } from '../components/DisciplineIncidentWizardModal'
+import { DisciplineIncidentDrawer } from '../components/DisciplineIncidentDrawer'
+import { DisciplineBehaviorPointModal } from '../components/DisciplineBehaviorPointModal'
+import { DisciplineRegulationArticleModal } from '../components/DisciplineRegulationArticleModal'
+import { DisciplineMiniBarChart } from '../components/DisciplineMiniBarChart'
 import { useAuth } from '../auth/AuthContext'
 import {
-  createDisciplinaryCase,
-  deleteDisciplinaryCase,
-  downloadDisciplinaryDocument,
-  fetchDisciplinaryStats,
-  listDisciplinaryCases,
-  updateDisciplinaryCase,
-} from '../api/disciplinaryCases'
-import type { DisciplinaryDocumentType } from '../api/disciplinaryCases'
-import { deleteTeacherNote, listTeacherNotes } from '../api/teacherNotes'
+  createBehaviorPoint,
+  createRegulationArticle,
+  deleteBehaviorPoint,
+  deleteIncident,
+  deleteRegulationArticle,
+  fetchDisciplineStats,
+  listIncidents,
+  listRegulationArticles,
+  listSanctionedStudents,
+  summarizeBehaviorPoints,
+} from '../api/discipline'
 import { listStudents } from '../api/students'
+import { downloadRegulation } from '../api/regulations'
 import { getErrorMessage } from '../api/client'
+import { downloadBlob } from '../utils/download'
+import { deleteTeacherNote, listTeacherNotes } from '../api/teacherNotes'
 import { compareValues, nestedPersonNameSorter, SORT_AZ } from '../utils/tableSort'
 import {
-  CASE_STATUS_LABELS,
-  CASE_STATUS_OPTIONS,
-  SANCTION_LEVEL_LABELS,
-  SANCTION_LEVEL_OPTIONS,
-} from '../types/disciplinaryCase'
-import type { DisciplinaryCase, DisciplinaryCasePayload, DisciplinaryCaseStudent, DisciplinaryStats } from '../types/disciplinaryCase'
+  INCIDENT_STATUS_LABELS,
+  INCIDENT_STATUS_OPTIONS,
+  SANCTION_TYPE_LABELS,
+  SANCTION_TYPE_OPTIONS,
+} from '../types/discipline'
+import type {
+  DisciplineBehaviorPointSummary,
+  DisciplineIncident,
+  DisciplineRegulationArticle,
+  DisciplineSanctionedStudent,
+  DisciplineStats,
+} from '../types/discipline'
 import type { TeacherNote } from '../types/teacherNote'
 import type { Student } from '../types/student'
-import { downloadBlob } from '../utils/download'
 import { tablePagination } from '../utils/tablePagination'
 import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
-function classroomLabel(student?: DisciplinaryCaseStudent | null): string {
-  if (!student?.Classroom) return ''
-  return `${student.Classroom.class_level}/${student.Classroom.section}`
+function currentAcademicYear(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  return now.getMonth() >= 8 ? `${year}-${year + 1}` : `${year - 1}-${year}`
 }
 
-function studentFullName(student?: DisciplinaryCaseStudent | null): string {
+function classroomLabel(student?: { class_level?: string | null; section?: string | null; Classroom?: { class_level: string; section: string } | null } | null): string {
   if (!student) return ''
-  return `${student.first_name} ${student.last_name}`
+  if (student.Classroom) return `${student.Classroom.class_level}/${student.Classroom.section}`
+  if (student.class_level) return `${student.class_level}${student.section ? '/' + student.section : ''}`
+  return ''
 }
 
 function matchesQuery(q: string, ...parts: Array<string | null | undefined>): boolean {
@@ -56,199 +73,280 @@ export function DisciplinePage() {
   const { message, modal } = App.useApp()
   const { session, hasPermission } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
-  const tab = searchParams.get('tab') === 'notes' ? 'notes' : 'cases'
+  const tab = searchParams.get('tab') || 'incidents'
 
-  const [cases, setCases] = useState<DisciplinaryCase[]>([])
-  const [teacherNotes, setTeacherNotes] = useState<TeacherNote[]>([])
-  const [students, setStudents] = useState<Student[]>([])
-  const [stats, setStats] = useState<DisciplinaryStats | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [createModalOpen, setCreateModalOpen] = useState(false)
-  const [editing, setEditing] = useState<DisciplinaryCase | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-  const [createForm] = Form.useForm<DisciplinaryCasePayload>()
-  const [editForm] = Form.useForm<{ status: string; sanction_level?: string; decision_date?: string; decision_summary?: string }>()
-
-  const [caseSearch, setCaseSearch] = useState('')
-  const caseSearchQuery = useDebouncedValue(caseSearch)
-  const [caseStatusFilter, setCaseStatusFilter] = useState<string | undefined>()
-  const [noteSearch, setNoteSearch] = useState('')
-  const noteSearchQuery = useDebouncedValue(noteSearch)
-  const [noteClassroomFilter, setNoteClassroomFilter] = useState<string | undefined>()
-  const [noteTeacherFilter, setNoteTeacherFilter] = useState<number | undefined>()
-  const [noteTagFilter, setNoteTagFilter] = useState<string | undefined>()
-
-  const canCreate = hasPermission('discipline.create')
-  const canUpdate = hasPermission('discipline.update')
   const canDelete = hasPermission('discipline.delete')
+  const canCreate = hasPermission('discipline.create')
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const setTab = (key: string) => {
+    if (key === 'incidents') setSearchParams({})
+    else setSearchParams({ tab: key })
+  }
+
+  // ---- Olaylar ----
+  const [incidents, setIncidents] = useState<DisciplineIncident[]>([])
+  const [loadingIncidents, setLoadingIncidents] = useState(true)
+  const [wizardOpen, setWizardOpen] = useState(false)
+  const [selectedIncident, setSelectedIncident] = useState<DisciplineIncident | null>(null)
+  const selectedIncidentIdRef = useRef<number | null>(null)
+  const [search, setSearch] = useState('')
+  const searchQuery = useDebouncedValue(search)
+  const [statusFilter, setStatusFilter] = useState<string | undefined>()
+
+  const loadIncidents = useCallback(async () => {
+    setLoadingIncidents(true)
     try {
-      const [caseData, studentData, statsData, teacherNoteData] = await Promise.all([
-        listDisciplinaryCases(),
-        listStudents(),
-        fetchDisciplinaryStats(),
-        listTeacherNotes(),
-      ])
-      setCases(caseData)
-      setStudents(studentData)
-      setStats(statsData)
-      setTeacherNotes(teacherNoteData)
+      const data = await listIncidents()
+      setIncidents(data)
+      const openId = selectedIncidentIdRef.current
+      if (openId) {
+        const fresh = data.find((i) => i.id === openId)
+        if (fresh) setSelectedIncident(fresh)
+      }
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
-      setLoading(false)
+      setLoadingIncidents(false)
     }
   }, [message])
 
   useEffect(() => {
-    void load()
-  }, [load])
+    void loadIncidents()
+  }, [loadIncidents])
 
-  const setTab = (key: string) => {
-    if (key === 'notes') setSearchParams({ tab: 'notes' })
-    else setSearchParams({})
-  }
-
-  const filteredCases = useMemo(() => {
-    const q = caseSearchQuery.trim().toLocaleLowerCase('tr-TR')
-    return cases.filter((row) => {
-      if (caseStatusFilter && row.status !== caseStatusFilter) return false
-      return matchesQuery(
-        q,
-        studentFullName(row.Student),
-        row.Student?.last_name,
-        row.Student?.first_name,
-        row.Student?.student_number,
-        classroomLabel(row.Student),
-        row.description,
-        SANCTION_LEVEL_LABELS[row.sanction_level || ''] || row.sanction_level,
-        CASE_STATUS_LABELS[row.status] || row.status,
-      )
+  const filteredIncidents = useMemo(() => {
+    const q = searchQuery.trim().toLocaleLowerCase('tr-TR')
+    return incidents.filter((row) => {
+      if (statusFilter && row.status !== statusFilter) return false
+      return matchesQuery(q, row.incident_code, row.title, row.location, row.summary)
     })
-  }, [cases, caseSearchQuery, caseStatusFilter])
+  }, [incidents, searchQuery, statusFilter])
 
-  const filteredTeacherNotes = useMemo(() => {
-    const q = noteSearchQuery.trim().toLocaleLowerCase('tr-TR')
-    return teacherNotes.filter((row) => {
-      if (noteClassroomFilter && classroomLabel(row.Student) !== noteClassroomFilter) return false
-      if (noteTeacherFilter && row.teacher_id !== noteTeacherFilter) return false
-      if (noteTagFilter && !row.tags.includes(noteTagFilter)) return false
-      return matchesQuery(
-        q,
-        studentFullName(row.Student),
-        row.Student?.last_name,
-        row.Student?.first_name,
-        row.Student?.student_number,
-        classroomLabel(row.Student),
-        row.Teacher?.full_name,
-        row.note,
-        row.tags.join(' '),
-      )
-    })
-  }, [teacherNotes, noteSearchQuery, noteClassroomFilter, noteTeacherFilter, noteTagFilter])
-
-  const noteClassroomOptions = useMemo(() => {
-    const labels = new Set<string>()
-    teacherNotes.forEach((row) => {
-      const label = classroomLabel(row.Student)
-      if (label) labels.add(label)
-    })
-    return [...labels].sort((a, b) => a.localeCompare(b, 'tr')).map((label) => ({ value: label, label }))
-  }, [teacherNotes])
-
-  const noteTeacherOptions = useMemo(() => {
-    const byId = new Map<number, string>()
-    teacherNotes.forEach((row) => {
-      if (row.Teacher && !byId.has(row.teacher_id)) byId.set(row.teacher_id, row.Teacher.full_name)
-    })
-    return [...byId.entries()]
-      .sort((a, b) => a[1].localeCompare(b[1], 'tr'))
-      .map(([value, label]) => ({ value, label }))
-  }, [teacherNotes])
-
-  const noteTagOptions = useMemo(() => {
-    const tags = new Set<string>()
-    teacherNotes.forEach((row) => row.tags.forEach((tag) => tags.add(tag)))
-    return [...tags].sort((a, b) => a.localeCompare(b, 'tr')).map((tag) => ({ value: tag, label: tag }))
-  }, [teacherNotes])
-
-  const caseFiltersActive = Boolean(caseSearch.trim() || caseStatusFilter)
-  const noteFiltersActive = Boolean(noteSearch.trim() || noteClassroomFilter || noteTeacherFilter || noteTagFilter)
+  const filtersActive = Boolean(search.trim() || statusFilter)
 
   const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
-    getIds: () => filteredCases.map((c) => c.id),
-    deleteOne: (id) => deleteDisciplinaryCase(Number(id)),
-    noun: 'disiplin dosyası',
-    reload: () => void load(),
+    getIds: () => filteredIncidents.map((c) => c.id),
+    deleteOne: (id) => deleteIncident(Number(id)),
+    noun: 'disiplin olayı',
+    reload: () => void loadIncidents(),
     message,
   })
 
-  const onCreate = async (values: DisciplinaryCasePayload) => {
-    if (!session) return
-    setSubmitting(true)
-    try {
-      await createDisciplinaryCase(session.user.tenant_id, values)
-      message.success('Disiplin dosyası açıldı')
-      setCreateModalOpen(false)
-      createForm.resetFields()
-      void load()
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    } finally {
-      setSubmitting(false)
-    }
+  const openIncident = (row: DisciplineIncident) => {
+    selectedIncidentIdRef.current = row.id
+    setSelectedIncident(row)
   }
 
-  const openEdit = (row: DisciplinaryCase) => {
-    setEditing(row)
-    editForm.setFieldsValue({
-      status: row.status,
-      sanction_level: row.sanction_level || undefined,
-      decision_date: row.decision_date || undefined,
-      decision_summary: row.decision_summary || undefined,
-    })
+  const onWizardFinished = (created: DisciplineIncident) => {
+    setWizardOpen(false)
+    openIncident(created)
+    void loadIncidents()
   }
 
-  const onEditSubmit = async (values: {
-    status: string
-    sanction_level?: string
-    decision_date?: string
-    decision_summary?: string
-  }) => {
-    if (!editing) return
-    setSubmitting(true)
-    try {
-      await updateDisciplinaryCase(editing.id, values)
-      message.success('Güncellendi')
-      setEditing(null)
-      void load()
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const onDelete = (row: DisciplinaryCase) => {
+  const onDeleteIncident = (row: DisciplineIncident) => {
     modal.confirm({
-      title: 'Dosyayı sil',
-      content: 'Bu disiplin dosyasını silmek istediğinize emin misiniz?',
+      title: 'Olayı sil',
+      content: `${row.incident_code} - ${row.title} kalıcı olarak silinecek (ilgili tüm katılımcı, tutanak ve kararlar dahil).`,
       okText: 'Sil',
       okButtonProps: { danger: true },
       cancelText: 'Vazgeç',
       onOk: async () => {
         try {
-          await deleteDisciplinaryCase(row.id)
+          await deleteIncident(row.id)
           message.success('Silindi')
-          void load()
+          void loadIncidents()
         } catch (err) {
           message.error(getErrorMessage(err))
         }
       },
     })
   }
+
+  const incidentColumns: ColumnsType<DisciplineIncident> = [
+    { title: 'Olay Kodu', dataIndex: 'incident_code', sorter: (a, b) => compareValues(a.incident_code, b.incident_code), sortDirections: [...SORT_AZ] },
+    { title: 'Olay Adı', dataIndex: 'title', sorter: (a, b) => compareValues(a.title, b.title), sortDirections: [...SORT_AZ] },
+    { title: 'Tarih', dataIndex: 'incident_date', sorter: (a, b) => compareValues(a.incident_date, b.incident_date), sortDirections: [...SORT_AZ] },
+    { title: 'Okul', render: (_: unknown, r) => r.School?.name || '—' },
+    { title: 'Katılımcı', render: (_: unknown, r) => r.Participants?.length ?? 0 },
+    { title: 'Durum', dataIndex: 'status', render: (v: string) => <Tag>{INCIDENT_STATUS_LABELS[v] || v}</Tag> },
+    {
+      title: 'İşlemler',
+      width: 100,
+      render: (_: unknown, record: DisciplineIncident) =>
+        canDelete && <Button size="small" danger icon={<DeleteOutlined />} onClick={(e) => { e.stopPropagation(); onDeleteIncident(record) }} />,
+    },
+  ]
+
+  // ---- Davranış Puanı ----
+  const [behaviorSummary, setBehaviorSummary] = useState<DisciplineBehaviorPointSummary[]>([])
+  const [loadingBehavior, setLoadingBehavior] = useState(false)
+  const [behaviorModalOpen, setBehaviorModalOpen] = useState(false)
+  const [behaviorStudents, setBehaviorStudents] = useState<Student[]>([])
+  const [savingBehavior, setSavingBehavior] = useState(false)
+
+  const loadBehaviorSummary = useCallback(async () => {
+    setLoadingBehavior(true)
+    try {
+      const data = await summarizeBehaviorPoints()
+      setBehaviorSummary(data)
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setLoadingBehavior(false)
+    }
+  }, [message])
+
+  useEffect(() => {
+    if (tab === 'behavior') {
+      void loadBehaviorSummary()
+      void listStudents().then(setBehaviorStudents).catch(() => undefined)
+    }
+  }, [tab, loadBehaviorSummary])
+
+  const onCreateBehaviorPoint = async (values: {
+    student_id: number
+    academic_year: string
+    points_deducted: number
+    points_restored: number
+    restore_date?: string
+    reason?: string
+  }) => {
+    setSavingBehavior(true)
+    try {
+      await createBehaviorPoint(values)
+      message.success('Kaydedildi')
+      setBehaviorModalOpen(false)
+      void loadBehaviorSummary()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSavingBehavior(false)
+    }
+  }
+
+  const behaviorColumns: ColumnsType<DisciplineBehaviorPointSummary> = [
+    { title: 'Öğrenci No', render: (_: unknown, r) => r.student.student_number || '—' },
+    { title: 'Adı Soyadı', render: (_: unknown, r) => `${r.student.first_name} ${r.student.last_name}` },
+    { title: 'Sınıf', render: (_: unknown, r) => classroomLabel(r.student) || '—' },
+    { title: 'Kırılan Puan', dataIndex: 'points_deducted', sorter: (a, b) => a.points_deducted - b.points_deducted },
+    { title: 'İade Edilen', dataIndex: 'points_restored', sorter: (a, b) => a.points_restored - b.points_restored },
+    { title: 'Kalan', render: (_: unknown, r) => r.points_deducted - r.points_restored },
+    {
+      title: 'İşlemler',
+      width: 80,
+      render: (_: unknown, r) =>
+        canDelete && (
+          <Button
+            size="small"
+            danger
+            icon={<DeleteOutlined />}
+            onClick={() => {
+              modal.confirm({
+                title: 'Kayıtları sil',
+                content: `${r.student.first_name} ${r.student.last_name} için tüm davranış puanı kayıtları silinecek.`,
+                okText: 'Sil',
+                okButtonProps: { danger: true },
+                cancelText: 'Vazgeç',
+                onOk: async () => {
+                  await Promise.all(r.entries.map((e) => deleteBehaviorPoint(e.id)))
+                  void loadBehaviorSummary()
+                },
+              })
+            }}
+          />
+        ),
+    },
+  ]
+
+  // ---- Diğer: istatistik / ceza alan öğrenciler / yönetmelik maddeleri ----
+  const [stats, setStats] = useState<DisciplineStats | null>(null)
+  const [sanctioned, setSanctioned] = useState<DisciplineSanctionedStudent[]>([])
+  const [articles, setArticles] = useState<DisciplineRegulationArticle[]>([])
+  const [loadingOther, setLoadingOther] = useState(false)
+  const [sanctionFilter, setSanctionFilter] = useState<string | undefined>()
+  const [articleModalOpen, setArticleModalOpen] = useState(false)
+  const [savingArticle, setSavingArticle] = useState(false)
+
+  const loadOther = useCallback(async () => {
+    setLoadingOther(true)
+    try {
+      const [s, list] = await Promise.all([fetchDisciplineStats(), listRegulationArticles()])
+      setStats(s)
+      setArticles(list)
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setLoadingOther(false)
+    }
+  }, [message])
+
+  const loadSanctioned = useCallback(async () => {
+    try {
+      const data = await listSanctionedStudents(sanctionFilter ? { sanction_type: sanctionFilter } : undefined)
+      setSanctioned(data)
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    }
+  }, [message, sanctionFilter])
+
+  useEffect(() => {
+    if (tab === 'other') {
+      void loadOther()
+      void loadSanctioned()
+    }
+  }, [tab, loadOther, loadSanctioned])
+
+  const onCreateArticle = async (values: { article_no?: string; title: string; description?: string; default_sanction_type?: string }) => {
+    setSavingArticle(true)
+    try {
+      await createRegulationArticle(values)
+      message.success('Eklendi')
+      setArticleModalOpen(false)
+      void loadOther()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSavingArticle(false)
+    }
+  }
+
+  const onDownloadRegulation = async () => {
+    try {
+      const blob = await downloadRegulation('ortaogretim-kurumlari-yonetmeligi')
+      downloadBlob(blob, 'MEB-Ortaogretim-Kurumlari-Yonetmeligi.pdf')
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    }
+  }
+
+  // ---- Öğretmen Bildirimleri ----
+  const [teacherNotes, setTeacherNotes] = useState<TeacherNote[]>([])
+  const [loadingNotes, setLoadingNotes] = useState(false)
+  const [noteSearch, setNoteSearch] = useState('')
+  const noteSearchQuery = useDebouncedValue(noteSearch)
+
+  const loadTeacherNotes = useCallback(async () => {
+    setLoadingNotes(true)
+    try {
+      const data = await listTeacherNotes()
+      setTeacherNotes(data)
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setLoadingNotes(false)
+    }
+  }, [message])
+
+  useEffect(() => {
+    if (tab === 'notes') void loadTeacherNotes()
+  }, [tab, loadTeacherNotes])
+
+  const filteredTeacherNotes = useMemo(() => {
+    const q = noteSearchQuery.trim().toLocaleLowerCase('tr-TR')
+    return teacherNotes.filter((row) =>
+      matchesQuery(q, row.Student ? `${row.Student.first_name} ${row.Student.last_name}` : '', row.Student?.student_number, row.Teacher?.full_name, row.note, row.tags.join(' ')),
+    )
+  }, [teacherNotes, noteSearchQuery])
 
   const onDeleteTeacherNote = (row: TeacherNote) => {
     modal.confirm({
@@ -261,127 +359,13 @@ export function DisciplinePage() {
         try {
           await deleteTeacherNote(row.id)
           message.success('Silindi')
-          void load()
+          void loadTeacherNotes()
         } catch (err) {
           message.error(getErrorMessage(err))
         }
       },
     })
   }
-
-  const onDownloadDocument = async (row: DisciplinaryCase, type: DisciplinaryDocumentType) => {
-    try {
-      const blob = await downloadDisciplinaryDocument(row.id, type)
-      downloadBlob(blob, `${type}-${row.id}.pdf`)
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    }
-  }
-
-  const columns: ColumnsType<DisciplinaryCase> = [
-    {
-      title: 'Öğrenci No',
-      sorter: (a, b) => compareValues(a.Student?.student_number, b.Student?.student_number),
-      sortDirections: [...SORT_AZ],
-      render: (_: unknown, r: DisciplinaryCase) => r.Student?.student_number || '—',
-    },
-    {
-      title: 'Adı Soyadı',
-      sorter: nestedPersonNameSorter((r: DisciplinaryCase) => r.Student),
-      sortDirections: [...SORT_AZ],
-      render: (_: unknown, r: DisciplinaryCase) => (r.Student ? `${r.Student.first_name} ${r.Student.last_name}` : '—'),
-    },
-    { title: 'Olay Tarihi', dataIndex: 'incident_date' },
-    {
-      title: 'Yaptırım',
-      dataIndex: 'sanction_level',
-      render: (v: string | null) => (v ? SANCTION_LEVEL_LABELS[v] : '—'),
-    },
-    {
-      title: 'Durum',
-      dataIndex: 'status',
-      render: (v: string) => <Tag>{CASE_STATUS_LABELS[v] || v}</Tag>,
-    },
-    {
-      title: 'İşlemler',
-      width: 200,
-      render: (_: unknown, record: DisciplinaryCase) => (
-        <Space>
-          <Dropdown
-            menu={{
-              items: [
-                { key: 'veli_tebligati', label: 'Veli Tebligatı' },
-                { key: 'savunma_istemi', label: 'Savunma İstemi' },
-                { key: 'karar_bildirimi', label: 'Karar Bildirimi' },
-              ],
-              onClick: ({ key }) => void onDownloadDocument(record, key as DisciplinaryDocumentType),
-            }}
-          >
-            <Button size="small" icon={<FileTextOutlined />} />
-          </Dropdown>
-          {canUpdate && (
-            <Button size="small" onClick={() => openEdit(record)}>
-              Karar / Durum
-            </Button>
-          )}
-          {canDelete && (
-            <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onDelete(record)} />
-          )}
-        </Space>
-      ),
-    },
-  ]
-
-  const teacherNoteColumns: ColumnsType<TeacherNote> = [
-    {
-      title: 'Öğrenci No',
-      sorter: (a, b) => compareValues(a.Student?.student_number, b.Student?.student_number),
-      sortDirections: [...SORT_AZ],
-      render: (_: unknown, r: TeacherNote) => r.Student?.student_number || '—',
-    },
-    {
-      title: 'Adı Soyadı',
-      sorter: nestedPersonNameSorter((r: TeacherNote) => r.Student),
-      sortDirections: [...SORT_AZ],
-      render: (_: unknown, r: TeacherNote) => (r.Student ? `${r.Student.first_name} ${r.Student.last_name}` : '—'),
-    },
-    {
-      title: 'Sınıf',
-      sorter: (a, b) => compareValues(classroomLabel(a.Student), classroomLabel(b.Student)),
-      sortDirections: [...SORT_AZ],
-      render: (_: unknown, r: TeacherNote) => classroomLabel(r.Student) || '—',
-    },
-    {
-      title: 'Bildiren Öğretmen',
-      sorter: (a, b) => compareValues(a.Teacher?.full_name, b.Teacher?.full_name),
-      sortDirections: [...SORT_AZ],
-      render: (_: unknown, r: TeacherNote) => r.Teacher?.full_name || '—',
-    },
-    {
-      title: 'Sebepler',
-      render: (_: unknown, r: TeacherNote) => (
-        <Space wrap>
-          {r.tags.map((tag, i) => (
-            <Tag key={i}>{tag}</Tag>
-          ))}
-          {r.note && <span>{r.note}</span>}
-        </Space>
-      ),
-    },
-    {
-      title: 'Tarih',
-      dataIndex: 'created_at',
-      render: (v: string) => dayjs(v).format('DD.MM.YYYY HH:mm'),
-    },
-    {
-      title: 'İşlemler',
-      width: 80,
-      render: (_: unknown, record: TeacherNote) =>
-        canDelete && (
-          <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onDeleteTeacherNote(record)} />
-        ),
-    },
-  ]
 
   return (
     <AppLayout title="Disiplin Modülü">
@@ -394,30 +378,19 @@ export function DisciplinePage() {
         onChange={setTab}
         items={[
           {
-            key: 'cases',
-            label: `Disiplin Dosyaları (${cases.length})`,
+            key: 'incidents',
+            label: `Disiplin Olayları (${incidents.length})`,
             children: (
               <>
-                {stats && (
-                  <Space wrap style={{ marginBottom: 16 }}>
-                    <Tag color="blue">Toplam: {stats.total}</Tag>
-                    {Object.entries(stats.by_status).map(([status, count]) => (
-                      <Tag key={status}>
-                        {CASE_STATUS_LABELS[status] || status}: {count}
-                      </Tag>
-                    ))}
-                  </Space>
-                )}
-
                 <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 16 }} wrap>
-                  {canDelete && filteredCases.length > 0 && (
+                  {canDelete && filteredIncidents.length > 0 && (
                     <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
-                      Toplu sil ({filteredCases.length})
+                      Toplu sil ({filteredIncidents.length})
                     </Button>
                   )}
                   {canCreate && (
-                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
-                      Yeni Disiplin Dosyası
+                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setWizardOpen(true)}>
+                      Yeni Disiplin Olayı
                     </Button>
                   )}
                 </Space>
@@ -426,37 +399,166 @@ export function DisciplinePage() {
                   <Input
                     allowClear
                     prefix={<SearchOutlined />}
-                    placeholder="Ad, soyad, öğrenci no veya açıklama ile ara..."
-                    value={caseSearch}
-                    onChange={(e) => setCaseSearch(e.target.value)}
+                    placeholder="Olay kodu, adı veya açıklama ile ara..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
                     style={{ width: 320 }}
                   />
-                  <Select
-                    allowClear
-                    placeholder="Durum"
-                    style={{ width: 180 }}
-                    options={CASE_STATUS_OPTIONS}
-                    value={caseStatusFilter}
-                    onChange={setCaseStatusFilter}
-                  />
+                  <Select allowClear placeholder="Durum" style={{ width: 180 }} options={INCIDENT_STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
                   <ClearFiltersButton
-                    active={caseFiltersActive}
+                    active={filtersActive}
                     onClick={() => {
-                      setCaseSearch('')
-                      setCaseStatusFilter(undefined)
+                      setSearch('')
+                      setStatusFilter(undefined)
                     }}
                   />
                 </FilterBar>
 
                 <SortableTable
                   rowKey="id"
-                  loading={loading}
-                  columns={columns}
-                  dataSource={filteredCases}
+                  loading={loadingIncidents}
+                  columns={incidentColumns}
+                  dataSource={filteredIncidents}
+                  pagination={tablePagination(20)}
+                  scroll={{ x: 'max-content' }}
+                  onRow={(record) => ({ onClick: () => openIncident(record), style: { cursor: 'pointer' } })}
+                />
+              </>
+            ),
+          },
+          {
+            key: 'behavior',
+            label: 'Davranış Puanı',
+            children: (
+              <>
+                <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 16 }}>
+                  {canCreate && (
+                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setBehaviorModalOpen(true)}>
+                      Puan Kaydı Ekle
+                    </Button>
+                  )}
+                </Space>
+                <SortableTable
+                  rowKey={(r) => r.student.id}
+                  loading={loadingBehavior}
+                  columns={behaviorColumns}
+                  dataSource={behaviorSummary}
                   pagination={tablePagination(20)}
                   scroll={{ x: 'max-content' }}
                 />
               </>
+            ),
+          },
+          {
+            key: 'other',
+            label: 'Diğer',
+            children: (
+              <Row gutter={[16, 16]}>
+                <Col span={24}>
+                  <Card title="İstatistik (Ceza / Olay)" loading={loadingOther}>
+                    <Row gutter={16} style={{ marginBottom: 16 }}>
+                      <Col span={8}>
+                        <Statistic title="Toplam Olay" value={stats?.total_incidents ?? 0} />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic title="Toplam Karar" value={stats?.total_decisions ?? 0} />
+                      </Col>
+                    </Row>
+                    <Typography.Text strong>Durum Dağılımı</Typography.Text>
+                    <div style={{ marginTop: 8, marginBottom: 16 }}>
+                      <DisciplineMiniBarChart
+                        data={Object.entries(stats?.by_status || {}).map(([k, v]) => ({ label: INCIDENT_STATUS_LABELS[k] || k, value: v }))}
+                      />
+                    </div>
+                    <Typography.Text strong>Ceza Türü Dağılımı</Typography.Text>
+                    <div style={{ marginTop: 8 }}>
+                      <DisciplineMiniBarChart
+                        color="#fa541c"
+                        data={Object.entries(stats?.by_sanction || {}).map(([k, v]) => ({ label: SANCTION_TYPE_LABELS[k] || k, value: v }))}
+                      />
+                    </div>
+                  </Card>
+                </Col>
+
+                <Col span={24}>
+                  <Card
+                    title="Ceza Alan Öğrenciler"
+                    extra={<Select allowClear placeholder="Ceza türü" style={{ width: 220 }} options={SANCTION_TYPE_OPTIONS} value={sanctionFilter} onChange={setSanctionFilter} />}
+                  >
+                    <List
+                      dataSource={sanctioned}
+                      locale={{ emptyText: <Empty description="Kayıt yok" /> }}
+                      renderItem={(row) => (
+                        <List.Item>
+                          <List.Item.Meta
+                            title={`${row.student.first_name} ${row.student.last_name} (${row.student.student_number || '—'})`}
+                            description={
+                              <Space direction="vertical" size={4}>
+                                {row.decisions.map((d) => (
+                                  <span key={d.id}>
+                                    {d.incident.incident_code} - {d.incident.title} ({d.incident.incident_date}):{' '}
+                                    <Tag color="red">{SANCTION_TYPE_LABELS[d.sanction_type || ''] || '—'}</Tag>
+                                  </span>
+                                ))}
+                              </Space>
+                            }
+                          />
+                        </List.Item>
+                      )}
+                    />
+                  </Card>
+                </Col>
+
+                <Col span={24}>
+                  <Card
+                    title="Yönetmelik Maddeleri"
+                    extra={
+                      <Space>
+                        <Button size="small" icon={<DownloadOutlined />} onClick={() => void onDownloadRegulation()}>
+                          Yönetmeliği İndir
+                        </Button>
+                        {canCreate && (
+                          <Button size="small" icon={<PlusOutlined />} onClick={() => setArticleModalOpen(true)}>
+                            Madde Ekle
+                          </Button>
+                        )}
+                      </Space>
+                    }
+                  >
+                    <List
+                      dataSource={articles}
+                      renderItem={(a) => (
+                        <List.Item
+                          actions={[
+                            a.source === 'custom' && canDelete && (
+                              <Button
+                                key="sil"
+                                size="small"
+                                danger
+                                icon={<DeleteOutlined />}
+                                onClick={async () => {
+                                  await deleteRegulationArticle(a.id)
+                                  void loadOther()
+                                }}
+                              />
+                            ),
+                          ].filter(Boolean)}
+                        >
+                          <List.Item.Meta
+                            title={
+                              <Space>
+                                {a.article_no ? `Madde ${a.article_no}` : a.title}
+                                <Tag color={a.source === 'meb' ? 'blue' : 'default'}>{a.source === 'meb' ? 'MEB' : 'Özel'}</Tag>
+                              </Space>
+                            }
+                            description={a.article_no ? `${a.title}${a.description ? ` — ${a.description}` : ''}` : a.description}
+                          />
+                        </List.Item>
+                      )}
+                    />
+                  </Card>
+                </Col>
+              </Row>
             ),
           },
           {
@@ -473,52 +575,47 @@ export function DisciplinePage() {
                     onChange={(e) => setNoteSearch(e.target.value)}
                     style={{ width: 360 }}
                   />
-                  <Select
-                    allowClear
-                    placeholder="Sınıf"
-                    style={{ width: 140 }}
-                    options={noteClassroomOptions}
-                    value={noteClassroomFilter}
-                    onChange={setNoteClassroomFilter}
-                  />
-                  <Select
-                    allowClear
-                    showSearch
-                    optionFilterProp="label"
-                    placeholder="Öğretmen"
-                    style={{ width: 200 }}
-                    options={noteTeacherOptions}
-                    value={noteTeacherFilter}
-                    onChange={setNoteTeacherFilter}
-                  />
-                  <Select
-                    allowClear
-                    showSearch
-                    optionFilterProp="label"
-                    placeholder="Sebep"
-                    style={{ width: 220 }}
-                    options={noteTagOptions}
-                    value={noteTagFilter}
-                    onChange={setNoteTagFilter}
-                  />
-                  <ClearFiltersButton
-                    active={noteFiltersActive}
-                    onClick={() => {
-                      setNoteSearch('')
-                      setNoteClassroomFilter(undefined)
-                      setNoteTeacherFilter(undefined)
-                      setNoteTagFilter(undefined)
-                    }}
-                  />
                 </FilterBar>
-
                 <SortableTable
                   rowKey="id"
-                  loading={loading}
-                  columns={teacherNoteColumns}
+                  loading={loadingNotes}
                   dataSource={filteredTeacherNotes}
                   pagination={tablePagination(20)}
                   scroll={{ x: 'max-content' }}
+                  columns={[
+                    {
+                      title: 'Öğrenci No',
+                      sorter: (a, b) => compareValues(a.Student?.student_number, b.Student?.student_number),
+                      sortDirections: [...SORT_AZ],
+                      render: (_: unknown, r: TeacherNote) => r.Student?.student_number || '—',
+                    },
+                    {
+                      title: 'Adı Soyadı',
+                      sorter: nestedPersonNameSorter((r: TeacherNote) => r.Student),
+                      sortDirections: [...SORT_AZ],
+                      render: (_: unknown, r: TeacherNote) => (r.Student ? `${r.Student.first_name} ${r.Student.last_name}` : '—'),
+                    },
+                    { title: 'Sınıf', render: (_: unknown, r: TeacherNote) => classroomLabel(r.Student) || '—' },
+                    { title: 'Bildiren Öğretmen', render: (_: unknown, r: TeacherNote) => r.Teacher?.full_name || '—' },
+                    {
+                      title: 'Sebepler',
+                      render: (_: unknown, r: TeacherNote) => (
+                        <Space wrap>
+                          {r.tags.map((tag, i) => (
+                            <Tag key={i}>{tag}</Tag>
+                          ))}
+                          {r.note && <span>{r.note}</span>}
+                        </Space>
+                      ),
+                    },
+                    { title: 'Tarih', dataIndex: 'created_at', render: (v: string) => new Date(v).toLocaleString('tr-TR') },
+                    {
+                      title: 'İşlemler',
+                      width: 80,
+                      render: (_: unknown, record: TeacherNote) =>
+                        canDelete && <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onDeleteTeacherNote(record)} />,
+                    },
+                  ]}
                 />
               </>
             ),
@@ -526,68 +623,40 @@ export function DisciplinePage() {
         ]}
       />
 
-      <Modal
-        title="Yeni Disiplin Dosyası"
-        open={createModalOpen}
-        onCancel={() => setCreateModalOpen(false)}
-        onOk={() => createForm.submit()}
-        confirmLoading={submitting}
-        okText="Oluştur"
-        cancelText="Vazgeç"
-        destroyOnHidden
-      >
-        <Form form={createForm} layout="vertical" onFinish={onCreate}>
-          <Form.Item name="student_id" label="Öğrenci" rules={[{ required: true, message: 'Öğrenci seçimi zorunludur' }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={students.map((s) => ({
-                value: s.id,
-                label: `${s.first_name} ${s.last_name}${s.student_number ? ` (${s.student_number})` : ''}`,
-              }))}
-            />
-          </Form.Item>
-          <Form.Item name="incident_date" label="Olay tarihi" rules={[{ required: true, message: 'Tarih zorunludur' }]}>
-            <Input type="date" />
-          </Form.Item>
-          <Form.Item name="description" label="Olay açıklaması" rules={[{ required: true, message: 'Açıklama zorunludur' }]}>
-            <Input.TextArea rows={3} />
-          </Form.Item>
-          <Form.Item name="sanction_level" label="Önerilen yaptırım">
-            <Select allowClear options={SANCTION_LEVEL_OPTIONS} />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      <Modal
-        title="Karar / Durum Güncelle"
-        open={!!editing}
-        onCancel={() => setEditing(null)}
-        onOk={() => editForm.submit()}
-        confirmLoading={submitting}
-        okText="Kaydet"
-        cancelText="Vazgeç"
-        destroyOnHidden
-      >
-        <Form form={editForm} layout="vertical" onFinish={onEditSubmit}>
-          <Form.Item name="status" label="Durum" rules={[{ required: true }]}>
-            <Select options={CASE_STATUS_OPTIONS} />
-          </Form.Item>
-          <Form.Item name="sanction_level" label="Yaptırım">
-            <Select allowClear options={SANCTION_LEVEL_OPTIONS} />
-          </Form.Item>
-          <Form.Item name="decision_date" label="Karar tarihi">
-            <Input type="date" />
-          </Form.Item>
-          <Form.Item name="decision_summary" label="Karar özeti">
-            <Input.TextArea rows={3} />
-          </Form.Item>
-        </Form>
-      </Modal>
+      <DisciplineIncidentWizardModal
+        open={wizardOpen}
+        schools={session?.schools || []}
+        defaultSchoolId={session?.user.school_id ?? null}
+        onCancel={() => setWizardOpen(false)}
+        onFinished={onWizardFinished}
+      />
+      <DisciplineIncidentDrawer
+        incident={selectedIncident}
+        open={!!selectedIncident}
+        onClose={() => {
+          selectedIncidentIdRef.current = null
+          setSelectedIncident(null)
+        }}
+        onChanged={() => void loadIncidents()}
+      />
+      <DisciplineBehaviorPointModal
+        open={behaviorModalOpen}
+        students={behaviorStudents}
+        academicYear={currentAcademicYear()}
+        submitting={savingBehavior}
+        onCancel={() => setBehaviorModalOpen(false)}
+        onSubmit={onCreateBehaviorPoint}
+      />
+      <DisciplineRegulationArticleModal
+        open={articleModalOpen}
+        submitting={savingArticle}
+        onCancel={() => setArticleModalOpen(false)}
+        onSubmit={onCreateArticle}
+      />
       <TypedPhraseConfirmModal
         open={bulkOpen}
-        title="Disiplin dosyalarını toplu sil"
-        description={`Filtreye uyan ${filteredCases.length} disiplin dosyası silinecek.`}
+        title="Disiplin olaylarını toplu sil"
+        description={`Filtreye uyan ${filteredIncidents.length} disiplin olayı silinecek.`}
         loading={bulkLoading}
         onCancel={() => setBulkOpen(false)}
         onConfirm={onBulkDelete}

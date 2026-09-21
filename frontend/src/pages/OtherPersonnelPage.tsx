@@ -563,7 +563,7 @@ export function OtherPersonnelPage() {
               <Form.Item name="add_to_salary_form" valuePropName="checked">
                 <Checkbox>
                   Maaş Değişikliği Bildirim Formuna ekle (C - Başlayan Personel). İşaret kaldırılırsa
-                  kurum içi görevlendirme kabul edilir.
+                  görevlendirme kabul edilir.
                 </Checkbox>
               </Form.Item>
             )}

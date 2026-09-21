@@ -69,6 +69,7 @@ module.exports = (sequelize, DataTypes) => {
       School.hasMany(models.DykCourse, { foreignKey: "school_id" });
       School.hasMany(models.ExamRoom, { foreignKey: "school_id" });
       School.hasMany(models.ExamSession, { foreignKey: "school_id" });
+      School.hasMany(models.DisciplineIncident, { foreignKey: "school_id" });
     };
   
     return School;

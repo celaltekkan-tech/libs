@@ -23,6 +23,7 @@ const importUpload = multer({
 });
 
 router.get('/', auth, moduleGuard, permission('teachers.read'), ctrl.list);
+router.get('/school-principal', auth, moduleGuard, permission('teachers.read'), ctrl.schoolPrincipal);
 router.get('/promotions/upcoming', auth, moduleGuard, permission('teachers.read'), ctrl.upcomingPromotions);
 router.get(
   '/promotions/salary-form/export',

@@ -47,6 +47,13 @@ function applyCareerDegreeDrop(degree) {
   return { degree: String(deg - 1), changed: true };
 }
 
+/** Kariyer basamağında bir sonraki unvan: Öğretmen → Uzman Öğretmen → Başöğretmen. Başöğretmen'in ötesi yok. */
+function nextKariyerTitle(kariyer) {
+  if (kariyer === 'Öğretmen') return 'Uzman Öğretmen';
+  if (kariyer === 'Uzman Öğretmen') return 'Başöğretmen';
+  return null;
+}
+
 function addYears(date, years) {
   const d = new Date(date);
   d.setFullYear(d.getFullYear() + years);
@@ -89,6 +96,7 @@ module.exports = {
   isAtCeiling,
   advanceDegreeRank,
   applyCareerDegreeDrop,
+  nextKariyerTitle,
   addYears,
   isAnniversary,
   eightYearProgress,

@@ -1,5 +1,12 @@
 import client from './client'
-import type { Student, StudentFilters, StudentImportResult, StudentPayload, StudentImportPreview } from '../types/student'
+import type {
+  RegistrationStatus,
+  Student,
+  StudentFilters,
+  StudentImportResult,
+  StudentPayload,
+  StudentImportPreview,
+} from '../types/student'
 import type { ExportFormat } from '../utils/download'
 
 interface Envelope<T> {
@@ -37,6 +44,15 @@ export async function createStudent(tenantId: number, payload: StudentPayload): 
 
 export async function updateStudent(id: number, payload: Partial<StudentPayload>): Promise<Student> {
   const { data } = await client.put<Envelope<Student>>(`/api/students/${id}`, payload)
+  return data.data
+}
+
+export async function bulkRegistrationStatus(
+  updates: Array<{ id: number; registration_status: Exclude<RegistrationStatus, 'aktif'> }>,
+): Promise<{ updated: number }> {
+  const { data } = await client.post<Envelope<{ updated: number }>>('/api/students/registration-statuses', {
+    updates,
+  })
   return data.data
 }
 

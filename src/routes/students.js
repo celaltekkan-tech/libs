@@ -7,6 +7,7 @@ const {
   createStudentSchema,
   updateStudentSchema,
   exportStudentSchema,
+  bulkRegistrationStatusSchema,
 } = require('../validators/student.validator');
 const auth = require('../middlewares/auth');
 const requireModule = require('../middlewares/moduleGuard');
@@ -74,6 +75,14 @@ router.post(
   ctrl.uploadPhoto
 );
 router.get('/:id', auth, moduleGuard, permission('students.read'), ctrl.get);
+router.post(
+  '/registration-statuses',
+  auth,
+  moduleGuard,
+  permission('students.update'),
+  validate(bulkRegistrationStatusSchema),
+  ctrl.bulkRegistrationStatus,
+);
 router.post('/', auth, moduleGuard, permission('students.create'), validate(createStudentSchema), ctrl.create);
 router.put('/:id', auth, moduleGuard, permission('students.update'), validate(updateStudentSchema), ctrl.update);
 router.delete('/:id', auth, moduleGuard, permission('students.delete'), ctrl.remove);

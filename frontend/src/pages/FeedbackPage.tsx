@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   App,
   Button,
@@ -27,6 +28,7 @@ import {
 import type { Dayjs } from 'dayjs'
 import type { RcFile, UploadFile } from 'antd/es/upload/interface'
 import { AppLayout } from '../components/AppLayout'
+import { getPageHelp } from '../constants/pageHelp'
 import { FilterBar } from '../components/FilterBar'
 import { FeedbackUpdatesBlock, FeedbackThreadBody } from '../components/FeedbackUpdatesBlock'
 import { FeedbackMessageHtml, RichTextEditor, sanitizeFeedbackHtml, stripHtml } from '../components/RichTextEditor'
@@ -61,6 +63,7 @@ const MAX_FILES = 5
 
 export function FeedbackPage() {
   const { message } = App.useApp()
+  const { pathname } = useLocation()
   const [form] = Form.useForm<{ message: string }>()
   const [cancelForm] = Form.useForm<{ reason: string }>()
   const [submitting, setSubmitting] = useState(false)
@@ -107,7 +110,8 @@ export function FeedbackPage() {
       const files = fileList
         .map((f) => f.originFileObj)
         .filter((f): f is RcFile => Boolean(f))
-      await submitFeedback(html, files)
+      const page = getPageHelp(pathname)
+      await submitFeedback(html, files, { path: pathname, title: page.title })
       message.success('Geri bildiriminiz gönderildi, teşekkürler')
       form.resetFields()
       setFileList([])
@@ -315,6 +319,7 @@ export function FeedbackPage() {
                       {' · '}
                       {item.User?.full_name ? `${item.User.full_name} — ` : ''}
                       {new Date(item.created_at).toLocaleString('tr-TR')}
+                      {item.page_title || item.page_path ? ` · ${item.page_title || item.page_path}` : ''}
                     </Typography.Text>
                     <Space>
                       <Tag color={FEEDBACK_STATUS_LABEL[item.status].color}>

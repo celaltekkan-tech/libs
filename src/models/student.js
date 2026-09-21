@@ -52,9 +52,11 @@ module.exports = (sequelize, DataTypes) => {
     Student.hasMany(models.DykAttendanceRecord, { foreignKey: 'student_id' });
     Student.hasMany(models.ParentConsent, { foreignKey: 'student_id' });
     Student.hasMany(models.SeatAssignment, { foreignKey: 'student_id' });
-    Student.hasMany(models.DisciplinaryCase, { foreignKey: 'student_id' });
+    Student.hasMany(models.DisciplineParticipant, { foreignKey: 'student_id' });
+    Student.hasMany(models.DisciplineBehaviorPoint, { foreignKey: 'student_id' });
     Student.hasMany(models.TeacherNote, { foreignKey: 'student_id' });
     Student.hasMany(models.GuidanceSession, { foreignKey: 'student_id' });
+    Student.hasMany(models.ResponsibilityExamItem, { foreignKey: 'student_id' });
   };
 
   return Student;

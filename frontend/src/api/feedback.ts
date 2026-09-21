@@ -7,9 +7,15 @@ interface Envelope<T> {
   data: T
 }
 
-export async function submitFeedback(message: string, files: File[] = []): Promise<Feedback> {
+export async function submitFeedback(
+  message: string,
+  files: File[] = [],
+  page?: { path?: string | null; title?: string | null },
+): Promise<Feedback> {
   const form = new FormData()
   form.append('message', message)
+  if (page?.path) form.append('page_path', page.path)
+  if (page?.title) form.append('page_title', page.title)
   files.forEach((file) => form.append('files', file))
   const { data } = await client.post<Envelope<Feedback>>('/api/feedback', form, {
     headers: { 'Content-Type': 'multipart/form-data' },

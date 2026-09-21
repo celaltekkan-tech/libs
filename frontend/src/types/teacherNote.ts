@@ -1,4 +1,4 @@
-import type { DisciplinaryCaseStudent } from './disciplinaryCase'
+import type { DisciplineStudent } from './discipline'
 
 export interface TeacherNote {
   id: number
@@ -8,7 +8,7 @@ export interface TeacherNote {
   teacher_id: number
   tags: string[]
   note: string | null
-  Student?: DisciplinaryCaseStudent | null
+  Student?: DisciplineStudent | null
   Teacher?: { id: number; full_name: string } | null
   created_at: string
   updated_at: string

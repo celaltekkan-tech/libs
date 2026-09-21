@@ -80,10 +80,24 @@ const exportStudentSchema = Joi.object({
   }).optional(),
 });
 
+const bulkRegistrationStatusSchema = Joi.object({
+  updates: Joi.array()
+    .items(
+      Joi.object({
+        id: Joi.number().integer().required(),
+        registration_status: Joi.string().valid('nakil_giden', 'orgun_egitim_disi').required(),
+      }),
+    )
+    .min(1)
+    .max(2000)
+    .required(),
+});
+
 module.exports = {
   createStudentSchema,
   updateStudentSchema,
   exportStudentSchema,
+  bulkRegistrationStatusSchema,
   REGISTRATION_STATUSES,
   BOARDING_STATUSES,
 };
