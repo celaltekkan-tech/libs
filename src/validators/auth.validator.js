@@ -18,6 +18,47 @@ const totpCode = Joi.string()
     'string.pattern.base': 'Geçerli bir doğrulama kodu girin',
   });
 
+const teacherRegisterStartSchema = Joi.object({
+  school_id: Joi.number().integer().required(),
+  personnel_no: Joi.string().trim().min(1).max(50).required(),
+  last_name: Joi.string().trim().min(1).max(80).required(),
+  email: email.required().messages({
+    'string.email': 'Geçerli bir e-posta adresi girin',
+    'string.empty': 'E-posta zorunludur',
+  }),
+});
+
+const teacherRegisterPendingSchema = Joi.object({
+  pending_token: Joi.string().required().messages({
+    'string.empty': 'Doğrulama oturumu zorunludur',
+  }),
+});
+
+const teacherRegisterSmsSchema = teacherRegisterPendingSchema.keys({
+  phone: Joi.string().trim().max(30).required().messages({
+    'string.empty': 'Cep telefonu zorunludur',
+  }),
+});
+
+function sixDigitCode(value, helpers) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!/^\d{6}$/.test(digits)) {
+    return helpers.error('string.pattern.base');
+  }
+  return digits;
+}
+
+const teacherRegisterVerifySchema = teacherRegisterPendingSchema.keys({
+  code: Joi.string()
+    .trim()
+    .custom(sixDigitCode)
+    .required()
+    .messages({
+      'string.empty': 'Doğrulama kodu zorunludur',
+      'string.pattern.base': '6 haneli doğrulama kodunu girin',
+    }),
+});
+
 const registerSchema = Joi.object({
   tenant_id: Joi.number().integer().required(),
   school_id: Joi.number().integer().allow(null),
@@ -121,6 +162,10 @@ const tenantMenuLayoutSchema = Joi.object({
 });
 
 module.exports = {
+  teacherRegisterStartSchema,
+  teacherRegisterPendingSchema,
+  teacherRegisterSmsSchema,
+  teacherRegisterVerifySchema,
   registerSchema,
   loginSchema,
   verify2faSchema,

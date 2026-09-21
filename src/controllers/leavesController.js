@@ -6,8 +6,8 @@ const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
 
 // 657 sayılı Devlet Memurları Kanunu madde 102: hizmeti 1-10 yıl (10 dahil) olanlara
-// 20 gün, 10 yıldan fazla olanlara 30 gün yıllık izin verilir. service_start_date
-// tanımsızsa veya personel bazlı annual_leave_quota override edilmişse buna göre geriler.
+// 20 gün, 10 yıldan fazla olanlara 30 gün yıllık izin verilir. first_duty_date
+// (yoksa service_start_date) kullanılır; personel bazlı annual_leave_quota override edilmişse ona göre geriler.
 const STANDARD_ANNUAL_LEAVE_DAYS = 20;
 const SENIOR_ANNUAL_LEAVE_DAYS = 30;
 const SENIORITY_THRESHOLD_YEARS = 10;
@@ -25,8 +25,9 @@ function resolveAnnualLeaveQuota(teacher, referenceDate) {
   if (teacher.annual_leave_quota != null) {
     return { quota: teacher.annual_leave_quota, source: 'override' };
   }
-  if (teacher.service_start_date) {
-    const years = serviceYearsAt(teacher.service_start_date, referenceDate);
+  const startDate = teacher.first_duty_date || teacher.service_start_date;
+  if (startDate) {
+    const years = serviceYearsAt(startDate, referenceDate);
     const quota = years > SENIORITY_THRESHOLD_YEARS ? SENIOR_ANNUAL_LEAVE_DAYS : STANDARD_ANNUAL_LEAVE_DAYS;
     return { quota, source: 'auto' };
   }
@@ -54,7 +55,7 @@ function dayCount(startDate, endDate) {
 
 const teacherInclude = {
   model: Teacher,
-  attributes: ['id', 'first_name', 'last_name', 'personnel_no', 'annual_leave_quota', 'service_start_date'],
+  attributes: ['id', 'first_name', 'last_name', 'personnel_no', 'annual_leave_quota', 'service_start_date', 'first_duty_date'],
   required: false,
 };
 

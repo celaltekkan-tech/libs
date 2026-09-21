@@ -9,6 +9,9 @@ export interface License {
   ends_at: string | null
   cancelled_at: string | null
   notes: string | null
+  sms_quota?: number | null
+  sms_used?: number
+  sms_remaining?: number | null
   created_at: string
   updated_at: string
   Tenant?: { id: number; name: string } | null
@@ -20,4 +23,5 @@ export interface CreateLicensePayload {
   starts_at?: string
   ends_at?: string | null
   notes?: string
+  sms_quota?: number | null
 }

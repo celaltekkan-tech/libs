@@ -8,6 +8,7 @@ export const MENU_PATH_PERMISSION: Record<string, string> = {
   '/subjects': 'schedule.read',
   '/academic-years': 'academic_years.read',
   '/norm-positions': 'norm_positions.read',
+  '/promotions': 'teachers.read',
   '/teacher-documents': 'teacher_documents.read',
   '/leaves': 'leaves.read',
   '/duty': 'duty.read',

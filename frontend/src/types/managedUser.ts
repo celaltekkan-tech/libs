@@ -48,7 +48,9 @@ export interface UserFormOptions {
   schools: Array<{ id: number; name: string; code: string }>
   user_limit: number | null
   user_count: number
+  user_exempt_count?: number
   user_remaining: number | null
+  quota_exempt_roles?: string[]
 }
 
 export const SCHOOL_ROLE_OPTIONS: Array<{ value: string; label: string; description: string }> = [

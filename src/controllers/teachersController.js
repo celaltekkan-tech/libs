@@ -1,7 +1,7 @@
 'use strict';
 
 const PDFDocument = require('pdfkit');
-const { Teacher, School, PersonnelCategory, sequelize } = require('../models');
+const { Teacher, School, PersonnelCategory, PromotionHistory, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
@@ -9,6 +9,8 @@ const { parseMebbisWorkbook } = require('../services/mebbisImportService');
 const { ensureDefaultCategories } = require('./personnelCategoriesController');
 const { registerUnicodeFonts } = require('../utils/pdfFonts');
 const { buildPersonnelDocumentDocx } = require('../services/personnelDocumentService');
+const { applyTitleFields, titleFieldsFromMebbisRow } = require('../utils/teacherTitle');
+const { ensureSubjectFromTeacher, ensureSubjectsForBranches, branchFromTeacher } = require('../services/subjectFromBranchService');
 
 const PERSONNEL_DOCUMENT_TITLES = {
   gorevlendirme: 'GÖREVLENDİRME YAZISI',
@@ -21,7 +23,12 @@ const COLUMN_LABELS = {
   last_name: 'Soyad',
   personnel_no: 'Sicil No',
   national_id: 'T.C. Kimlik No',
+  phone: 'Cep telefonu',
+  email: 'E-posta',
   title_branch: 'Unvan / Branş',
+  unvan: 'Unvan',
+  brans: 'Branş',
+  kariyer: 'Kariyer',
   school_name: 'Okul',
   city: 'Şehir',
   district: 'İlçe',
@@ -32,17 +39,21 @@ const COLUMN_LABELS = {
   last_graduated_school: 'Mezun Olunan Okul',
   class_level: 'Sınıf / Kademe',
   school_principal: 'Okul Müdürü',
+  service_start_date: 'Kuruma başlama tarihi',
+  first_duty_date: 'İşe ilk başlama tarihi',
+  union_name: 'Sendika',
 };
 
 const DEFAULT_COLUMNS = [
   'first_name',
   'last_name',
-  'personnel_no',
-  'national_id',
-  'title_branch',
-  'school_name',
-  'city',
-  'district',
+  'unvan',
+  'brans',
+  'kariyer',
+  'phone',
+  'email',
+  'union_name',
+  'first_duty_date',
 ];
 
 function applyPersonnelScope(where, query = {}) {
@@ -106,15 +117,45 @@ function matchesTeacherSearch(teacher, q) {
       .includes(needle) ||
     String(teacher.national_id || '')
       .toLocaleLowerCase('tr-TR')
+      .includes(needle) ||
+    String(teacher.unvan || '')
+      .toLocaleLowerCase('tr-TR')
+      .includes(needle) ||
+    String(teacher.brans || '')
+      .toLocaleLowerCase('tr-TR')
+      .includes(needle) ||
+    String(teacher.kariyer || '')
+      .toLocaleLowerCase('tr-TR')
+      .includes(needle) ||
+    String(teacher.union_name || '')
+      .toLocaleLowerCase('tr-TR')
+      .includes(needle) ||
+    String(teacher.phone || '')
+      .toLocaleLowerCase('tr-TR')
+      .includes(needle) ||
+    String(teacher.email || '')
+      .toLocaleLowerCase('tr-TR')
       .includes(needle)
   );
+}
+
+function normalizeTeacherContact(payload) {
+  if (Object.prototype.hasOwnProperty.call(payload, 'phone')) {
+    const { assertValidMobilePhone } = require('../utils/phone');
+    payload.phone = assertValidMobilePhone(payload.phone, { required: false });
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'email')) {
+    const raw = payload.email == null ? '' : String(payload.email).trim().toLowerCase();
+    payload.email = raw || null;
+  }
+  return payload;
 }
 
 function formatTeacherCell(teacher, key) {
   if (key === 'school_name') return teacher.School?.name || '';
   const value = teacher[key];
   if (value == null || value === '') return '';
-  if (key === 'degree_rank_date') {
+  if (key === 'degree_rank_date' || key === 'first_duty_date' || key === 'service_start_date') {
     const d = value instanceof Date ? value : new Date(value);
     if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
   }
@@ -138,17 +179,9 @@ function splitIlIlce(ilIlce) {
   return { city: parts[0] || null, district: parts[1] || null };
 }
 
-function buildTitleBranch(row) {
-  const parts = [];
-  if (row.gorev) parts.push(row.gorev);
-  if (row.brans) parts.push(row.brans);
-  let text = parts.join(' / ');
-  if (row.seviye_unvani) text += ` (${row.seviye_unvani})`;
-  return text || null;
-}
-
 function buildTeacherPayloadFromMebbisRow(row, tenantId, schoolId) {
   const { city, district } = splitIlIlce(row.il_ilce);
+  const titleFields = titleFieldsFromMebbisRow(row);
   return {
     tenant_id: tenantId,
     school_id: schoolId,
@@ -158,12 +191,13 @@ function buildTeacherPayloadFromMebbisRow(row, tenantId, schoolId) {
     national_id: row.national_id || null,
     first_name: row.first_name,
     last_name: row.last_name,
-    title_branch: buildTitleBranch(row),
+    ...titleFields,
     working_institution: row.kurum_adi || null,
     pension_degree: row.emekli_sicil_no || null,
     rank: row.kademe != null ? String(row.kademe) : null,
     degree: row.derece != null ? String(row.derece) : null,
     service_start_date: row.kurum_baslama_tarihi || null,
+    first_duty_date: row.ilk_gorev_tarihi || null,
     personnel_type: row.personnel_type || 'ogretmen',
     union_name: row.union_name || null,
     meta: {
@@ -240,6 +274,7 @@ module.exports = {
       if (tenantId) await ensureDefaultCategories(tenantId);
 
       await sequelize.transaction(async (transaction) => {
+        const branchNames = [];
         for (const row of toImport) {
           const payload = buildTeacherPayloadFromMebbisRow(row, tenantId, schoolId);
           const category = await findCategoryByCode(tenantId, payload.personnel_type);
@@ -253,11 +288,16 @@ module.exports = {
           if (teacher) {
             await teacher.update(payload, { transaction });
             updated += 1;
+            const branch = branchFromTeacher(teacher);
+            if (branch) branchNames.push(branch);
           } else {
-            await Teacher.create(payload, { transaction });
+            const createdTeacher = await Teacher.create(payload, { transaction });
             created += 1;
+            const branch = branchFromTeacher(createdTeacher);
+            if (branch) branchNames.push(branch);
           }
         }
+        if (tenantId) await ensureSubjectsForBranches(tenantId, branchNames, { transaction });
       });
 
       await audit.log(req, {
@@ -289,7 +329,9 @@ module.exports = {
       const rows = [
         ['Adı Soyadı', `${teacher.first_name} ${teacher.last_name}`],
         ['Sicil No', teacher.personnel_no || '—'],
-        ['Unvan / Branş', teacher.title_branch || '—'],
+        ['Unvan', teacher.unvan || '—'],
+        ['Branş', teacher.brans || '—'],
+        ['Kariyer', teacher.kariyer || '—'],
         ['Görev Yeri', teacher.working_institution || schoolName],
       ];
       const bodyTextMap = {
@@ -362,7 +404,8 @@ module.exports = {
   async upcomingPromotions(req, res, next) {
     try {
       const tenantId = req.user && req.user.tenant_id;
-      const { getSalaryPeriodForDate, getSalaryPeriodRange, suggestNextDegreeRank } = require('../utils/salaryPeriod');
+      const { getSalaryPeriodForDate, getSalaryPeriodRange } = require('../utils/salaryPeriod');
+      const { advanceDegreeRank, applyCareerDegreeDrop, isAtCeiling, eightYearProgress } = require('../utils/promotionEngine');
 
       const periodMonth = req.query.month ? Number(req.query.month) : null;
       const periodYear = req.query.year ? Number(req.query.year) : null;
@@ -379,47 +422,89 @@ module.exports = {
           ? new Date(today.getTime() + days * 86400000)
           : period.endExclusive;
 
-      const where = { tenant_id: tenantId, personnel_type: 'ogretmen', personnel_category_id: null };
+      // Terfi takibi: tüm öğretmen ve memurlar (norm kadro kategorisi ayrımı yapılmaz).
+      const where = { tenant_id: tenantId, personnel_type: { [Op.in]: ['ogretmen', 'memur'] } };
       const teachers = await Teacher.findAll({
         where,
         order: [['degree_rank_date', 'ASC']],
       });
 
-      const data = teachers
-        .filter((t) => t.degree_rank_date)
-        .map((t) => {
-          const nextDate = addYears(t.degree_rank_date, 1);
-          const daysRemaining = Math.round((nextDate.getTime() - today.getTime()) / 86400000);
-          const suggested = suggestNextDegreeRank(t.degree, t.rank);
-          const inCurrentPeriod =
-            nextDate >= period.start && nextDate < period.endExclusive;
-          return {
-            teacher_id: t.id,
-            teacher_name: `${t.first_name} ${t.last_name}`,
-            personnel_no: t.personnel_no,
-            degree: t.degree,
-            rank: t.rank,
-            suggested_degree: suggested.new_degree,
-            suggested_rank: suggested.new_rank,
-            degree_rank_date: t.degree_rank_date,
-            next_promotion_date: nextDate.toISOString().slice(0, 10),
-            days_remaining: daysRemaining,
-            in_current_period: inCurrentPeriod,
-          };
-        })
-        .filter((row) => {
-          const next = new Date(row.next_promotion_date);
-          if (days != null && Number.isFinite(days)) {
-            return next <= horizon;
-          }
-          return row.in_current_period || next <= period.endExclusive;
-        })
-        .sort((a, b) => {
-          if (a.in_current_period !== b.in_current_period) {
-            return a.in_current_period ? -1 : 1;
-          }
-          return a.days_remaining - b.days_remaining;
-        });
+      const kariyerAppliedRows = teachers.length
+        ? await PromotionHistory.findAll({
+            where: { teacher_id: { [Op.in]: teachers.map((t) => t.id) }, type: 'kariyer' },
+            attributes: ['teacher_id'],
+          })
+        : [];
+      const kariyerAppliedSet = new Set(kariyerAppliedRows.map((r) => r.teacher_id));
+
+      const allRows = teachers.map((t) => {
+        const atCeiling = isAtCeiling(t.degree, t.rank);
+        const suggested = advanceDegreeRank(t.degree, t.rank);
+
+        let nextDate = null;
+        let daysRemaining = null;
+        let inCurrentPeriod = false;
+        if (t.degree_rank_date) {
+          nextDate = addYears(t.degree_rank_date, 1);
+          daysRemaining = Math.round((nextDate.getTime() - today.getTime()) / 86400000);
+          inCurrentPeriod = nextDate >= period.start && nextDate < period.endExclusive;
+        }
+
+        const eightYear = eightYearProgress(t.eight_year_base_date || t.first_duty_date, today);
+
+        const kariyerEligible =
+          !atCeiling &&
+          !kariyerAppliedSet.has(t.id) &&
+          (t.kariyer === 'Uzman Öğretmen' || t.kariyer === 'Başöğretmen');
+        const kariyerSuggestedDegree = kariyerEligible ? applyCareerDegreeDrop(t.degree).degree : null;
+
+        return {
+          teacher_id: t.id,
+          teacher_name: `${t.first_name} ${t.last_name}`,
+          personnel_no: t.personnel_no,
+          personnel_type: t.personnel_type,
+          degree: t.degree,
+          rank: t.rank,
+          at_ceiling: atCeiling,
+          suggested_degree: suggested.degree,
+          suggested_rank: suggested.rank,
+          degree_rank_date: t.degree_rank_date,
+          next_promotion_date: nextDate ? nextDate.toISOString().slice(0, 10) : null,
+          days_remaining: daysRemaining,
+          in_current_period: inCurrentPeriod,
+          eight_year_base_date: t.eight_year_base_date || t.first_duty_date || null,
+          eight_year_next_checkpoint: eightYear.nextCheckpoint
+            ? eightYear.nextCheckpoint.toISOString().slice(0, 10)
+            : null,
+          eight_year_due: eightYear.isCheckpointDue,
+          kariyer: t.kariyer || null,
+          kariyer_eligible: kariyerEligible,
+          kariyer_suggested_degree: kariyerSuggestedDegree,
+        };
+      });
+
+      const showAll = String(req.query.all || '').toLowerCase() === 'true';
+
+      const isDue = (row) => row.kariyer_eligible || row.eight_year_due || row.in_current_period;
+
+      const data = (
+        showAll
+          ? allRows
+          : allRows
+              .filter((row) => row.degree_rank_date || row.eight_year_due || row.kariyer_eligible)
+              .filter((row) => {
+                if (row.kariyer_eligible || row.eight_year_due) return true;
+                if (!row.next_promotion_date) return false;
+                const next = new Date(row.next_promotion_date);
+                if (days != null && Number.isFinite(days)) {
+                  return next <= horizon;
+                }
+                return row.in_current_period || next <= period.endExclusive;
+              })
+      ).sort((a, b) => {
+        if (isDue(a) !== isDue(b)) return isDue(a) ? -1 : 1;
+        return (a.days_remaining ?? Infinity) - (b.days_remaining ?? Infinity);
+      });
 
       res.json({
         success: true,
@@ -477,14 +562,20 @@ module.exports = {
 
   async create(req, res, next) {
     try {
-      const payload = { ...(req.validatedBody || req.body) };
-      if (req.user && req.user.tenant_id) payload.tenant_id = req.user.tenant_id;
-      await applyCategoryToPayload(payload, payload.tenant_id);
-      if (!payload.personnel_category_id) {
-        payload.personnel_type = payload.personnel_type || 'ogretmen';
-        payload.personnel_category_id = null;
+      const body = { ...(req.validatedBody || req.body) };
+      if (req.user && req.user.tenant_id) body.tenant_id = req.user.tenant_id;
+      await applyCategoryToPayload(body, body.tenant_id);
+      if (!body.personnel_category_id) {
+        body.personnel_type = body.personnel_type || 'ogretmen';
+        body.personnel_category_id = null;
       }
-      const teacher = await Teacher.create(payload);
+      const isTeacher = body.personnel_type === 'ogretmen' && body.personnel_category_id == null;
+      const payload = normalizeTeacherContact(applyTitleFields(body, { defaultKariyer: isTeacher }));
+      const teacher = await sequelize.transaction(async (transaction) => {
+        const created = await Teacher.create(payload, { transaction });
+        await ensureSubjectFromTeacher(created, { transaction });
+        return created;
+      });
       await audit.log(req, {
         action: 'create',
         entityType: 'teacher',
@@ -504,13 +595,16 @@ module.exports = {
       if (req.user && req.user.tenant_id && teacher.tenant_id !== req.user.tenant_id) {
         return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
       }
-      const payload = { ...(req.validatedBody || req.body) };
+      const payload = normalizeTeacherContact(applyTitleFields({ ...(req.validatedBody || req.body) }));
       if (req.user && req.user.tenant_id) payload.tenant_id = req.user.tenant_id;
       await applyCategoryToPayload(payload, teacher.tenant_id);
       if (payload.personnel_category_id === null) {
         payload.personnel_type = payload.personnel_type || 'ogretmen';
       }
-      await teacher.update(payload);
+      await sequelize.transaction(async (transaction) => {
+        await teacher.update(payload, { transaction });
+        await ensureSubjectFromTeacher(teacher, { transaction });
+      });
       await audit.log(req, {
         action: 'update',
         entityType: 'teacher',

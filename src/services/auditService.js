@@ -23,7 +23,7 @@ async function planAllowsAudit(req) {
 }
 
 /**
- * Denetim kaydı yazar. Free planda yazılmaz. Hata ana isteği bozmaz.
+ * Denetim kaydı yazar. Basic planda yazılmaz. Hata ana isteği bozmaz.
  */
 async function log(req, { action, entityType, entityId = null, summary, meta = null }) {
   try {

@@ -43,6 +43,7 @@ const calendarRoutes = require('./routes/calendar');
 const messageLogsRoutes = require('./routes/messageLogs');
 const backupsRoutes = require('./routes/backups');
 const platformRolesRoutes = require('./routes/platformRoles');
+const geoRoutes = require('./routes/geo');
 const errorHandler = require('./middlewares/errorHandler');
 const db = require('./models');
 
@@ -117,7 +118,8 @@ const apiLimiter = rateLimit({
       path === '/api/auth/register' ||
       path === '/api/auth/verify-2fa' ||
       path === '/api/auth/verify-sms' ||
-      path === '/api/auth/resend-sms'
+      path === '/api/auth/resend-sms' ||
+      (req.method !== 'GET' && path.startsWith('/api/auth/teacher-register'))
     );
   },
 });
@@ -149,6 +151,10 @@ app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/verify-2fa', authLimiter);
 app.use('/api/auth/verify-sms', authLimiter);
 app.use('/api/auth/resend-sms', authLimiter);
+app.use('/api/auth/teacher-register', (req, res, next) => {
+  if (req.method === 'GET') return next();
+  return authLimiter(req, res, next);
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/teachers', teachersRoutes);
@@ -190,6 +196,7 @@ app.use('/api/calendar', calendarRoutes);
 app.use('/api/message-logs', messageLogsRoutes);
 app.use('/api/backups', backupsRoutes);
 app.use('/api/platform/roles', platformRolesRoutes);
+app.use('/api/geo', geoRoutes);
 
 app.use((req, res) => {
   res.status(404).json({

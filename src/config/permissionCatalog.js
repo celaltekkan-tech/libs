@@ -64,7 +64,7 @@ const MENU_PERMISSION_GROUPS = [
   },
   {
     id: 'norm_positions',
-    label: 'Norm Kadro',
+    label: 'Terfi Takibi',
     group: 'Personel İşleri',
     module: 'teachers',
     permissions: ['norm_positions.read', 'norm_positions.create', 'norm_positions.update', 'norm_positions.delete'],

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Form, Input, Modal, Select, Space, Switch, Tabs, Tag, Typography } from 'antd'
+import { Alert, App, Button, Form, Input, Modal, Select, Space, Switch, Tabs, Tag, Typography } from 'antd'
 import { SortableTable } from '../components/SortableTable'
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -35,7 +35,7 @@ interface AnnouncementFormValues extends AnnouncementPayload {
 
 export function CommunicationsPage() {
   const { message, modal } = App.useApp()
-  const { session, hasPermission } = useAuth()
+  const { session, hasPermission, refreshSession } = useAuth()
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [students, setStudents] = useState<Student[]>([])
@@ -139,18 +139,27 @@ export function CommunicationsPage() {
     }
   }
 
+  const smsLicense = session?.sms_license || null
+  const canSendSms = Boolean(smsLicense && (smsLicense.sms_remaining == null || smsLicense.sms_remaining > 0))
+  const channelOptions = smsLicense
+    ? CHANNEL_OPTIONS
+    : CHANNEL_OPTIONS.filter((option) => option.value === 'email')
+
   const onMarkSent = (row: Announcement) => {
+    const usesSms = row.channel === 'sms' || row.channel === 'both'
     modal.confirm({
-      title: 'Gönderildi olarak işaretle',
-      content:
-        'Bu sistemde gerçek bir SMS/e-posta gönderim entegrasyonu bulunmuyor. Bu işlem yalnızca kaydı "gönderildi" olarak işaretler. Devam edilsin mi?',
-      okText: 'İşaretle',
+      title: usesSms ? 'SMS gönder' : 'Gönderildi olarak işaretle',
+      content: usesSms
+        ? 'SMS kanalı seçiliyse gerçek SMS gönderilir ve başarılı gönderimler SMS kotasından düşer. Devam edilsin mi?'
+        : 'Bu işlem kaydı gönderildi olarak işaretler. Devam edilsin mi?',
+      okText: usesSms ? 'Gönder' : 'İşaretle',
       cancelText: 'Vazgeç',
       onOk: async () => {
         try {
           await markAnnouncementSent(row.id)
-          message.success('Gönderildi olarak işaretlendi')
+          message.success(usesSms ? 'SMS gönderimi tamamlandı' : 'Gönderildi olarak işaretlendi')
           void load()
+          if (usesSms) void refreshSession()
         } catch (err) {
           message.error(getErrorMessage(err))
         }
@@ -210,7 +219,7 @@ export function CommunicationsPage() {
         <Space>
           {canUpdate && record.status !== 'gonderildi' && (
             <Button size="small" onClick={() => onMarkSent(record)}>
-              Gönderildi İşaretle
+              {record.channel === 'sms' || record.channel === 'both' ? 'SMS Gönder' : 'Gönderildi İşaretle'}
             </Button>
           )}
           {canDelete && (
@@ -246,10 +255,31 @@ export function CommunicationsPage() {
                     </Button>
                   )}
                 </Space>
+                {smsLicense ? (
+                  <Alert
+                    type={canSendSms ? 'info' : 'warning'}
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                    message={
+                      smsLicense.sms_quota == null
+                        ? 'SMS lisansı aktif (sınırsız kota).'
+                        : `SMS lisansı: ${smsLicense.sms_used.toLocaleString('tr-TR')} / ${smsLicense.sms_quota.toLocaleString('tr-TR')} kullanıldı${
+                            smsLicense.sms_remaining != null
+                              ? ` · kalan ${smsLicense.sms_remaining.toLocaleString('tr-TR')}`
+                              : ''
+                          }.`
+                    }
+                  />
+                ) : (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                    message="Aktif SMS kullanım lisansı yok. Veli SMS’i göndermek için SMS 3000 veya SMS 10000 eklentisi gerekir. Öğretmen kayıt SMS’i bundan etkilenmez."
+                  />
+                )}
                 <Typography.Paragraph type="secondary">
-                  Not: Bu sistemde gerçek bir SMS/e-posta sağlayıcı entegrasyonu bulunmuyor. Duyurular burada
-                  kayıt altına alınır ve "gönderildi" olarak işaretlenebilir; fiili gönderim için bir sağlayıcı
-                  entegrasyonu gerekir.
+                  SMS gönderimi başarılı olan her alıcı için kota düşer. Lisans bitiminde kullanılmayan krediler sıfırlanır. Öğretmen kayıt doğrulama SMS’i lisans ve kotaya dahil değildir.
                 </Typography.Paragraph>
                 <SortableTable
                   rowKey="id"
@@ -334,7 +364,7 @@ export function CommunicationsPage() {
             <Input.TextArea rows={3} />
           </Form.Item>
           <Form.Item name="channel" label="Kanal" rules={[{ required: true, message: 'Kanal zorunludur' }]}>
-            <Select options={CHANNEL_OPTIONS} />
+            <Select options={channelOptions} />
           </Form.Item>
           <Form.Item name="target_type" label="Hedef kitle" rules={[{ required: true, message: 'Hedef kitle zorunludur' }]}>
             <Select options={TARGET_TYPE_OPTIONS} />

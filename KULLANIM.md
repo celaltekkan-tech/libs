@@ -87,7 +87,7 @@ Gerekli izinler: oluşturma `users.create`, güncelleme `users.update`, silme `u
 
 ## Okul ekleme
 
-Seed ile gelen örnek okul: **Demo Anadolu Lisesi** (`DEMO-001`), kiracı (tenant) id = 1.
+Seed ile gelen örnek okul: **Demo Anadolu Lisesi** (`100001`), kiracı (tenant) id = 1.
 
 Yeni okul:
 
@@ -99,11 +99,12 @@ Content-Type: application/json
 {
   "tenant_id": 1,
   "name": "Atatürk Anadolu Lisesi",
-  "code": "AAL-001"
+  "code": "765978"
 }
 ```
 
-- `code` benzersiz olmalıdır.
+- `code` 6 haneli sayı olmalı ve sistem genelinde benzersiz olmalıdır.
+- Okul kodunu platform yöneticisi (hesap oluştururken) veya tenant yöneticisi / Premium lisanslı hesap belirler. Diğer kullanıcılar için kod otomatik üretilir.
 - Liste: `GET /api/schools`
 - Güncelleme: `PUT /api/schools/:id`
 - Silme: `DELETE /api/schools/:id`

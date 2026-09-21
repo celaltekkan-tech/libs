@@ -4,6 +4,7 @@ const { Announcement, AnnouncementRecipient, Student } = require('../models');
 const audit = require('../services/auditService');
 const smsEngine = require('../services/smsEngine');
 const messageLogService = require('../services/messageLogService');
+const licenseService = require('../services/licenseService');
 
 function studentFullName(student) {
   return [student.first_name, student.last_name].filter(Boolean).join(' ') || null;
@@ -58,6 +59,22 @@ module.exports = {
       if (tenantId) payload.tenant_id = tenantId;
       if (req.user && req.user.user_id) payload.created_by = req.user.user_id;
 
+      if ((payload.channel === 'sms' || payload.channel === 'both') && tenantId) {
+        try {
+          await licenseService.assertCanSendSms(tenantId, 1);
+        } catch (err) {
+          if (err instanceof licenseService.SmsLicenseError) {
+            return res.status(err.status).json({
+              success: false,
+              code: err.code,
+              message: err.message,
+              ...(err.details || {}),
+            });
+          }
+          throw err;
+        }
+      }
+
       const recipientCount = await resolveRecipientCount(tenantId, payload.target_type, payload.target_ids);
       payload.recipient_count = recipientCount;
 
@@ -93,6 +110,20 @@ module.exports = {
         const where = buildRecipientWhere(row.tenant_id, row.target_type, row.target_ids);
         const students = where ? await Student.findAll({ where }) : [];
         summary.total = students.length;
+        const billedCount = students.filter((student) => student.parent_phone && student.parent_phone.trim()).length;
+        try {
+          await licenseService.assertCanSendSms(row.tenant_id, billedCount);
+        } catch (err) {
+          if (err instanceof licenseService.SmsLicenseError) {
+            return res.status(err.status).json({
+              success: false,
+              code: err.code,
+              message: err.message,
+              ...(err.details || {}),
+            });
+          }
+          throw err;
+        }
 
         for (const student of students) {
           const phone = student.parent_phone && student.parent_phone.trim();
@@ -151,6 +182,9 @@ module.exports = {
           else if (result.status === smsEngine.SMS_STATUS.CANCELLED) summary.iptal += 1;
           else summary.basarisiz += 1;
         }
+        if (summary.basarili > 0) {
+          await licenseService.consumeSmsCredits(row.tenant_id, summary.basarili);
+        }
       }
 
       const finalStatus = summary.total > 0 && summary.basarili === 0 ? 'basarisiz' : 'gonderildi';
@@ -163,6 +197,14 @@ module.exports = {
       });
       res.json({ success: true, data: row, summary });
     } catch (err) {
+      if (err instanceof licenseService.SmsLicenseError) {
+        return res.status(err.status).json({
+          success: false,
+          code: err.code,
+          message: err.message,
+          ...(err.details || {}),
+        });
+      }
       if (err instanceof smsEngine.SmsConfigError) {
         return res.status(500).json({ success: false, message: `SMS motoru yapılandırma hatası: ${err.message}` });
       }

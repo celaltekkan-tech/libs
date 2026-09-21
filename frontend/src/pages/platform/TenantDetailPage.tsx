@@ -18,6 +18,7 @@ import {
 } from '../../api/tenants'
 import { listLicenses } from '../../api/licenses'
 import { getErrorMessage } from '../../api/client'
+import { isAddonPlan } from '../../constants/licensePlans'
 import type { Tenant, TenantSchool, TenantUser, UpdateTenantUserPayload } from '../../types/tenant'
 import type { License } from '../../types/license'
 import { MOBILE_PHONE_RULE, requiredMobilePhoneRule } from '../../utils/phone'
@@ -76,7 +77,8 @@ export function TenantDetailPage() {
     }
   }, [tenantId, message, contactForm])
 
-  const activeLicense = licenses.find((license) => license.status === 'active')
+  const activeLicense = licenses.find((license) => license.status === 'active' && !isAddonPlan(license.plan))
+  const activeSmsLicense = licenses.find((license) => license.status === 'active' && isAddonPlan(license.plan))
 
   useEffect(() => {
     if (Number.isFinite(tenantId)) void load()
@@ -338,9 +340,10 @@ export function TenantDetailPage() {
                       <Space direction="vertical" size={16} style={{ width: '100%' }}>
                         <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
                           Authenticator 2FA veya SMS ile giriş ikinci adımını açabilirsiniz. SMS
-                          girişi için her kullanıcının kendi cep telefonu gerekir; kurum telefonu
-                          kaydedildiğinde telefonu boş olan kullanıcılara otomatik kopyalanır.
-                          Günlük SMS istek limiti 3’tür.
+                          girişi için aktif SMS 3000 / SMS 10000 lisansı ve her kullanıcının kendi
+                          cep telefonu gerekir; kurum telefonu kaydedildiğinde telefonu boş olan
+                          kullanıcılara otomatik kopyalanır. Günlük SMS istek limiti 3’tür.
+                          Öğretmen kayıt SMS’i bu lisansa bağlı değildir.
                         </Typography.Paragraph>
                         <Space wrap>
                           <Switch
@@ -353,6 +356,7 @@ export function TenantDetailPage() {
                           <Switch
                             checked={Boolean(tenant.sms_login_enabled)}
                             loading={togglingSmsLogin}
+                            disabled={!tenant.sms_login_enabled && !activeSmsLicense}
                             checkedChildren="SMS giriş açık"
                             unCheckedChildren="SMS giriş kapalı"
                             onChange={(checked) => void handleToggleSmsLogin(checked)}
@@ -406,6 +410,28 @@ export function TenantDetailPage() {
                       </Descriptions>
                     ) : (
                       <Tag color="red">Aktif lisans yok</Tag>
+                    )}
+                    <Typography.Paragraph strong style={{ marginTop: 16, marginBottom: 8 }}>
+                      SMS eklentisi
+                    </Typography.Paragraph>
+                    {activeSmsLicense ? (
+                      <Descriptions column={1} size="small">
+                        <Descriptions.Item label="Plan">{activeSmsLicense.plan}</Descriptions.Item>
+                        <Descriptions.Item label="Kota">
+                          {activeSmsLicense.sms_quota == null
+                            ? 'Sınırsız'
+                            : activeSmsLicense.sms_used != null
+                              ? `${activeSmsLicense.sms_used.toLocaleString('tr-TR')} / ${activeSmsLicense.sms_quota.toLocaleString('tr-TR')}`
+                              : activeSmsLicense.sms_quota.toLocaleString('tr-TR')}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Bitiş">
+                          {activeSmsLicense.ends_at
+                            ? new Date(activeSmsLicense.ends_at).toLocaleDateString('tr-TR')
+                            : 'Süresiz'}
+                        </Descriptions.Item>
+                      </Descriptions>
+                    ) : (
+                      <Tag>SMS lisansı yok</Tag>
                     )}
                   </Card>
                 ),

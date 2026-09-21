@@ -3,7 +3,7 @@
 const bcrypt = require('bcrypt');
 
 const TENANT_NAME = 'Demo Eğitim Kurumu';
-const SCHOOL_CODE = 'DEMO-001';
+const SCHOOL_CODE = '100001';
 const SCHOOL_NAME = 'Demo Anadolu Lisesi';
 const ADMIN_EMAIL = (process.env.DEMO_ADMIN_EMAIL || 'admin@okul.local').toLowerCase();
 const ADMIN_PASSWORD = process.env.DEMO_ADMIN_PASSWORD || 'Admin1234';
@@ -25,7 +25,7 @@ module.exports = {
 
     if (!tenant) {
       await queryInterface.bulkInsert('Tenants', [
-        { name: TENANT_NAME, plan: 'free', created_at: now, updated_at: now },
+        { name: TENANT_NAME, plan: 'Basic', created_at: now, updated_at: now },
       ]);
       tenant = await selectOne(
         queryInterface,
@@ -36,8 +36,8 @@ module.exports = {
 
     let school = await selectOne(
       queryInterface,
-      'SELECT id FROM "Schools" WHERE code = :code LIMIT 1',
-      { code: SCHOOL_CODE }
+      'SELECT id FROM "Schools" WHERE code = :code OR name = :name LIMIT 1',
+      { code: SCHOOL_CODE, name: SCHOOL_NAME }
     );
 
     if (!school) {

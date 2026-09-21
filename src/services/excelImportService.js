@@ -14,7 +14,10 @@ const IMPORTABLE_FIELDS = [
   { key: 'yasi', label: 'Yaşı', required: false },
   { key: 'registration_status', label: 'Kayıt Durumu', required: false },
   { key: 'parent_name', label: 'Veli Adı', required: false },
+  { key: 'mother_name', label: 'Anne Adı', required: false },
+  { key: 'father_name', label: 'Baba Adı', required: false },
   { key: 'parent_phone', label: 'Veli Telefon', required: false },
+  { key: 'student_phone', label: 'Öğrenci Telefon', required: false },
   { key: 'is_inclusion', label: 'Kaynaştırma', required: false },
   { key: 'is_foreign', label: 'Yabancı Uyruklu', required: false },
   { key: 'boarding_status', label: 'Yurt Durumu', required: false },
@@ -73,8 +76,38 @@ const IMPORT_HEADER_MAP = {
   'kayit durumu': 'registration_status',
   'veli adı': 'parent_name',
   'veli adi': 'parent_name',
+  'veli adı soyadı': 'parent_name',
+  'veli adi soyadi': 'parent_name',
+  'anne adı': 'mother_name',
+  'anne adi': 'mother_name',
+  'anne adı soyadı': 'mother_name',
+  'anne adi soyadi': 'mother_name',
+  anneadi: 'mother_name',
+  anneadı: 'mother_name',
+  anne: 'mother_name',
+  'ana adı': 'mother_name',
+  'ana adi': 'mother_name',
+  'ana adı soyadı': 'mother_name',
+  'ana adi soyadi': 'mother_name',
+  anaadi: 'mother_name',
+  anaadı: 'mother_name',
+  ana: 'mother_name',
+  'baba adı': 'father_name',
+  'baba adi': 'father_name',
+  'baba adı soyadı': 'father_name',
+  'baba adi soyadi': 'father_name',
+  babaadi: 'father_name',
+  babaadı: 'father_name',
+  baba: 'father_name',
   'veli telefon': 'parent_phone',
   'veli telefonu': 'parent_phone',
+  'öğrenci telefon': 'student_phone',
+  'ogrenci telefon': 'student_phone',
+  'öğrenci telefonu': 'student_phone',
+  'ogrenci telefonu': 'student_phone',
+  'öğrenci cep': 'student_phone',
+  'öğrenci cep telefonu': 'student_phone',
+  'ogrenci cep telefonu': 'student_phone',
   kaynaştırma: 'is_inclusion',
   kaynastirma: 'is_inclusion',
   'yabancı uyruklu': 'is_foreign',
@@ -140,7 +173,7 @@ function scoreHeaderRow(row, headerMap = IMPORT_HEADER_MAP, hintRegex = null) {
   if (!Array.isArray(row)) return 0;
   const hintKeys = new Set(Object.keys(headerMap));
   const defaultHint =
-    /(ad|soyad|öğrenci|ogrenci|kimlik|şube|sube|sınıf|sinif|cinsiyet|doğum|dogum|ders|öğretmen|ogretmen|gün|gun|saat)/i;
+    /(ad|soyad|öğrenci|ogrenci|kimlik|şube|sube|sınıf|sinif|cinsiyet|doğum|dogum|anne|ana|baba|veli|ders|öğretmen|ogretmen|gün|gun|saat)/i;
   const hint = hintRegex || defaultHint;
   let score = 0;
   let nonEmpty = 0;
@@ -181,14 +214,48 @@ function extractHeaders(row) {
   return headers;
 }
 
+function inferHeaderField(label, headerMap = IMPORT_HEADER_MAP) {
+  const normalized = normalizeHeader(label);
+  const compact = normalized.replace(/\s+/g, '');
+  if (headerMap[normalized]) return headerMap[normalized];
+  if (headerMap[compact]) return headerMap[compact];
+  if (
+    (/^(anne|ana)(adi|adı|adsoyadi|adisoyadi)?$/.test(compact) ||
+      /\b(anne|ana)\b.*\bad/.test(normalized)) &&
+    !/\bbaba\b/.test(normalized)
+  ) {
+    return 'mother_name';
+  }
+  if (/^baba(adi|adı|adsoyadi|adisoyadi)?$/.test(compact) || /\bbaba\b.*\bad/.test(normalized)) {
+    return 'father_name';
+  }
+  return null;
+}
+
 function suggestMapping(headers, headerMap = IMPORT_HEADER_MAP) {
   const mapping = {};
   const usedFields = new Set();
   headers.forEach(({ index, label }) => {
-    const field = headerMap[normalizeHeader(label)];
+    const field = inferHeaderField(label, headerMap);
     if (field && !usedFields.has(field)) {
       mapping[String(index)] = field;
       usedFields.add(field);
+    }
+  });
+  return mapping;
+}
+
+function fillMissingMappedFields(columnMapping, headers, fields, headerMap = IMPORT_HEADER_MAP) {
+  const mapping = { ...(columnMapping || {}) };
+  const used = new Set(Object.values(mapping).filter(Boolean));
+  const wanted = new Set(fields);
+  (headers || []).forEach(({ index, label }) => {
+    const key = String(index);
+    if (mapping[key]) return;
+    const field = inferHeaderField(label, headerMap);
+    if (field && wanted.has(field) && !used.has(field)) {
+      mapping[key] = field;
+      used.add(field);
     }
   });
   return mapping;
@@ -410,4 +477,5 @@ module.exports = {
   parseClassSection,
   cellToDisplay,
   readSheetMatrix,
+  fillMissingMappedFields,
 };

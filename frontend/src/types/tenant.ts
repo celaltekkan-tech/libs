@@ -53,6 +53,9 @@ export interface CreateTenantWizardPayload {
     name: string
     code: string
     school_type: SchoolType
+    province_id?: number | null
+    district_id?: number | null
+    directory_school_id?: number | null
   }
   admin: {
     full_name: string

@@ -104,9 +104,12 @@ export function MebbisImportModal({ open, schoolId, schoolName, onCancel, onImpo
     },
     { title: 'TC Kimlik No', dataIndex: 'national_id' },
     {
-      title: 'Unvan / Branş',
-      render: (_: unknown, row) => [row.gorev, row.brans].filter(Boolean).join(' / ') || '—',
+      title: 'Unvan',
+      dataIndex: 'gorev',
+      render: (_: unknown, row) => row.gorev || row.unvan || '—',
     },
+    { title: 'Branş', dataIndex: 'brans', render: (v: string | null) => v || '—' },
+    { title: 'Kariyer', dataIndex: 'kariyer', render: (v: string | null) => v || '—' },
     {
       title: 'Personel Tipi',
       width: 140,
@@ -149,7 +152,7 @@ export function MebbisImportModal({ open, schoolId, schoolName, onCancel, onImpo
       title="MEBBİS'ten İçe Aktar"
       open={open}
       onCancel={handleCancel}
-      width={step === 'preview' ? 1000 : 520}
+      width={step === 'preview' ? 1100 : 520}
       destroyOnHidden
       footer={
         step === 'preview'

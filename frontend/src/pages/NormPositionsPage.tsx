@@ -7,6 +7,7 @@ import { AppLayout } from '../components/AppLayout'
 import { SalaryFormDraftModal } from '../components/SalaryFormDraftModal'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
+import { useActiveSchool } from '../auth/ActiveSchoolContext'
 import {
   createNormPosition,
   deleteNormPosition,
@@ -23,6 +24,7 @@ import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 export function NormPositionsPage() {
   const { message, modal } = App.useApp()
   const { session, hasPermission, hasModule } = useAuth()
+  const { activeSchoolId } = useActiveSchool()
   const [rows, setRows] = useState<NormPosition[]>([])
   const [schools, setSchools] = useState<School[]>([])
   const [loading, setLoading] = useState(true)
@@ -69,6 +71,7 @@ export function NormPositionsPage() {
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
+    form.setFieldsValue({ school_id: activeSchoolId ?? undefined })
     setModalOpen(true)
   }
 
@@ -165,10 +168,10 @@ export function NormPositionsPage() {
   ]
 
   return (
-    <AppLayout title="Norm Kadro Takibi">
+    <AppLayout title="Terfi Takibi">
       <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }} wrap>
         <Typography.Title level={3} style={{ margin: 0 }}>
-          Norm Kadro Takibi
+          Terfi Takibi
         </Typography.Title>
         <Space wrap>
           {canDelete && rows.length > 0 && (

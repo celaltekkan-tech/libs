@@ -3,6 +3,7 @@ const cron = require('node-cron');
 const { app, connectDb } = require('./app');
 const { processWorkTaskReminders } = require('./services/workTaskReminderService');
 const { refreshStudentAges } = require('./services/studentAgeService');
+const { startBackupCron } = require('./services/backupService');
 
 const PORT = process.env.PORT || 4000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -62,5 +63,6 @@ function startStudentAgeCron() {
   await connectDb();
   startWorkTaskReminderCron();
   startStudentAgeCron();
+  await startBackupCron();
   app.listen(PORT, HOST, () => console.log(`Server listening ${HOST}:${PORT}`));
 })();

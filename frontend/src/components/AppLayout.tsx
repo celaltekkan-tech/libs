@@ -9,6 +9,7 @@ import {
   BellOutlined,
   CommentOutlined,
   DatabaseOutlined,
+  GlobalOutlined,
   HomeOutlined,
   IdcardOutlined,
   LogoutOutlined,
@@ -41,6 +42,7 @@ import {
   type NavNode,
 } from '../nav/tenantMenu'
 import { applyMenuLayout } from '../utils/menuLayout'
+import { SchoolLogoImage } from './SchoolLogoImage'
 
 interface AppLayoutProps {
   title?: string
@@ -52,6 +54,7 @@ const PLATFORM_ADMIN_ITEMS: NavNode[] = [
   { key: '/platform/tenants', icon: <ApartmentOutlined />, label: 'Hesap Yönetimi' },
   { key: '/platform/roles', icon: <SafetyCertificateOutlined />, label: 'Global Yetkiler' },
   { key: '/platform/licenses', icon: <IdcardOutlined />, label: 'Lisans Yönetimi' },
+  { key: '/platform/directory-schools', icon: <GlobalOutlined />, label: 'MEB Okul Kataloğu' },
   { key: '/platform/feedback', icon: <CommentOutlined />, label: 'Geri Bildirimler' },
   { key: '/platform/notifications', icon: <BellOutlined />, label: 'Bildirimler' },
   { key: '/platform/backups', icon: <DatabaseOutlined />, label: 'Yedekleme' },
@@ -102,7 +105,7 @@ function writeStoredCollapsed(value: boolean) {
 
 export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayoutProps) {
   const { session, logout, hasModule, hasPermission } = useAuth()
-  const { schools, activeSchoolId, setActiveSchoolId } = useActiveSchool()
+  const { schools, activeSchoolId, activeSchool, setActiveSchoolId } = useActiveSchool()
   const { mode, toggleMode } = useThemeMode()
   const location = useLocation()
   const navigate = useNavigate()
@@ -229,7 +232,14 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
         collapsed={collapsed}
         trigger={null}
       >
-        <div className="app-sider-brand">{collapsed ? 'Lİ' : 'Okul İdare'}</div>
+        <div className="app-sider-brand">
+          <SchoolLogoImage school={session?.is_platform_admin ? null : activeSchool} className="app-brand-logo" />
+          {collapsed
+            ? activeSchool?.logo_url
+              ? null
+              : 'Lİ'
+            : 'Okul İdare'}
+        </div>
 
         {!collapsed && (
           <div className="app-sider-search">

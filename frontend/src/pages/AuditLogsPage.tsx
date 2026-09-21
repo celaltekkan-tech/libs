@@ -10,6 +10,7 @@ import { listAuditLogs } from '../api/auditLogs'
 import { getErrorMessage } from '../api/client'
 import type { AuditLog } from '../types/auditLog'
 import { tablePagination } from '../utils/tablePagination'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 const ACTION_LABEL: Record<string, string> = {
   create: 'Oluşturma',
@@ -41,6 +42,7 @@ export function AuditLogsPage() {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const searchQuery = useDebouncedValue(search)
   const [action, setAction] = useState<string | undefined>()
   const [entityType, setEntityType] = useState<string | undefined>()
 
@@ -48,7 +50,7 @@ export function AuditLogsPage() {
     setLoading(true)
     try {
       const result = await listAuditLogs({
-        q: search.trim() || undefined,
+        q: searchQuery.trim() || undefined,
         action,
         entity_type: entityType,
         limit: 200,
@@ -60,13 +62,10 @@ export function AuditLogsPage() {
     } finally {
       setLoading(false)
     }
-  }, [search, action, entityType, message])
+  }, [searchQuery, action, entityType, message])
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      void load()
-    }, 250)
-    return () => clearTimeout(timer)
+    void load()
   }, [load])
 
   const columns: ColumnsType<AuditLog> = [

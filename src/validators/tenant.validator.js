@@ -1,5 +1,5 @@
 const Joi = require('joi');
-const { SCHOOL_TYPES } = require('./school.validator');
+const { SCHOOL_TYPES, schoolCodeSchema } = require('./school.validator');
 
 const email = Joi.string().email({ tlds: { allow: false } }).lowercase().trim();
 const phone = Joi.string().trim().max(30).allow('', null);
@@ -12,8 +12,11 @@ const createTenantWizardSchema = Joi.object({
   }).required(),
   school: Joi.object({
     name: Joi.string().required().min(2).max(200),
-    code: Joi.string().required().min(2).max(50),
+    code: schoolCodeSchema.required(),
     school_type: Joi.string().valid(...SCHOOL_TYPES).default('lise'),
+    province_id: Joi.number().integer().allow(null).empty(''),
+    district_id: Joi.number().integer().allow(null).empty(''),
+    directory_school_id: Joi.number().integer().allow(null).empty(''),
   }).required(),
   admin: Joi.object({
     full_name: Joi.string().required().min(2).max(100),

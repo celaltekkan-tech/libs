@@ -6,19 +6,27 @@ module.exports = (sequelize, DataTypes) => {
     district: DataTypes.STRING,
     personnel_no: DataTypes.STRING,
     national_id: DataTypes.STRING,
+    phone: DataTypes.STRING(30),
+    email: DataTypes.STRING,
     first_name: DataTypes.STRING,
     last_name: DataTypes.STRING,
     last_graduated_school: DataTypes.STRING,
     class_level: DataTypes.STRING,
     title_branch: DataTypes.STRING,
+    unvan: DataTypes.STRING,
+    brans: DataTypes.STRING,
+    kariyer: DataTypes.STRING,
     working_institution: DataTypes.STRING,
     degree: DataTypes.STRING,
     pension_degree: DataTypes.STRING,
     rank: DataTypes.STRING,
     degree_rank_date: DataTypes.DATE,
+    degree_rank_anchor_date: DataTypes.DATE,
+    eight_year_base_date: DataTypes.DATEONLY,
     school_principal: DataTypes.STRING,
     annual_leave_quota: DataTypes.INTEGER,
     service_start_date: DataTypes.DATEONLY,
+    first_duty_date: DataTypes.DATEONLY,
     personnel_type: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -51,6 +59,7 @@ module.exports = (sequelize, DataTypes) => {
     Teacher.hasMany(models.ProctorAssignment, { foreignKey: 'teacher_id' });
     Teacher.hasMany(models.TeacherDocument, { foreignKey: 'teacher_id' });
     Teacher.hasMany(models.PromotionHistory, { foreignKey: 'teacher_id' });
+    Teacher.hasMany(models.User, { foreignKey: 'teacher_id' });
     };
     
     

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,11 +13,15 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { getTagOptions, createTeacherNote } from '../api/teacherNotes';
 import { getErrorMessage } from '../api/client';
+import { useTheme } from '../context/ThemeContext';
+import type { ThemeColors } from '../theme/colors';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ReasonSelect'>;
 
 export function ReasonSelectScreen({ route, navigation }: Props) {
   const { student } = route.params;
+  const { colors } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [suggestedTags, setSuggestedTags] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -88,7 +92,7 @@ export function ReasonSelectScreen({ route, navigation }: Props) {
 
       <Text style={styles.sectionLabel}>Sebep seçin (çoklu seçim)</Text>
       {loadingTags ? (
-        <ActivityIndicator style={{ marginVertical: 16 }} />
+        <ActivityIndicator style={{ marginVertical: 16 }} color={colors.primary} />
       ) : (
         <View style={styles.chipRow}>
           {suggestedTags.map((tag) => {
@@ -111,6 +115,7 @@ export function ReasonSelectScreen({ route, navigation }: Props) {
         <TextInput
           style={styles.customInput}
           placeholder="Örn: Ödev yapmama"
+          placeholderTextColor={colors.textMuted}
           value={customInput}
           onChangeText={setCustomInput}
           onSubmitEditing={addCustomTag}
@@ -133,6 +138,7 @@ export function ReasonSelectScreen({ route, navigation }: Props) {
       <TextInput
         style={styles.noteInput}
         placeholder="Ek açıklama..."
+        placeholderTextColor={colors.textMuted}
         multiline
         numberOfLines={4}
         value={note}
@@ -142,52 +148,58 @@ export function ReasonSelectScreen({ route, navigation }: Props) {
       {error && <Text style={styles.error}>{error}</Text>}
 
       <TouchableOpacity style={styles.submitButton} onPress={onSubmit} disabled={submitting}>
-        {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>Gönder</Text>}
+        {submitting ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.submitButtonText}>Gönder</Text>}
       </TouchableOpacity>
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 20, paddingBottom: 40 },
-  title: { fontSize: 20, fontWeight: '700' },
-  subtitle: { fontSize: 14, color: '#667085', marginTop: 4, marginBottom: 20 },
-  sectionLabel: { fontSize: 15, fontWeight: '600', marginTop: 16, marginBottom: 10 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    borderWidth: 1,
-    borderColor: '#d0d5dd',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  chipActive: { backgroundColor: '#1677ff', borderColor: '#1677ff' },
-  chipText: { color: '#344054', fontSize: 14 },
-  chipTextActive: { color: '#fff', fontSize: 14 },
-  customRow: { flexDirection: 'row', gap: 8 },
-  customInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#d0d5dd',
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 15,
-  },
-  addButton: { backgroundColor: '#344054', borderRadius: 8, paddingHorizontal: 18, justifyContent: 'center' },
-  addButtonText: { color: '#fff', fontWeight: '600' },
-  noteInput: {
-    borderWidth: 1,
-    borderColor: '#d0d5dd',
-    borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 15,
-    textAlignVertical: 'top',
-    minHeight: 90,
-  },
-  error: { color: '#d4380d', marginTop: 16, textAlign: 'center' },
-  submitButton: { backgroundColor: '#1677ff', borderRadius: 8, paddingVertical: 14, alignItems: 'center', marginTop: 24 },
-  submitButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-});
+function makeStyles(colors: ThemeColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    content: { padding: 20, paddingBottom: 40 },
+    title: { fontSize: 20, fontWeight: '700', color: colors.text },
+    subtitle: { fontSize: 14, color: colors.textSecondary, marginTop: 4, marginBottom: 20 },
+    sectionLabel: { fontSize: 15, fontWeight: '600', marginTop: 16, marginBottom: 10, color: colors.text },
+    chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    chip: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 20,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+    },
+    chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+    chipText: { color: colors.chipText, fontSize: 14 },
+    chipTextActive: { color: colors.primaryText, fontSize: 14 },
+    customRow: { flexDirection: 'row', gap: 8 },
+    customInput: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.inputBackground,
+      color: colors.text,
+      borderRadius: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      fontSize: 15,
+    },
+    addButton: { backgroundColor: colors.addButton, borderRadius: 8, paddingHorizontal: 18, justifyContent: 'center' },
+    addButtonText: { color: colors.primaryText, fontWeight: '600' },
+    noteInput: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.inputBackground,
+      color: colors.text,
+      borderRadius: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      fontSize: 15,
+      textAlignVertical: 'top',
+      minHeight: 90,
+    },
+    error: { color: colors.danger, marginTop: 16, textAlign: 'center' },
+    submitButton: { backgroundColor: colors.primary, borderRadius: 8, paddingVertical: 14, alignItems: 'center', marginTop: 24 },
+    submitButtonText: { color: colors.primaryText, fontSize: 16, fontWeight: '600' },
+  });
+}

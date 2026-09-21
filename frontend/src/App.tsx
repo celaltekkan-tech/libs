@@ -17,6 +17,7 @@ import { LicensesPage } from './pages/platform/LicensesPage'
 import { BackupsPage } from './pages/platform/BackupsPage'
 import { PlatformRolesPage } from './pages/platform/PlatformRolesPage'
 import { SchoolsPage } from './pages/SchoolsPage'
+import { DirectorySchoolsPage } from './pages/platform/DirectorySchoolsPage'
 import { TeachersPage } from './pages/TeachersPage'
 import { StudentsPage } from './pages/StudentsPage'
 import { ClassroomsPage } from './pages/ClassroomsPage'
@@ -26,6 +27,7 @@ import { SchedulePage } from './pages/SchedulePage'
 import { SubjectsPage } from './pages/SubjectsPage'
 import { LeavesPage } from './pages/LeavesPage'
 import { NormPositionsPage } from './pages/NormPositionsPage'
+import { PromotionsPage } from './pages/PromotionsPage'
 import { AcademicYearsPage } from './pages/AcademicYearsPage'
 import { DutyPage } from './pages/DutyPage'
 import { ExtraLessonsPage } from './pages/ExtraLessonsPage'
@@ -94,6 +96,7 @@ function ThemedApp() {
                     <Route path="/teachers" element={<TeachersPage />} />
                     <Route path="/other-personnel" element={<OtherPersonnelPage />} />
                     <Route path="/norm-positions" element={<NormPositionsPage />} />
+                    <Route path="/promotions" element={<PromotionsPage />} />
                     <Route path="/teacher-documents" element={<TeacherDocumentsPage />} />
                   </Route>
                   <Route element={<ModuleRoute module="exams" />}>
@@ -143,6 +146,8 @@ function ThemedApp() {
                   <Route path="/platform/tenants/:id" element={<TenantDetailPage />} />
                   <Route path="/platform/roles" element={<PlatformRolesPage />} />
                   <Route path="/platform/licenses" element={<LicensesPage />} />
+                  <Route path="/platform/directory-schools" element={<DirectorySchoolsPage />} />
+                  <Route path="/directory-schools" element={<Navigate to="/platform/directory-schools" replace />} />
                   <Route path="/platform/feedback" element={<FeedbackListPage />} />
                   <Route path="/platform/notifications" element={<PlatformNotificationsPage />} />
                   <Route path="/platform/backups" element={<BackupsPage />} />

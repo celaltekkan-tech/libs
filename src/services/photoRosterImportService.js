@@ -9,6 +9,9 @@ const LABEL_PATTERNS = [
   [STUDENT_NUMBER_LABEL, 'student_number'],
   [/t\.?\s*c\.?\s*kimlik/i, 'national_id'],
   [/ad[ıi]\s*soyad[ıi]/i, 'full_name'],
+  [/baba\s*ad[ıi]/i, 'father_name'],
+  [/anne\s*ad[ıi]/i, 'mother_name'],
+  [/ana\s*ad[ıi]/i, 'mother_name'],
   [/cinsiyet/i, 'gender'],
   [/doğum\s*tarihi/i, 'birth_date'],
 ];
@@ -202,7 +205,8 @@ function extractRowPhotoMap(buffer) {
 /**
  * @returns {{ sheetName: string, students: Array<{ rowNumber: number, student_number: string|null,
  *   national_id: string|null, full_name: string|null, first_name: string|null, last_name: string|null,
- *   gender: string|null, birth_date: string|null, photo: Buffer|null }> }}
+ *   mother_name: string|null, father_name: string|null, gender: string|null, birth_date: string|null,
+ *   photo: Buffer|null }> }}
  */
 function parsePhotoRoster(buffer) {
   const { sheetName, matrix } = readSheetMatrix(buffer);
@@ -244,6 +248,8 @@ function parsePhotoRoster(buffer) {
       full_name: rec.full_name || null,
       first_name,
       last_name,
+      mother_name: rec.mother_name || null,
+      father_name: rec.father_name || null,
       gender: rec.gender || null,
       birth_date: rec.birth_date || null,
       photo: photoByRow.get(start) || null,

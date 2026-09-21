@@ -1,4 +1,12 @@
 const { License, Tenant } = require('../models');
+const { Op } = require('sequelize');
+const { isAddonPlan, isSmsPlan, getSmsQuotaForPlan } = require('../config/licensePlans');
+const licenseService = require('../services/licenseService');
+
+function resolveSmsQuota(plan) {
+  if (!isSmsPlan(plan)) return null;
+  return getSmsQuotaForPlan(plan);
+}
 
 module.exports = {
   async list(req, res, next) {
@@ -13,6 +21,7 @@ module.exports = {
         order: [['created_at', 'DESC']],
       });
 
+      await licenseService.attachSmsUsage(licenses);
       res.json({ success: true, data: licenses });
     } catch (err) {
       next(err);
@@ -25,13 +34,14 @@ module.exports = {
         include: [{ model: Tenant, attributes: ['id', 'name'] }],
       });
       if (!license) return res.status(404).json({ success: false, message: 'Lisans bulunamadı' });
+      await licenseService.attachSmsUsage([license]);
       res.json({ success: true, data: license });
     } catch (err) {
       next(err);
     }
   },
 
-  // Tenant'a yeni lisans tanımlar. Halihazırda aktif bir lisans varsa önce onu iptal eder.
+  // Ana lisans yalnızca diğer ana lisansı iptal eder; SMS eklentisi yanına eklenir.
   async create(req, res, next) {
     const payload = req.validatedBody || req.body;
     const transaction = await License.sequelize.transaction();
@@ -43,10 +53,41 @@ module.exports = {
         return res.status(404).json({ success: false, message: 'Hesap bulunamadı' });
       }
 
-      await License.update(
-        { status: 'cancelled', cancelled_at: new Date() },
-        { where: { tenant_id: payload.tenant_id, status: 'active' }, transaction }
-      );
+      const creatingAddon = isAddonPlan(payload.plan);
+      if (creatingAddon) {
+        const actives = await License.findAll({
+          where: {
+            tenant_id: payload.tenant_id,
+            status: 'active',
+            [Op.or]: [{ ends_at: null }, { ends_at: { [Op.gte]: new Date() } }],
+          },
+          transaction,
+        });
+        const hasMain = actives.some((row) => !isAddonPlan(row.plan));
+        if (!hasMain) {
+          await transaction.rollback();
+          return res.status(409).json({
+            success: false,
+            code: 'MAIN_LICENSE_REQUIRED',
+            message: 'SMS lisansı vermek için hesabın aktif bir ana lisansı olmalıdır.',
+          });
+        }
+      }
+
+      const activesToReplace = await License.findAll({
+        where: { tenant_id: payload.tenant_id, status: 'active' },
+        transaction,
+      });
+      const idsToCancel = activesToReplace
+        .filter((row) => isAddonPlan(row.plan) === creatingAddon)
+        .map((row) => row.id);
+
+      if (idsToCancel.length > 0) {
+        await License.update(
+          { status: 'cancelled', cancelled_at: new Date() },
+          { where: { id: idsToCancel }, transaction }
+        );
+      }
 
       const license = await License.create(
         {
@@ -55,6 +96,8 @@ module.exports = {
           starts_at: payload.starts_at || new Date(),
           ends_at: payload.ends_at || null,
           notes: payload.notes || null,
+          sms_quota: resolveSmsQuota(payload.plan),
+          sms_used: 0,
           status: 'active',
         },
         { transaction }

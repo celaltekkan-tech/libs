@@ -13,6 +13,8 @@ module.exports = (sequelize, DataTypes) => {
       ends_at: { type: DataTypes.DATE, allowNull: true },
       cancelled_at: { type: DataTypes.DATE, allowNull: true },
       notes: { type: DataTypes.TEXT, allowNull: true },
+      sms_quota: { type: DataTypes.INTEGER, allowNull: true },
+      sms_used: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
     },
     {
       tableName: 'Licenses',

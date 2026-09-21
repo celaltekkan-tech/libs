@@ -397,9 +397,10 @@ export function ProfilePage() {
                       <Card title="Hesap güvenliği (yönetici)">
                         <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
                           Authenticator (2FA) veya SMS ile giriş ikinci doğrulama yöntemleridir. SMS
-                          için her kullanıcının kendi telefonu gerekir; kurum telefonu kayıtlıysa
-                          telefonu boş kullanıcılara otomatik aktarılır. Günde en fazla 3 SMS kodu
-                          isteği yapılabilir.
+                          ile giriş için SMS 3000 veya SMS 10000 eklenti lisansı gerekir. Her
+                          kullanıcının kendi telefonu zorunludur; kurum telefonu kayıtlıysa telefonu
+                          boş kullanıcılara otomatik aktarılır. Günde en fazla 3 SMS kodu isteği
+                          yapılabilir. Öğretmen kayıt SMS’i bu lisansa bağlı değildir.
                         </Typography.Paragraph>
                         <Space direction="vertical" size={12} style={{ width: '100%' }}>
                           <Space>
@@ -418,6 +419,7 @@ export function ProfilePage() {
                             <Switch
                               checked={tenantSmsLoginEnabled}
                               loading={tenantSmsSaving}
+                              disabled={!tenantSmsLoginEnabled && !session?.sms_license}
                               onChange={(checked) => void onToggleTenantSmsLogin(checked)}
                             />
                             <span>
@@ -425,8 +427,9 @@ export function ProfilePage() {
                             </span>
                           </Space>
                           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                            Açmak için tüm aktif kullanıcıların geçerli cep telefonu (05xxxxxxxxx)
-                            tanımlı olmalıdır.
+                            {session?.sms_license
+                              ? 'Açmak için tüm aktif kullanıcıların geçerli cep telefonu (05xxxxxxxxx) tanımlı olmalıdır.'
+                              : 'SMS ile girişi açmak için hesabın SMS 3000 veya SMS 10000 lisansı olmalıdır.'}
                           </Typography.Text>
                         </Space>
                       </Card>

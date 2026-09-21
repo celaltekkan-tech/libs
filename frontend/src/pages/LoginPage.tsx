@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Alert, Button, Form, Input, Typography } from 'antd'
 import {
@@ -14,6 +14,7 @@ import { useAuth } from '../auth/AuthContext'
 import { useThemeMode } from '../theme/ThemeContext'
 import { ApiError, getErrorMessage } from '../api/client'
 import { resendSms } from '../api/auth'
+import { readLastSchoolBrand } from '../utils/lastSchoolBrand'
 import {
   isLoginChallenge2fa,
   isLoginChallengeSms,
@@ -153,6 +154,8 @@ export function LoginPage() {
       ? 'Telefonunuza gelen SMS kodunu girin'
       : 'Authenticator uygulamanızdaki kodu girin'
 
+  const lastBrand = useMemo(() => readLastSchoolBrand(), [])
+
   return (
     <div className="login-page">
       <Button
@@ -165,7 +168,13 @@ export function LoginPage() {
       />
       <div className="login-panel">
         <div className="login-brand">
-          <span className="login-mark">Lİ</span>
+          {lastBrand ? (
+            <span className="login-mark login-mark-image">
+              <img src={lastBrand.dataUrl} alt={lastBrand.name} />
+            </span>
+          ) : (
+            <span className="login-mark">Lİ</span>
+          )}
           <div>
             <Typography.Title level={3} className="login-title">
               Okul İdare Sistemi

@@ -11,6 +11,10 @@ module.exports = (sequelize, DataTypes) => {
           type: DataTypes.INTEGER,
           allowNull: true,
         },
+        teacher_id: {
+          type: DataTypes.INTEGER,
+          allowNull: true,
+        },
         full_name: {
           type: DataTypes.STRING,
           allowNull: false,
@@ -117,6 +121,7 @@ module.exports = (sequelize, DataTypes) => {
     User.associate = (models) => {
       User.belongsTo(models.Tenant, { foreignKey: "tenant_id" });
       User.belongsTo(models.School, { foreignKey: "school_id" });
+      User.belongsTo(models.Teacher, { foreignKey: "teacher_id" });
       User.hasMany(models.UserSchool, { foreignKey: "user_id" });
       User.hasMany(models.Feedback, { foreignKey: "user_id" });
     };

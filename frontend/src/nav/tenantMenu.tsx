@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 import {
   AlertOutlined,
-  ApartmentOutlined,
   AuditOutlined,
   BankOutlined,
   CalendarOutlined,
@@ -20,6 +19,7 @@ import {
   MailOutlined,
   NotificationOutlined,
   ReadOutlined,
+  RiseOutlined,
   SafetyOutlined,
   ScheduleOutlined,
   SettingOutlined,
@@ -77,7 +77,9 @@ export function buildTenantMenu(opts: {
   const nodes: NavNode[] = [{ key: '/', icon: <HomeOutlined />, label: 'Ana Sayfa' }]
 
   const definitions: NavLeaf[] = []
-  if (hasModule('schools')) definitions.push({ key: '/schools', icon: <BankOutlined />, label: 'Okullar' })
+  if (hasModule('schools')) {
+    definitions.push({ key: '/schools', icon: <BankOutlined />, label: 'Okullar' })
+  }
   if (hasModule('classrooms')) {
     definitions.push({ key: '/classrooms', icon: <ClusterOutlined />, label: 'Sınıflar' })
   }
@@ -112,7 +114,7 @@ export function buildTenantMenu(opts: {
   const personnel: NavLeaf[] = []
   if (hasModule('teachers')) {
     personnel.push(
-      { key: '/norm-positions', icon: <ApartmentOutlined />, label: 'Norm Kadro' },
+      { key: '/promotions', icon: <RiseOutlined />, label: 'Terfi Takibi' },
       { key: '/teacher-documents', icon: <FileProtectOutlined />, label: 'Öğretmen Evrak Arşivi' },
     )
   }

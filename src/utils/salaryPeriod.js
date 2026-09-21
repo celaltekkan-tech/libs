@@ -1,5 +1,7 @@
 'use strict';
 
+const { advanceDegreeRank } = require('./promotionEngine');
+
 /**
  * Maaş Değişikliği Bildirim Formu'ndaki "ilgili ay" için yaygın dönem:
  * seçilen ayın 14'ü (dahil) ile bir önceki ayın 15'i (dahil) arası.
@@ -51,17 +53,8 @@ function formatPeriodDay(day, month, year) {
 }
 
 function suggestNextDegreeRank(degree, rank) {
-  const rankNum = Number(rank);
-  if (Number.isFinite(rankNum)) {
-    return {
-      new_degree: degree != null && degree !== '' ? String(degree) : null,
-      new_rank: String(rankNum + 1),
-    };
-  }
-  return {
-    new_degree: degree != null && degree !== '' ? String(degree) : null,
-    new_rank: rank != null && rank !== '' ? String(rank) : null,
-  };
+  const result = advanceDegreeRank(degree, rank);
+  return { new_degree: result.degree, new_rank: result.rank };
 }
 
 module.exports = {

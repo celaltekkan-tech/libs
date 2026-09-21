@@ -1,4 +1,4 @@
-export type RegistrationStatus = 'aktif' | 'nakil_gelen' | 'nakil_giden' | 'kayit_silindi'
+export type RegistrationStatus = 'aktif' | 'nakil_giden' | 'orgun_egitim_disi'
 export type StudentGender = 'K' | 'E'
 export type BoardingStatus = 'Yatılı' | 'Gündüzlü'
 
@@ -25,7 +25,10 @@ export interface Student {
   yasi: number | null
   registration_status: RegistrationStatus | null
   parent_name: string | null
+  mother_name: string | null
+  father_name: string | null
   parent_phone: string | null
+  student_phone: string | null
   extra_contacts: StudentExtraContact[]
   is_inclusion: boolean
   is_foreign: boolean
@@ -47,7 +50,10 @@ export interface StudentPayload {
   yasi?: number | null
   registration_status?: RegistrationStatus | null
   parent_name?: string | null
+  mother_name?: string | null
+  father_name?: string | null
   parent_phone?: string | null
+  student_phone?: string | null
   extra_contacts?: StudentExtraContact[]
   is_inclusion?: boolean
   is_foreign?: boolean
@@ -61,6 +67,7 @@ export interface StudentFilters {
   class_level?: string
   section?: string
   gender?: StudentGender
+  yasi?: number
   registration_status?: RegistrationStatus
   boarding_status?: BoardingStatus
 }
@@ -139,7 +146,10 @@ export const STUDENT_IMPORT_FIELD_OPTIONS = [
   { value: 'yasi', label: 'Yaşı' },
   { value: 'registration_status', label: 'Kayıt Durumu' },
   { value: 'parent_name', label: 'Veli Adı' },
+  { value: 'mother_name', label: 'Anne Adı' },
+  { value: 'father_name', label: 'Baba Adı' },
   { value: 'parent_phone', label: 'Veli Telefon' },
+  { value: 'student_phone', label: 'Öğrenci Telefon' },
   { value: 'is_inclusion', label: 'Kaynaştırma' },
   { value: 'is_foreign', label: 'Yabancı Uyruklu' },
   { value: 'boarding_status', label: 'Yurt Durumu' },
@@ -158,7 +168,10 @@ export const STUDENT_COLUMN_OPTIONS = [
   { value: 'yasi', label: 'Yaşı' },
   { value: 'registration_status', label: 'Kayıt Durumu' },
   { value: 'parent_name', label: 'Veli Adı' },
+  { value: 'mother_name', label: 'Anne Adı' },
+  { value: 'father_name', label: 'Baba Adı' },
   { value: 'parent_phone', label: 'Veli Telefon' },
+  { value: 'student_phone', label: 'Öğrenci Telefon' },
   { value: 'extra_contacts', label: 'Ek İletişim' },
   { value: 'is_inclusion', label: 'Kaynaştırma' },
   { value: 'is_foreign', label: 'Yabancı Uyruklu' },
@@ -172,7 +185,6 @@ export const BOARDING_STATUS_OPTIONS: Array<{ value: BoardingStatus; label: stri
 
 export const REGISTRATION_STATUS_OPTIONS: Array<{ value: RegistrationStatus; label: string }> = [
   { value: 'aktif', label: 'Aktif' },
-  { value: 'nakil_gelen', label: 'Nakil gelen' },
   { value: 'nakil_giden', label: 'Nakil giden' },
-  { value: 'kayit_silindi', label: 'Kayıt silindi' },
+  { value: 'orgun_egitim_disi', label: 'Örgün eğitim dışı' },
 ]

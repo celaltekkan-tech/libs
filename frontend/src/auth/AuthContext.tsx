@@ -55,9 +55,11 @@ function toSessionPayload(payload: SessionPayload & { token?: string; expires_at
     is_platform_admin: payload.is_platform_admin,
     license_status: payload.license_status,
     license: payload.license,
+    sms_license: payload.sms_license ?? null,
     modules: payload.modules,
     tenant_two_factor_enabled: payload.tenant_two_factor_enabled,
     tenant_sms_login_enabled: payload.tenant_sms_login_enabled,
+    menu_layout: payload.menu_layout ?? null,
   }
 }
 

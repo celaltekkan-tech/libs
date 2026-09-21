@@ -123,7 +123,7 @@ function formValuesFromTask(task: WorkTask): Partial<TaskFormValues> {
   }
 }
 
-function payloadFromForm(values: TaskFormValues): WorkTaskPayload {
+function payloadFromForm(values: TaskFormValues, { allowSms = true } = {}): WorkTaskPayload {
   return {
     title: values.title.trim(),
     description: values.description?.trim() || null,
@@ -132,7 +132,7 @@ function payloadFromForm(values: TaskFormValues): WorkTaskPayload {
     next_due_at: values.due_at.toISOString(),
     remind_before_minutes: Math.round((values.remind_before_days ?? 1) * 1440),
     is_mandatory: values.is_mandatory,
-    notify_channels: values.notify_channels || [],
+    notify_channels: (values.notify_channels || []).filter((channel) => allowSms || channel !== 'sms'),
     recurrence_config: buildRecurrenceConfig(values.frequency, values),
   }
 }
@@ -157,6 +157,10 @@ export function WorkTasksPage() {
   const canUpdate = hasPermission('work_tasks.update')
   const canDelete = hasPermission('work_tasks.delete')
   const canComplete = hasPermission('work_tasks.read')
+  const hasSmsAddon = Boolean(session?.sms_license)
+  const notifyChannelOptions = hasSmsAddon
+    ? NOTIFY_CHANNEL_OPTIONS
+    : NOTIFY_CHANNEL_OPTIONS.filter((option) => option.value !== 'sms')
 
   const userOptions = useMemo(
     () =>
@@ -217,7 +221,7 @@ export function WorkTasksPage() {
   const onFinish = async (values: TaskFormValues) => {
     setSubmitting(true)
     try {
-      const payload = payloadFromForm(values)
+      const payload = payloadFromForm(values, { allowSms: hasSmsAddon })
       if (editing) {
         await updateWorkTask(editing.id, payload)
         message.success('Görev güncellendi')
@@ -490,8 +494,8 @@ export function WorkTasksPage() {
           <Form.Item name="is_mandatory" label="Zorunlu iş" valuePropName="checked">
             <Switch checkedChildren="Evet" unCheckedChildren="Hayır" />
           </Form.Item>
-          <Form.Item name="notify_channels" label="Uyarı tipleri">
-            <Checkbox.Group options={NOTIFY_CHANNEL_OPTIONS} />
+          <Form.Item name="notify_channels" label="Uyarı tipleri" extra={!hasSmsAddon ? 'SMS kanalı için SMS 3000 veya SMS 10000 lisansı gerekir.' : undefined}>
+            <Checkbox.Group options={notifyChannelOptions} />
           </Form.Item>
         </Form>
       </Modal>

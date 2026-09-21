@@ -7,6 +7,7 @@ import { SortableTable } from '../components/SortableTable'
 import { RoleGroupsPanel } from '../components/RoleGroupsPanel'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
+import { useActiveSchool } from '../auth/ActiveSchoolContext'
 import {
   createManagedUser,
   deleteManagedUser,
@@ -20,6 +21,7 @@ import type { ManagedUser, ManagedUserPayload, UserFormOptions } from '../types/
 import { tablePagination } from '../utils/tablePagination'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
 import { requiredMobilePhoneRule } from '../utils/phone'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 interface UserFormValues {
   full_name: string
@@ -34,22 +36,27 @@ interface UserFormValues {
 export function UsersPage() {
   const { message, modal } = App.useApp()
   const { session, hasPermission } = useAuth()
+  const { activeSchoolId } = useActiveSchool()
   const [users, setUsers] = useState<ManagedUser[]>([])
   const [options, setOptions] = useState<UserFormOptions>({
     school_roles: [],
     schools: [],
     user_limit: null,
     user_count: 0,
+    user_exempt_count: 0,
     user_remaining: null,
+    quota_exempt_roles: [],
   })
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<ManagedUser | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [search, setSearch] = useState('')
+  const searchQuery = useDebouncedValue(search)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkLoading, setBulkLoading] = useState(false)
   const [form] = Form.useForm<UserFormValues>()
+  const selectedRoleId = Form.useWatch('role_id', form)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -69,7 +76,7 @@ export function UsersPage() {
   }, [load])
 
   const filteredUsers = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase('tr-TR')
+    const q = searchQuery.trim().toLocaleLowerCase('tr-TR')
     if (!q) return users
     return users.filter((u) => {
       return (
@@ -79,7 +86,7 @@ export function UsersPage() {
         (u.assigned_school_name || '').toLocaleLowerCase('tr-TR').includes(q)
       )
     })
-  }, [users, search])
+  }, [users, searchQuery])
 
   const deletableUsers = useMemo(
     () => filteredUsers.filter((u) => u.id !== session?.user.id),
@@ -109,7 +116,7 @@ export function UsersPage() {
     form.setFieldsValue({
       role_id: options.school_roles.find((r) => r.name === 'Memur')?.id || options.school_roles[0]?.id,
       is_active: true,
-      school_id: options.schools[0]?.id,
+      school_id: activeSchoolId ?? options.schools[0]?.id,
     })
     setModalOpen(true)
   }
@@ -140,6 +147,12 @@ export function UsersPage() {
       }
 
       const roleMeta = options.school_roles.find((r) => r.id === values.role_id)
+      const alreadyCounted = Boolean(editing && !isExemptRole(editing.school_role))
+      if (atUserLimit && !isExemptRole(roleMeta?.name) && !alreadyCounted) {
+        message.warning('Yönetici kullanıcı limiti doldu. Öğretmen veya rehber öğretmen seçebilirsiniz.')
+        setSubmitting(false)
+        return
+      }
       const payload: ManagedUserPayload = {
         full_name: values.full_name,
         email: values.email,
@@ -232,11 +245,20 @@ export function UsersPage() {
   const canUpdate = hasPermission('users.update')
   const canDelete = hasPermission('users.delete')
   const smsLoginRequiresPhone = Boolean(session?.tenant_sms_login_enabled)
+  const exemptRoles = options.quota_exempt_roles?.length
+    ? options.quota_exempt_roles
+    : ['Öğretmen', 'Rehber Öğretmen']
+  const isExemptRole = (roleName?: string | null) =>
+    Boolean(roleName && exemptRoles.some((name) => name.toLocaleLowerCase('tr-TR') === roleName.toLocaleLowerCase('tr-TR')))
   const atUserLimit = options.user_limit != null && options.user_count >= options.user_limit
+  const selectedRoleName = options.school_roles.find((r) => r.id === selectedRoleId)?.name
+  const existingAlreadyCounted = Boolean(editing && !isExemptRole(editing.school_role))
+  const selectedBlockedByQuota =
+    atUserLimit && !isExemptRole(selectedRoleName) && !existingAlreadyCounted
   const quotaLabel =
     options.user_limit == null
-      ? `Kullanıcı: ${options.user_count} (sınırsız)`
-      : `Kullanıcı: ${options.user_count}/${options.user_limit}`
+      ? `Kullanıcı: ${options.user_count + (options.user_exempt_count || 0)} (sınırsız)`
+      : `Yönetici kullanıcı: ${options.user_count}/${options.user_limit} · Öğretmen hesapları sınırsız`
 
   const columns: ColumnsType<ManagedUser> = [
     { title: 'Ad soyad', dataIndex: 'full_name' },
@@ -328,7 +350,7 @@ export function UsersPage() {
                         type="primary"
                         icon={<PlusOutlined />}
                         onClick={openCreate}
-                        disabled={options.schools.length === 0 || atUserLimit}
+                        disabled={options.schools.length === 0}
                       >
                         Yeni Kullanıcı
                       </Button>
@@ -342,7 +364,8 @@ export function UsersPage() {
                   )}
                   {atUserLimit && (
                     <Typography.Paragraph type="warning">
-                      Plan kullanıcı limitine ulaşıldı ({options.user_count}/{options.user_limit}).
+                      Yönetici kullanıcı limiti doldu ({options.user_count}/{options.user_limit}). Öğretmen
+                      ve rehber öğretmen hesapları bu limite dahil değildir.
                     </Typography.Paragraph>
                   )}
 
@@ -367,6 +390,7 @@ export function UsersPage() {
         onCancel={() => setModalOpen(false)}
         onOk={() => form.submit()}
         confirmLoading={submitting}
+        okButtonProps={{ disabled: selectedBlockedByQuota }}
         okText={editing ? 'Kaydet' : 'Oluştur'}
         cancelText="Vazgeç"
         destroyOnHidden
@@ -427,10 +451,15 @@ export function UsersPage() {
             name="role_id"
             label="Yetki grubu"
             rules={[{ required: true, message: 'Yetki grubu seçin' }]}
-            extra="Menü görünürlüğü ve işlem yetkileri bu gruba göre belirlenir."
+            extra="Menü görünürlüğü ve işlem yetkileri bu gruba göre belirlenir. Öğretmen ve rehber öğretmen hesapları plan kotasına dahil değildir."
           >
             <Select showSearch optionFilterProp="label" options={roleOptions} />
           </Form.Item>
+          {selectedBlockedByQuota && (
+            <Typography.Paragraph type="warning">
+              Yönetici kullanıcı limiti doldu. Öğretmen veya rehber öğretmen seçebilirsiniz.
+            </Typography.Paragraph>
+          )}
           <Form.Item
             name="is_active"
             label="Aktif"

@@ -3,6 +3,8 @@
 const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const { SMS_STATUS, sendSms, SmsConfigError } = require('./smsEngine');
+const licenseService = require('./licenseService');
+const messageLogService = require('./messageLogService');
 
 const MAX_SMS_REQUESTS_PER_DAY = Number(process.env.SMS_LOGIN_MAX_REQUESTS_PER_DAY) || 3;
 const CODE_TTL_MS = (Number(process.env.SMS_LOGIN_CODE_TTL_MINUTES) || 5) * 60 * 1000;
@@ -62,6 +64,7 @@ async function issueSmsLoginCode(user, { phone } = {}) {
   }
 
   const state = await assertCanRequestSms(user);
+  await licenseService.assertCanSendSms(user.tenant_id, 1);
   const code = generateCode();
   const codeHash = await bcrypt.hash(code, BCRYPT_ROUNDS);
   const expiresAt = new Date(Date.now() + CODE_TTL_MS);
@@ -88,6 +91,21 @@ async function issueSmsLoginCode(user, { phone } = {}) {
     err.status = 502;
     throw err;
   }
+
+  await messageLogService.record({
+    tenantId: user.tenant_id,
+    channel: 'sms',
+    sourceModule: 'sms_login',
+    sourceId: user.id,
+    recipientLabel: user.full_name,
+    recipientContact: targetPhone,
+    subject: 'SMS giriş kodu',
+    body: null,
+    status: smsResult.status,
+    error: smsResult.error,
+    sentAt: new Date(),
+  });
+  await licenseService.consumeSmsCredits(user.tenant_id, 1);
 
   const nextCount = state.count + 1;
   await user.update({

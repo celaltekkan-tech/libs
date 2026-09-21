@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Production sunucusunda cron ile periyodik çalıştırılır.
-# `db` container'ının içindeki pg_dump ile yedek alır (sunucu ile birebir
-# aynı sürüm garantisi), yedeği ./backups altına gzip'li olarak yazar ve
-# admin panelinden ayarlanan saklama süresinden (BackupSettings.retention_days)
-# eski yedekleri siler.
+# İsteğe bağlı host-tarafı yedek. Asıl zamanlama ve geri yükleme uygulama
+# içinden (Platform Yönetimi → Yedekleme) yapılır. Bu script kullanılırsa
+# paneldeki zamanlanmış işlemi kapatın (BACKUP_CRON_ENABLED=false) ya da
+# crontab satırını kaldırın; aksi halde çift yedek alınır.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -14,7 +13,7 @@ set -a
 source .env
 set +a
 
-BACKUP_DIR="$REPO_DIR/backups"
+BACKUP_DIR="${BACKUP_HOST_DIR:-$REPO_DIR/backups}"
 mkdir -p "$BACKUP_DIR"
 
 LOCK_FILE="/tmp/libs-backup.lock"
@@ -29,7 +28,7 @@ FILE="$BACKUP_DIR/${DB_NAME}_${TIMESTAMP}.sql.gz"
 TMP_FILE="${FILE}.tmp"
 
 echo "$(date '+%F %T') Yedek alınıyor: $FILE"
-docker compose exec -T db pg_dump -U "$DB_USER" -d "$DB_NAME" | gzip > "$TMP_FILE"
+docker compose exec -T db pg_dump -U "$DB_USER" -d "$DB_NAME" --no-owner --no-acl --clean --if-exists | gzip > "$TMP_FILE"
 mv "$TMP_FILE" "$FILE"
 
 RETENTION_DAYS="$(docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" -tAc \

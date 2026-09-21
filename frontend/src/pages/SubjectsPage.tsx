@@ -26,6 +26,7 @@ import type { Subject, SubjectClassHour, SubjectPayload } from '../types/subject
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
 import { tablePagination } from '../utils/tablePagination'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 export function SubjectsPage() {
   const { message, modal } = App.useApp()
@@ -37,6 +38,7 @@ export function SubjectsPage() {
   const [editing, setEditing] = useState<Subject | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [search, setSearch] = useState('')
+  const searchQuery = useDebouncedValue(search)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx')
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkLoading, setBulkLoading] = useState(false)
@@ -67,14 +69,14 @@ export function SubjectsPage() {
   }, [load])
 
   const filteredRows = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase('tr-TR')
+    const q = searchQuery.trim().toLocaleLowerCase('tr-TR')
     if (!q) return rows
     return rows.filter(
       (row) =>
         row.name.toLocaleLowerCase('tr-TR').includes(q) ||
         (row.code || '').toLocaleLowerCase('tr-TR').includes(q),
     )
-  }, [rows, search])
+  }, [rows, searchQuery])
 
   const openCreate = () => {
     setEditing(null)
@@ -156,7 +158,7 @@ export function SubjectsPage() {
     try {
       const blob = await exportSubjects({
         format: exportFormat,
-        filters: search.trim() ? { q: search.trim() } : undefined,
+        filters: searchQuery.trim() ? { q: searchQuery.trim() } : undefined,
       })
       downloadBlob(blob, exportFilename('dersler', exportFormat))
       message.success('Dışa aktarma indirildi')

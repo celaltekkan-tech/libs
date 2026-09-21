@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Button, Checkbox, Col, Collapse, DatePicker, Dropdown, Form, Input, InputNumber, Modal, Row, Select, Space, Tag, Typography } from 'antd'
+import { App, Button, Checkbox, Col, DatePicker, Dropdown, Form, Input, InputNumber, Modal, Row, Select, Space, Typography } from 'antd'
 import { SortableTable } from '../components/SortableTable'
 import {
   DeleteOutlined,
@@ -14,38 +14,106 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { AppLayout } from '../components/AppLayout'
+import { ClearFiltersButton } from '../components/ClearFiltersButton'
+import { FilterBar } from '../components/FilterBar'
 import { MebbisImportModal } from '../components/MebbisImportModal'
 import { PersonnelDepartureModal } from '../components/PersonnelDepartureModal'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import { useActiveSchool } from '../auth/ActiveSchoolContext'
 import {
-  applyPromotion,
   createTeacher,
   deleteTeacher,
-  downloadPromotionForm,
   downloadTeacherDocument,
   exportTeachers,
-  fetchUpcomingPromotions,
   listTeachers,
   updateTeacher,
 } from '../api/teachers'
-import type { TeacherDocumentType, UpcomingPromotion } from '../api/teachers'
+import type { TeacherDocumentType } from '../api/teachers'
 import { getErrorMessage } from '../api/client'
-import type { ApplyPromotionPayload, Teacher, TeacherPayload } from '../types/teacher'
+import type { Teacher, TeacherPayload } from '../types/teacher'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
 import { listPersonnelCategories } from '../api/personnelCategories'
 import type { PersonnelCategory } from '../types/personnelCategory'
+import { listDistricts, listProvinces } from '../api/geo'
+import type { District, Province } from '../types/geo'
 import { tablePagination } from '../utils/tablePagination'
-import { personNameSorter, sorterBy, SORT_AZ } from '../utils/tableSort'
+import { personNameSorter, SORT_AZ } from '../utils/tableSort'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
 import { addSalaryFormStarter } from '../utils/salaryFormAutoEntry'
+import { KARIYER_OPTIONS, teacherTitleParts } from '../utils/teacherTitle'
+import { uniqueSelectOptions, trSelectFilter } from '../utils/uniqueSelectOptions'
+import { DynamicListFilters, isActiveFilterValue, matchesListFilter, type ListFilterValue } from '../components/DynamicListFilters'
+import { useVisibleFilterFields } from '../hooks/useVisibleFilterFields'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { FilterFieldsPicker, type FilterFieldOption } from '../components/FilterFieldsPicker'
+import { MOBILE_PHONE_RULE } from '../utils/phone'
 
-interface PromotionFormValues {
-  new_degree: string
-  new_rank: string
-  new_degree_rank_date: Dayjs
-  note?: string
+const TEACHER_FILTER_FIELDS = [
+  'first_name',
+  'last_name',
+  'personnel_no',
+  'national_id',
+  'phone',
+  'email',
+  'unvan',
+  'brans',
+  'kariyer',
+  'working_institution',
+  'degree',
+  'rank',
+  'pension_degree',
+  'degree_rank_date',
+  'last_graduated_school',
+  'class_level',
+  'school_principal',
+  'union',
+  'first_duty_date',
+  'service_start_date',
+] as const
+type TeacherFilterField = (typeof TEACHER_FILTER_FIELDS)[number]
+const TEACHER_FILTER_DEFAULTS: TeacherFilterField[] = ['unvan', 'brans', 'kariyer', 'union']
+const TEACHER_FILTER_OPTIONS: FilterFieldOption<TeacherFilterField>[] = [
+  { key: 'first_name', label: 'Ad' },
+  { key: 'last_name', label: 'Soyad' },
+  { key: 'personnel_no', label: 'Sicil No' },
+  { key: 'national_id', label: 'TC Kimlik No' },
+  { key: 'phone', label: 'Cep telefonu' },
+  { key: 'email', label: 'E-posta' },
+  { key: 'unvan', label: 'Unvan' },
+  { key: 'brans', label: 'Branş' },
+  { key: 'kariyer', label: 'Kariyer' },
+  { key: 'working_institution', label: 'Görev Yeri' },
+  { key: 'degree', label: 'Derece' },
+  { key: 'rank', label: 'Kademe' },
+  { key: 'pension_degree', label: 'Emekli Sicil No' },
+  { key: 'degree_rank_date', label: 'Kademe Tarihi', kind: 'dateRange' },
+  { key: 'last_graduated_school', label: 'Mezun Olunan Okul' },
+  { key: 'class_level', label: 'Sınıf / Kademe' },
+  { key: 'school_principal', label: 'Okul Müdürü' },
+  { key: 'union', label: 'Sendika' },
+  { key: 'first_duty_date', label: 'İşe ilk başlama', kind: 'dateRange' },
+  { key: 'service_start_date', label: 'Kuruma başlama', kind: 'dateRange' },
+]
+
+function teacherFieldValue(teacher: Teacher, key: TeacherFilterField): string {
+  const parts = teacherTitleParts(teacher)
+  switch (key) {
+    case 'unvan':
+      return parts.unvan || ''
+    case 'brans':
+      return parts.brans || ''
+    case 'kariyer':
+      return parts.kariyer || ''
+    case 'union':
+      return teacher.union_name || ''
+    case 'degree_rank_date':
+    case 'first_duty_date':
+    case 'service_start_date':
+      return String(teacher[key] || '').slice(0, 10)
+    default:
+      return String(teacher[key] ?? '').trim()
+  }
 }
 
 interface TeacherFormValues {
@@ -54,11 +122,15 @@ interface TeacherFormValues {
   school_id?: number | null
   personnel_no?: string
   national_id?: string
+  phone?: string
+  email?: string
   city?: string
   district?: string
   last_graduated_school?: string
   class_level?: string
-  title_branch?: string
+  unvan?: string
+  brans?: string
+  kariyer?: string
   working_institution?: string
   degree?: string
   pension_degree?: string
@@ -66,6 +138,7 @@ interface TeacherFormValues {
   degree_rank_date?: Dayjs | null
   school_principal?: string
   service_start_date?: Dayjs | null
+  first_duty_date?: Dayjs | null
   annual_leave_quota?: number | null
   union_name?: string
   add_to_salary_form?: boolean
@@ -76,7 +149,6 @@ export function TeachersPage() {
   const { session, hasPermission } = useAuth()
   const { schools, activeSchoolId, activeSchool } = useActiveSchool()
   const [teachers, setTeachers] = useState<Teacher[]>([])
-  const [promotions, setPromotions] = useState<UpcomingPromotion[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
@@ -84,12 +156,16 @@ export function TeachersPage() {
   const [editing, setEditing] = useState<Teacher | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [search, setSearch] = useState('')
+  const searchQuery = useDebouncedValue(search)
+  const [filterValues, setFilterValues] = useState<Partial<Record<TeacherFilterField, ListFilterValue>>>({})
+  const { visible: visibleFilters, setVisible: setVisibleFilters, isVisible } = useVisibleFilterFields(
+    'teachers',
+    session?.user.id,
+    TEACHER_FILTER_FIELDS,
+    TEACHER_FILTER_DEFAULTS,
+  )
   const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx')
   const [form] = Form.useForm<TeacherFormValues>()
-  const [promotionModalOpen, setPromotionModalOpen] = useState(false)
-  const [promotionTarget, setPromotionTarget] = useState<UpcomingPromotion | null>(null)
-  const [promotionSubmitting, setPromotionSubmitting] = useState(false)
-  const [promotionForm] = Form.useForm<PromotionFormValues>()
   const [moveTarget, setMoveTarget] = useState<Teacher | null>(null)
   const [moveCategoryId, setMoveCategoryId] = useState<number | null>(null)
   const [categories, setCategories] = useState<PersonnelCategory[]>([])
@@ -97,16 +173,16 @@ export function TeachersPage() {
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkLoading, setBulkLoading] = useState(false)
   const [departureTarget, setDepartureTarget] = useState<Teacher | null>(null)
+  const [provinces, setProvinces] = useState<Province[]>([])
+  const [districts, setDistricts] = useState<District[]>([])
+  const selectedCity = Form.useWatch('city', form)
+  const selectedDistrict = Form.useWatch('district', form)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [teacherData, promotionData] = await Promise.all([
-        listTeachers({ scope: 'teachers' }),
-        fetchUpcomingPromotions(90).catch(() => []),
-      ])
+      const teacherData = await listTeachers({ scope: 'teachers' })
       setTeachers(teacherData)
-      setPromotions(promotionData)
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
@@ -118,12 +194,70 @@ export function TeachersPage() {
     void load()
   }, [load])
 
-  const schoolName = (schoolId: number | null) => schools.find((s) => s.id === schoolId)?.name || '—'
+  useEffect(() => {
+    void listProvinces()
+      .then(setProvinces)
+      .catch((err) => message.error(getErrorMessage(err)))
+  }, [message])
+
+  useEffect(() => {
+    const province = provinces.find((p) => p.name === selectedCity)
+    if (!province) {
+      setDistricts([])
+      return
+    }
+    let cancelled = false
+    void listDistricts(province.id)
+      .then((rows) => {
+        if (!cancelled) setDistricts(rows)
+      })
+      .catch(() => {
+        if (!cancelled) setDistricts([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedCity, provinces])
+
+  const filterOptionsByKey = useMemo(() => {
+    return {
+      first_name: uniqueSelectOptions(teachers.map((t) => t.first_name)),
+      last_name: uniqueSelectOptions(teachers.map((t) => t.last_name)),
+      personnel_no: uniqueSelectOptions(teachers.map((t) => t.personnel_no)),
+      national_id: uniqueSelectOptions(teachers.map((t) => t.national_id)),
+      phone: uniqueSelectOptions(teachers.map((t) => t.phone)),
+      email: uniqueSelectOptions(teachers.map((t) => t.email)),
+      unvan: uniqueSelectOptions(teachers.map((t) => teacherTitleParts(t).unvan)),
+      brans: uniqueSelectOptions(teachers.map((t) => teacherTitleParts(t).brans)),
+      kariyer: uniqueSelectOptions([
+        ...KARIYER_OPTIONS.map((o) => o.value),
+        ...teachers.map((t) => teacherTitleParts(t).kariyer),
+      ]),
+      working_institution: uniqueSelectOptions(teachers.map((t) => t.working_institution)),
+      degree: uniqueSelectOptions(teachers.map((t) => t.degree)),
+      rank: uniqueSelectOptions(teachers.map((t) => t.rank)),
+      pension_degree: uniqueSelectOptions(teachers.map((t) => t.pension_degree)),
+      last_graduated_school: uniqueSelectOptions(teachers.map((t) => t.last_graduated_school)),
+      class_level: uniqueSelectOptions(teachers.map((t) => t.class_level)),
+      school_principal: uniqueSelectOptions(teachers.map((t) => t.school_principal)),
+      union: uniqueSelectOptions(teachers.map((t) => t.union_name)),
+    } satisfies Partial<Record<TeacherFilterField, Array<{ value: string | number; label: string }>>>
+  }, [teachers])
+
+  const hasActiveFilters = Boolean(
+    search.trim() || TEACHER_FILTER_FIELDS.some((key) => isActiveFilterValue(filterValues[key])),
+  )
 
   const filteredTeachers = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase('tr-TR')
-    if (!q) return teachers
+    const q = searchQuery.trim().toLocaleLowerCase('tr-TR')
     return teachers.filter((t) => {
+      for (const key of TEACHER_FILTER_FIELDS) {
+        const selected = filterValues[key]
+        if (!isActiveFilterValue(selected)) continue
+        if (!matchesListFilter(teacherFieldValue(t, key), selected)) return false
+      }
+      if (!q) return true
+      const parts = teacherTitleParts(t)
       const fullName = `${t.first_name} ${t.last_name}`.toLocaleLowerCase('tr-TR')
       const reverseName = `${t.last_name} ${t.first_name}`.toLocaleLowerCase('tr-TR')
       return (
@@ -132,15 +266,21 @@ export function TeachersPage() {
         t.first_name.toLocaleLowerCase('tr-TR').includes(q) ||
         t.last_name.toLocaleLowerCase('tr-TR').includes(q) ||
         (t.personnel_no || '').toLocaleLowerCase('tr-TR').includes(q) ||
-        (t.national_id || '').toLocaleLowerCase('tr-TR').includes(q)
+        (t.national_id || '').toLocaleLowerCase('tr-TR').includes(q) ||
+        (parts.unvan || '').toLocaleLowerCase('tr-TR').includes(q) ||
+        (parts.brans || '').toLocaleLowerCase('tr-TR').includes(q) ||
+        (parts.kariyer || '').toLocaleLowerCase('tr-TR').includes(q) ||
+        (t.union_name || '').toLocaleLowerCase('tr-TR').includes(q) ||
+        (t.phone || '').toLocaleLowerCase('tr-TR').includes(q) ||
+        (t.email || '').toLocaleLowerCase('tr-TR').includes(q)
       )
     })
-  }, [teachers, search])
+  }, [teachers, searchQuery, filterValues])
 
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
-    form.setFieldsValue({ add_to_salary_form: true })
+    form.setFieldsValue({ add_to_salary_form: true, school_id: activeSchoolId ?? undefined, kariyer: 'Öğretmen' })
     setModalOpen(true)
   }
 
@@ -152,11 +292,15 @@ export function TeachersPage() {
       school_id: teacher.school_id,
       personnel_no: teacher.personnel_no || undefined,
       national_id: teacher.national_id || undefined,
+      phone: teacher.phone || undefined,
+      email: teacher.email || undefined,
       city: teacher.city || undefined,
       district: teacher.district || undefined,
       last_graduated_school: teacher.last_graduated_school || undefined,
       class_level: teacher.class_level || undefined,
-      title_branch: teacher.title_branch || undefined,
+      unvan: teacher.unvan || teacherTitleParts(teacher).unvan || undefined,
+      brans: teacher.brans || teacherTitleParts(teacher).brans || undefined,
+      kariyer: teacher.kariyer || teacherTitleParts(teacher).kariyer,
       working_institution: teacher.working_institution || undefined,
       degree: teacher.degree || undefined,
       pension_degree: teacher.pension_degree || undefined,
@@ -164,6 +308,7 @@ export function TeachersPage() {
       degree_rank_date: teacher.degree_rank_date ? dayjs(teacher.degree_rank_date) : null,
       school_principal: teacher.school_principal || undefined,
       service_start_date: teacher.service_start_date ? dayjs(teacher.service_start_date) : null,
+      first_duty_date: teacher.first_duty_date ? dayjs(teacher.first_duty_date) : null,
       annual_leave_quota: teacher.annual_leave_quota,
       union_name: teacher.union_name || undefined,
     })
@@ -179,8 +324,14 @@ export function TeachersPage() {
         ...rest,
         personnel_type: 'ogretmen',
         personnel_category_id: null,
+        phone: values.phone?.trim() || null,
+        email: values.email?.trim() || null,
+        unvan: values.unvan || null,
+        brans: values.brans || null,
+        kariyer: values.kariyer || 'Öğretmen',
         degree_rank_date: values.degree_rank_date ? values.degree_rank_date.toISOString() : null,
         service_start_date: values.service_start_date ? values.service_start_date.format('YYYY-MM-DD') : null,
+        first_duty_date: values.first_duty_date ? values.first_duty_date.format('YYYY-MM-DD') : null,
       }
 
       if (editing) {
@@ -255,7 +406,7 @@ export function TeachersPage() {
         format: exportFormat,
         filters: {
           scope: 'teachers',
-          ...(search.trim() ? { q: search.trim() } : {}),
+          ...(searchQuery.trim() ? { q: searchQuery.trim() } : {}),
         },
       })
       downloadBlob(blob, exportFilename('ogretmenler', exportFormat))
@@ -314,44 +465,6 @@ export function TeachersPage() {
     }
   }
 
-  const openApplyPromotion = (promotion: UpcomingPromotion) => {
-    setPromotionTarget(promotion)
-    promotionForm.setFieldsValue({
-      new_degree: promotion.degree || undefined,
-      new_rank: promotion.rank || undefined,
-      new_degree_rank_date: dayjs(promotion.next_promotion_date),
-      note: undefined,
-    })
-    setPromotionModalOpen(true)
-  }
-
-  const onApplyPromotion = async (values: PromotionFormValues) => {
-    if (!promotionTarget) return
-    setPromotionSubmitting(true)
-    try {
-      const payload: ApplyPromotionPayload = {
-        new_degree: values.new_degree,
-        new_rank: values.new_rank,
-        new_degree_rank_date: values.new_degree_rank_date.toISOString(),
-        note: values.note || null,
-      }
-      const { history } = await applyPromotion(promotionTarget.teacher_id, payload)
-      message.success('Terfi/kademe ilerlemesi uygulandı')
-      setPromotionModalOpen(false)
-      void load()
-      try {
-        const blob = await downloadPromotionForm(history.id)
-        downloadBlob(blob, `terfi-formu-${promotionTarget.personnel_no || promotionTarget.teacher_id}.xlsx`)
-      } catch (err) {
-        message.warning('Terfi kaydedildi ancak form indirilemedi: ' + getErrorMessage(err))
-      }
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    } finally {
-      setPromotionSubmitting(false)
-    }
-  }
-
   const columns: ColumnsType<Teacher> = [
     {
       title: 'Ad soyad',
@@ -359,16 +472,38 @@ export function TeachersPage() {
       sortDirections: [...SORT_AZ],
       render: (_: unknown, record) => `${record.first_name} ${record.last_name}`,
     },
-    { title: 'Sicil No', dataIndex: 'personnel_no', render: (v: string | null) => v || '—' },
-    { title: 'Unvan / Branş', dataIndex: 'title_branch', render: (v: string | null) => v || '—' },
+    { title: 'Cep telefonu', dataIndex: 'phone', render: (v: string | null) => v || '—' },
+    { title: 'E-posta', dataIndex: 'email', render: (v: string | null) => v || '—' },
     {
-      title: 'Okul',
-      sorter: sorterBy((r: Teacher) => schoolName(r.school_id)),
+      title: 'Unvan',
+      dataIndex: 'unvan',
+      sorter: (a: Teacher, b: Teacher) =>
+        (teacherTitleParts(a).unvan || '').localeCompare(teacherTitleParts(b).unvan || '', 'tr'),
       sortDirections: [...SORT_AZ],
-      render: (_: unknown, record) => schoolName(record.school_id),
+      render: (_: unknown, record) => teacherTitleParts(record).unvan || '—',
     },
-    { title: 'Şehir', dataIndex: 'city', render: (v: string | null) => v || '—' },
+    {
+      title: 'Branş',
+      dataIndex: 'brans',
+      sorter: (a: Teacher, b: Teacher) =>
+        (teacherTitleParts(a).brans || '').localeCompare(teacherTitleParts(b).brans || '', 'tr'),
+      sortDirections: [...SORT_AZ],
+      render: (_: unknown, record) => teacherTitleParts(record).brans || '—',
+    },
+    {
+      title: 'Kariyer',
+      dataIndex: 'kariyer',
+      sorter: (a: Teacher, b: Teacher) =>
+        (teacherTitleParts(a).kariyer || '').localeCompare(teacherTitleParts(b).kariyer || '', 'tr'),
+      sortDirections: [...SORT_AZ],
+      render: (_: unknown, record) => teacherTitleParts(record).kariyer || '—',
+    },
     { title: 'Sendika', dataIndex: 'union_name', render: (v: string | null) => v || '—' },
+    {
+      title: 'İlk başlama',
+      dataIndex: 'first_duty_date',
+      render: (v: string | null) => (v ? dayjs(v).format('DD.MM.YYYY') : '—'),
+    },
     {
       title: 'İşlemler',
       width: 160,
@@ -434,14 +569,44 @@ export function TeachersPage() {
           </Space>
         </Space>
 
-        <Input
-          allowClear
-          prefix={<SearchOutlined />}
-          placeholder="Ad, soyad, sicil no veya T.C. ile ara..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{ maxWidth: 420, marginBottom: 16 }}
-        />
+        <FilterBar>
+          <Input
+            allowClear
+            prefix={<SearchOutlined />}
+            placeholder="Ad, soyad, unvan, branş, T.C., telefon veya e-posta ile ara..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ width: 320 }}
+          />
+          <DynamicListFilters
+            fields={TEACHER_FILTER_OPTIONS}
+            isVisible={isVisible}
+            values={filterValues}
+            optionsByKey={filterOptionsByKey}
+            onChange={(key, value) => {
+              setFilterValues((current) => ({ ...current, [key]: value }))
+            }}
+          />
+          <FilterFieldsPicker
+            options={TEACHER_FILTER_OPTIONS}
+            value={visibleFilters}
+            onChange={(next) => {
+              setVisibleFilters(next)
+              setFilterValues((current) => {
+                const kept: Partial<Record<TeacherFilterField, ListFilterValue>> = {}
+                for (const key of next) kept[key] = current[key]
+                return kept
+              })
+            }}
+          />
+          <ClearFiltersButton
+            active={hasActiveFilters}
+            onClick={() => {
+              setSearch('')
+              setFilterValues({})
+            }}
+          />
+        </FilterBar>
 
         <SortableTable
           rowKey="id"
@@ -452,53 +617,6 @@ export function TeachersPage() {
           scroll={{ x: 'max-content' }}
         />
 
-        {promotions.length > 0 && (
-          <Collapse
-            style={{ marginTop: 24 }}
-            items={[
-              {
-                key: 'promotions',
-                label: (
-                  <Space>
-                    <span>Yaklaşan Kademe İlerlemeleri (90 gün)</span>
-                    <Tag color="orange">{promotions.length}</Tag>
-                  </Space>
-                ),
-                children: (
-                  <SortableTable
-                    size="small"
-                    rowKey="teacher_id"
-                    pagination={false}
-                    dataSource={promotions}
-                    scroll={{ x: 'max-content' }}
-                    columns={[
-                      { title: 'Personel', dataIndex: 'teacher_name' },
-                      { title: 'Mevcut Derece/Kademe', render: (_, r) => `${r.degree || '—'} / ${r.rank || '—'}` },
-                      { title: 'Sonraki İlerleme Tarihi', dataIndex: 'next_promotion_date' },
-                      {
-                        title: 'Kalan Gün',
-                        dataIndex: 'days_remaining',
-                        render: (v: number) => <Tag color={v <= 30 ? 'red' : 'blue'}>{v} gün</Tag>,
-                      },
-                      ...(canUpdate
-                        ? [
-                            {
-                              title: 'İşlem',
-                              render: (_: unknown, record: UpcomingPromotion) => (
-                                <Button size="small" onClick={() => openApplyPromotion(record)}>
-                                  Terfiyi Uygula
-                                </Button>
-                              ),
-                            },
-                          ]
-                        : []),
-                    ]}
-                  />
-                ),
-              },
-            ]}
-          />
-        )}
       </div>
 
       <Modal
@@ -550,27 +668,82 @@ export function TeachersPage() {
           </Row>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="city" label="Şehir">
-                <Input />
+              <Form.Item name="phone" label="Cep telefonu" rules={[MOBILE_PHONE_RULE]}>
+                <Input placeholder="05xx xxx xx xx" maxLength={30} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="district" label="İlçe">
-                <Input />
+              <Form.Item
+                name="email"
+                label="E-posta"
+                rules={[{ type: 'email', message: 'Geçerli bir e-posta girin' }]}
+              >
+                <Input placeholder="ornek@okul.k12.tr" maxLength={150} />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="title_branch" label="Unvan / Branş">
-                <Input />
+              <Form.Item name="city" label="İl">
+                <Select
+                  allowClear
+                  showSearch
+                  placeholder="İl seçin"
+                  optionFilterProp="label"
+                  filterOption={trSelectFilter}
+                  options={[
+                    ...provinces.map((p) => ({ value: p.name, label: p.name })),
+                    ...(selectedCity && !provinces.some((p) => p.name === selectedCity)
+                      ? [{ value: selectedCity, label: selectedCity }]
+                      : []),
+                  ]}
+                  onChange={() => form.setFieldValue('district', undefined)}
+                />
               </Form.Item>
             </Col>
+            <Col span={12}>
+              <Form.Item name="district" label="İlçe">
+                <Select
+                  allowClear
+                  showSearch
+                  placeholder={selectedCity ? 'İlçe seçin' : 'Önce il seçin'}
+                  disabled={!selectedCity}
+                  optionFilterProp="label"
+                  filterOption={trSelectFilter}
+                  options={[
+                    ...districts.map((d) => ({ value: d.name, label: d.name })),
+                    ...(selectedDistrict && !districts.some((d) => d.name === selectedDistrict)
+                      ? [{ value: selectedDistrict, label: selectedDistrict }]
+                      : []),
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="unvan" label="Unvan">
+                <Input placeholder="Örn. Öğretmen, Müdür Yardımcısı" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="brans" label="Branş">
+                <Input placeholder="Örn. Matematik" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="kariyer" label="Kariyer">
+                <Select options={KARIYER_OPTIONS} placeholder="Kariyer" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="working_institution" label="Görev Yeri">
                 <Input />
               </Form.Item>
             </Col>
+            <Col span={12} />
           </Row>
           <Row gutter={16}>
             <Col span={12}>
@@ -623,18 +796,29 @@ export function TeachersPage() {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
-                name="service_start_date"
-                label="İşe başlama tarihi"
-                tooltip="Yıllık izin hakkının 657 sayılı DMK m.102'ye göre otomatik hesaplanabilmesi için kullanılır"
+                name="first_duty_date"
+                label="İşe ilk başlama tarihi"
+                tooltip="Kamu görevine ilk başladığı tarih (MEBBİS: İlk göreve başlama)"
               >
                 <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item
+                name="service_start_date"
+                label="Kuruma başlama tarihi"
+                tooltip="Bu okula/kuruma başladığı tarih. Yıllık izin için ilk başlama tarihi yoksa bu tarih kullanılır."
+              >
+                <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
                 name="annual_leave_quota"
                 label="Yıllık izin hakkı (gün, manuel override)"
-                tooltip="Boş bırakılırsa işe başlama tarihine göre otomatik hesaplanır (10 yıla kadar 20 gün, üzeri 30 gün)"
+                tooltip="Boş bırakılırsa işe ilk başlama (yoksa kuruma başlama) tarihine göre otomatik hesaplanır (10 yıla kadar 20 gün, üzeri 30 gün)"
               >
                 <InputNumber min={0} max={365} style={{ width: '100%' }} />
               </Form.Item>
@@ -674,8 +858,8 @@ export function TeachersPage() {
             />
           </Form.Item>
           <Typography.Text type="secondary">
-            {search.trim()
-              ? `Arama filtresi uygulanacak (${filteredTeachers.length} kayıt).`
+            {hasActiveFilters
+              ? `Aktif filtre uygulanacak (${filteredTeachers.length} kayıt).`
               : 'Tüm öğretmenler dışa aktarılır.'}
           </Typography.Text>
         </Form>
@@ -689,44 +873,6 @@ export function TeachersPage() {
         onImported={() => void load()}
       />
 
-      <Modal
-        title={promotionTarget ? `Terfiyi Uygula — ${promotionTarget.teacher_name}` : 'Terfiyi Uygula'}
-        open={promotionModalOpen}
-        onCancel={() => setPromotionModalOpen(false)}
-        onOk={() => promotionForm.submit()}
-        confirmLoading={promotionSubmitting}
-        okText="Uygula ve Formu İndir"
-        cancelText="Vazgeç"
-        destroyOnHidden
-      >
-        <Form form={promotionForm} layout="vertical" onFinish={onApplyPromotion}>
-          <Typography.Text type="secondary">
-            Mevcut durum: {promotionTarget?.degree || '—'} / {promotionTarget?.rank || '—'}
-          </Typography.Text>
-          <Row gutter={16} style={{ marginTop: 12 }}>
-            <Col span={12}>
-              <Form.Item name="new_degree" label="Yeni Derece" rules={[{ required: true, message: 'Zorunlu' }]}>
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="new_rank" label="Yeni Kademe" rules={[{ required: true, message: 'Zorunlu' }]}>
-                <Input />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item
-            name="new_degree_rank_date"
-            label="Terfi Tarihi"
-            rules={[{ required: true, message: 'Zorunlu' }]}
-          >
-            <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
-          </Form.Item>
-          <Form.Item name="note" label="Açıklama (isteğe bağlı)">
-            <Input placeholder="Örn. 657 s. DMK 64-65. Md." />
-          </Form.Item>
-        </Form>
-      </Modal>
       <Modal
         title="Diğer personele taşı"
         open={Boolean(moveTarget)}

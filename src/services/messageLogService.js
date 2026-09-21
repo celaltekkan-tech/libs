@@ -10,8 +10,8 @@ function truncate(str, max) {
 /**
  * Sistem tarafından gönderilen SMS/e-postaları kalıcı olarak loglar. Hata
  * durumunda ana gönderim akışını bozmaz (auditService.log ile aynı desen).
- * Not: OTP/2FA gönderimleri (smsLoginService) bilinçli olarak bu logu
- * çağırmaz — güvenlik amacıyla kayıt altına alınmaz.
+ * Not: Öğretmen kayıt OTP gönderimleri bilinçli olarak bu logu çağırmaz.
+ * SMS giriş kodları gövde olmadan kaydedilir (kota düşümü için).
  */
 async function record({
   tenantId,

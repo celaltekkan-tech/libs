@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Button, Checkbox, Collapse, Dropdown, Empty, Form, Input, Modal, Select, Space, Typography } from 'antd'
-import dayjs from 'dayjs'
+import { App, Button, Checkbox, Collapse, DatePicker, Dropdown, Empty, Form, Input, Modal, Select, Space, Typography } from 'antd'
+import dayjs, { type Dayjs } from 'dayjs'
 import { SortableTable } from '../components/SortableTable'
 import {
   DeleteOutlined,
@@ -38,6 +38,7 @@ import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
 import { downloadBlob } from '../utils/download'
 import { addSalaryFormStarter } from '../utils/salaryFormAutoEntry'
 import { personNameSorter, SORT_AZ } from '../utils/tableSort'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 interface CategoryFormValues {
   name: string
@@ -52,17 +53,19 @@ interface StaffFormValues {
   national_id?: string
   title_branch?: string
   working_institution?: string
+  first_duty_date?: Dayjs | null
   add_to_salary_form?: boolean
 }
 
 export function OtherPersonnelPage() {
   const { message, modal } = App.useApp()
   const { session, hasPermission } = useAuth()
-  const { schools } = useActiveSchool()
+  const { schools, activeSchoolId } = useActiveSchool()
   const [categories, setCategories] = useState<PersonnelCategory[]>([])
   const [staff, setStaff] = useState<Teacher[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const searchQuery = useDebouncedValue(search)
   const [categoryOpen, setCategoryOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<PersonnelCategory | null>(null)
   const [staffOpen, setStaffOpen] = useState(false)
@@ -100,7 +103,7 @@ export function OtherPersonnelPage() {
   }, [load])
 
   const filteredStaff = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase('tr-TR')
+    const q = searchQuery.trim().toLocaleLowerCase('tr-TR')
     if (!q) return staff
     return staff.filter((t) => {
       const fullName = `${t.first_name} ${t.last_name}`.toLocaleLowerCase('tr-TR')
@@ -111,7 +114,7 @@ export function OtherPersonnelPage() {
         (t.title_branch || '').toLocaleLowerCase('tr-TR').includes(q)
       )
     })
-  }, [staff, search])
+  }, [staff, searchQuery])
 
   const grouped = useMemo(() => {
     const byId = new Map<number, Teacher[]>()
@@ -185,7 +188,11 @@ export function OtherPersonnelPage() {
     staffForm.resetFields()
     const id = categoryId ?? categories[0]?.id
     setDefaultCategoryId(id ?? null)
-    staffForm.setFieldsValue({ personnel_category_id: id, add_to_salary_form: true })
+    staffForm.setFieldsValue({
+      personnel_category_id: id,
+      add_to_salary_form: true,
+      school_id: activeSchoolId ?? undefined,
+    })
     setStaffOpen(true)
   }
 
@@ -200,6 +207,7 @@ export function OtherPersonnelPage() {
       national_id: person.national_id || undefined,
       title_branch: person.title_branch || undefined,
       working_institution: person.working_institution || undefined,
+      first_duty_date: person.first_duty_date ? dayjs(person.first_duty_date) : null,
     })
     setStaffOpen(true)
   }
@@ -208,10 +216,11 @@ export function OtherPersonnelPage() {
     if (!session) return
     setSubmitting(true)
     try {
-      const { add_to_salary_form, ...rest } = values
+      const { add_to_salary_form, first_duty_date, ...rest } = values
       const payload = {
         ...rest,
         personnel_category_id: values.personnel_category_id,
+        first_duty_date: first_duty_date ? first_duty_date.format('YYYY-MM-DD') : null,
       }
       if (editingStaff) {
         await updateTeacher(editingStaff.id, payload)
@@ -319,6 +328,11 @@ export function OtherPersonnelPage() {
     { title: 'Sicil No', dataIndex: 'personnel_no', render: (v: string | null) => v || '—' },
     { title: 'T.C.', dataIndex: 'national_id', render: (v: string | null) => v || '—' },
     { title: 'Unvan', dataIndex: 'title_branch', render: (v: string | null) => v || '—' },
+    {
+      title: 'İlk başlama',
+      dataIndex: 'first_duty_date',
+      render: (v: string | null) => (v ? dayjs(v).format('DD.MM.YYYY') : '—'),
+    },
     { title: 'Okul', render: (_: unknown, record) => schoolName(record.school_id) },
     {
       title: 'İşlemler',
@@ -537,6 +551,13 @@ export function OtherPersonnelPage() {
             </Form.Item>
             <Form.Item name="working_institution" label="Görev yeri">
               <Input />
+            </Form.Item>
+            <Form.Item
+              name="first_duty_date"
+              label="İşe ilk başlama tarihi"
+              tooltip="Kamu görevine ilk başladığı tarih"
+            >
+              <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
             </Form.Item>
             {!editingStaff && (
               <Form.Item name="add_to_salary_form" valuePropName="checked">

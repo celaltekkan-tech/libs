@@ -64,6 +64,7 @@ export function applyMenuLayout(
         label: cfg.label || key,
         children,
       })
+      placed.add(key)
       continue
     }
 
@@ -76,7 +77,7 @@ export function applyMenuLayout(
 
   // Layout'ta olmayan yeni öğeleri varsayılan sırayla ekle
   for (const key of defaultOrder) {
-    if (key === MENU_HOME_KEY || placed.has(key) || hidden.has(key)) continue
+    if (key === MENU_HOME_KEY || hidden.has(key)) continue
     if (key.startsWith('grp-')) {
       const cfg = defaultGroups.get(key)
       if (!cfg) continue
@@ -89,14 +90,24 @@ export function applyMenuLayout(
         placed.add(childKey)
       }
       if (children.length === 0) continue
+      const existingIdx = result.findIndex((n) => isNavGroup(n) && n.key === key)
+      if (existingIdx >= 0) {
+        const existing = result[existingIdx]
+        if (isNavGroup(existing)) {
+          result[existingIdx] = { ...existing, children: [...existing.children, ...children] }
+        }
+        continue
+      }
       result.push({
         key,
         icon: groupIconFor(key),
         label: cfg.label,
         children,
       })
+      placed.add(key)
       continue
     }
+    if (placed.has(key)) continue
     const leaf = leaves.get(key)
     if (!leaf) continue
     result.push(leaf)

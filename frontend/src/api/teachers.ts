@@ -1,5 +1,11 @@
 import client from './client'
-import type { ApplyPromotionPayload, PromotionHistory, Teacher, TeacherPayload } from '../types/teacher'
+import type {
+  ApplyPromotionPayload,
+  PromotionHistory,
+  ReportEightYearCheckPayload,
+  Teacher,
+  TeacherPayload,
+} from '../types/teacher'
 import type { ExportFormat } from '../utils/download'
 
 interface Envelope<T> {
@@ -55,16 +61,29 @@ export interface UpcomingPromotion {
   teacher_id: number
   teacher_name: string
   personnel_no: string | null
+  personnel_type: string
   degree: string | null
   rank: string | null
-  degree_rank_date: string
-  next_promotion_date: string
-  days_remaining: number
+  at_ceiling: boolean
+  suggested_degree: string | null
+  suggested_rank: string | null
+  degree_rank_date: string | null
+  next_promotion_date: string | null
+  days_remaining: number | null
+  in_current_period: boolean
+  eight_year_base_date: string | null
+  eight_year_next_checkpoint: string | null
+  eight_year_due: boolean
+  kariyer: string | null
+  kariyer_eligible: boolean
+  kariyer_suggested_degree: string | null
 }
 
-export async function fetchUpcomingPromotions(days = 90): Promise<UpcomingPromotion[]> {
+export async function fetchUpcomingPromotions(
+  params: { days?: number; all?: boolean } = { days: 90 },
+): Promise<UpcomingPromotion[]> {
   const { data } = await client.get<Envelope<UpcomingPromotion[]>>('/api/teachers/promotions/upcoming', {
-    params: { days },
+    params,
   })
   return data.data
 }
@@ -75,6 +94,17 @@ export async function applyPromotion(
 ): Promise<{ teacher: Teacher; history: PromotionHistory }> {
   const { data } = await client.post<Envelope<{ teacher: Teacher; history: PromotionHistory }>>(
     `/api/teachers/${teacherId}/promotions`,
+    payload,
+  )
+  return data.data
+}
+
+export async function reportEightYearCheck(
+  teacherId: number,
+  payload: ReportEightYearCheckPayload,
+): Promise<{ teacher: Teacher; history?: PromotionHistory; bonusApplied: boolean }> {
+  const { data } = await client.post<Envelope<{ teacher: Teacher; history?: PromotionHistory; bonusApplied: boolean }>>(
+    `/api/teachers/${teacherId}/promotions/eight-year-check`,
     payload,
   )
   return data.data
@@ -131,6 +161,7 @@ export interface MebbisImportRow {
   gorev: string | null
   brans: string | null
   seviye_unvani: string | null
+  kariyer: string | null
   personnel_type: string
   ogrenim_durumu: string | null
   kurum_sicil_no: string | null

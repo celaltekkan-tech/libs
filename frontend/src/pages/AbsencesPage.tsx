@@ -33,6 +33,7 @@ import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { tablePagination } from '../utils/tablePagination'
 import { nestedPersonNameSorter, personNameSorter, SORT_AZ } from '../utils/tableSort'
 import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 export function AbsencesPage() {
   const { message, modal } = App.useApp()
@@ -43,6 +44,7 @@ export function AbsencesPage() {
   const [students, setStudents] = useState<Student[]>([])
   const [classrooms, setClassrooms] = useState<Classroom[]>([])
   const [search, setSearch] = useState('')
+  const searchQuery = useDebouncedValue(search)
   const [classroomFilter, setClassroomFilter] = useState<number | null>(null)
   const [date, setDate] = useState(dayjs())
   const [records, setRecords] = useState<StudentAbsence[]>([])
@@ -91,7 +93,7 @@ export function AbsencesPage() {
   }, [load])
 
   const filteredStudents = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase('tr-TR')
+    const q = searchQuery.trim().toLocaleLowerCase('tr-TR')
     return students.filter((s) => {
       if (classroomFilter && s.classroom_id !== classroomFilter) return false
       if (!q) return true
@@ -102,7 +104,7 @@ export function AbsencesPage() {
         (s.class_level && s.section ? `${s.class_level}/${s.section}`.toLocaleLowerCase('tr-TR').includes(q) : false)
       )
     })
-  }, [students, search, classroomFilter])
+  }, [students, searchQuery, classroomFilter])
 
   const filteredAbsenceIds = useMemo(() => {
     const studentIds = new Set(filteredStudents.map((s) => s.id))
@@ -178,9 +180,9 @@ export function AbsencesPage() {
 
   // Arama tek öğrenciye indirgendiğinde geçmiş paneli otomatik açılsın.
   const searchedStudent = useMemo(() => {
-    if (!search.trim() || filteredStudents.length !== 1) return null
+    if (!searchQuery.trim() || filteredStudents.length !== 1) return null
     return filteredStudents[0]
-  }, [search, filteredStudents])
+  }, [searchQuery, filteredStudents])
 
   const onDownloadLetter = async (row: AbsenceWarningRow) => {
     try {

@@ -20,7 +20,7 @@ function isConfigured() {
 /**
  * @returns {Promise<{status: string, messageId: string|null, error: string|null}>}
  */
-async function sendEmail({ to, subject, text, html }) {
+async function sendEmail({ to, subject, text, html, attachments }) {
   if (!to || !String(to).trim()) {
     return { status: EMAIL_STATUS.CANCELLED, messageId: null, error: 'Alıcı e-posta yok' };
   }
@@ -58,6 +58,7 @@ async function sendEmail({ to, subject, text, html }) {
       subject: String(subject).trim(),
       text: text || undefined,
       html: html || undefined,
+      attachments: Array.isArray(attachments) && attachments.length ? attachments : undefined,
     });
     return {
       status: EMAIL_STATUS.SUCCESS,

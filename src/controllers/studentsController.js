@@ -8,6 +8,7 @@ const {
   previewWorkbook,
   getMappedRows,
   parseClassSection,
+  fillMissingMappedFields,
 } = require('../services/excelImportService');
 const { isPhotoRosterWorkbook, parsePhotoRoster } = require('../services/photoRosterImportService');
 const { applyAgeFromBirthDate } = require('../services/studentAgeService');
@@ -25,12 +26,21 @@ const COLUMN_LABELS = {
   yasi: 'Yaşı',
   registration_status: 'Kayıt Durumu',
   parent_name: 'Veli Adı',
+  mother_name: 'Anne Adı',
+  father_name: 'Baba Adı',
   parent_phone: 'Veli Telefon',
+  student_phone: 'Öğrenci Telefon',
   extra_contacts: 'Ek İletişim',
   is_inclusion: 'Kaynaştırma',
   is_foreign: 'Yabancı Uyruklu',
   boarding_status: 'Yurt Durumu',
   school_id: 'Okul ID',
+};
+
+const REGISTRATION_STATUS_LABELS = {
+  aktif: 'Aktif',
+  nakil_giden: 'Nakil giden',
+  orgun_egitim_disi: 'Örgün eğitim dışı',
 };
 
 const IMPORTABLE_FIELD_KEYS = new Set(IMPORTABLE_FIELDS.map((f) => f.key));
@@ -93,6 +103,10 @@ function buildWhere(tenantId, filters = {}) {
   if (filters.class_level) where.class_level = filters.class_level;
   if (filters.section) where.section = filters.section;
   if (filters.gender) where.gender = filters.gender;
+  if (filters.yasi != null && filters.yasi !== '') {
+    const age = Number(filters.yasi);
+    if (Number.isFinite(age)) where.yasi = age;
+  }
   if (filters.registration_status) where.registration_status = filters.registration_status;
   if (filters.boarding_status) where.boarding_status = filters.boarding_status;
   return where;
@@ -218,6 +232,46 @@ function normalizeBool(value) {
   return ['1', 'true', 'evet', 'e', 'x', 'var'].includes(raw);
 }
 
+/** Excel/e-Okul pansiyon metnini kanonik değere çevirir. Yatılı değilse Gündüzlü. */
+function normalizeBoardingStatus(value) {
+  const raw = String(value == null ? '' : value)
+    .trim()
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i');
+  if (raw.includes('yatili')) return 'Yatılı';
+  return 'Gündüzlü';
+}
+
+function foldTr(value) {
+  return String(value)
+    .trim()
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i')
+    .replace(/ö/g, 'o')
+    .replace(/ü/g, 'u')
+    .replace(/ş/g, 's')
+    .replace(/ç/g, 'c')
+    .replace(/ğ/g, 'g')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function normalizeRegistrationStatus(value) {
+  if (value == null || value === '') return null;
+  const raw = foldTr(value);
+  if (raw === 'aktif' || raw === 'active') return 'aktif';
+  if (raw === 'nakil giden') return 'nakil_giden';
+  if (
+    raw === 'orgun egitim disi' ||
+    raw === 'kayit silindi' ||
+    raw === 'kaydi silindi'
+  ) {
+    return 'orgun_egitim_disi';
+  }
+  if (raw === 'nakil gelen') return 'aktif';
+  return null;
+}
+
 function parseBirthDate(value) {
   if (value == null || value === '') return null;
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -235,8 +289,15 @@ function parseBirthDate(value) {
 
 function normalizeNationalId(value) {
   if (value == null || value === '') return null;
-  const digits = String(value).replace(/\D/g, '');
-  return digits || null;
+  let s = String(value).trim();
+  if (/^\d+\.0+$/.test(s)) s = s.replace(/\.0+$/, '');
+  const digits = s.replace(/\D/g, '');
+  return /^\d{11}$/.test(digits) ? digits : null;
+}
+
+function hasNationalIdInput(value) {
+  if (value == null || value === '') return false;
+  return String(value).replace(/\D/g, '').length > 0;
 }
 
 function normalizeStudentNumber(value) {
@@ -310,6 +371,7 @@ function formatCellValue(student, key) {
   if (value == null || value === '') return '';
   if (key === 'is_inclusion' || key === 'is_foreign') return value ? 'Evet' : 'Hayır';
   if (key === 'gender') return value === 'K' ? 'Kız' : value === 'E' ? 'Erkek' : value;
+  if (key === 'registration_status') return REGISTRATION_STATUS_LABELS[value] || String(value);
   return String(value);
 }
 
@@ -426,6 +488,8 @@ async function commitPhotoRosterImport(req) {
       if (nationalId) incoming.national_id = nationalId;
       if (s.first_name) incoming.first_name = s.first_name;
       if (s.last_name) incoming.last_name = s.last_name;
+      if (s.mother_name) incoming.mother_name = String(s.mother_name).trim();
+      if (s.father_name) incoming.father_name = String(s.father_name).trim();
       const gender = normalizeGender(s.gender);
       if (gender) incoming.gender = gender;
       const birthDate = parseBirthDate(s.birth_date);
@@ -595,8 +659,20 @@ module.exports = {
       if (req.user && req.user.tenant_id) payload.tenant_id = req.user.tenant_id;
       if (payload.gender === '') payload.gender = null;
       if (payload.national_id === '') payload.national_id = null;
+      if (payload.national_id) {
+        payload.national_id = normalizeNationalId(payload.national_id);
+        if (!payload.national_id) {
+          return res.status(400).json({
+            success: false,
+            message: 'T.C. kimlik no 11 haneli sayı olmalıdır',
+          });
+        }
+      }
       if (payload.student_number) payload.student_number = String(payload.student_number).trim();
       if (!payload.registration_status) payload.registration_status = 'aktif';
+      if (!payload.boarding_status || String(payload.boarding_status).trim() === '') {
+        payload.boarding_status = 'Gündüzlü';
+      }
       if (payload.extra_contacts !== undefined) {
         payload.extra_contacts = normalizeExtraContacts(payload.extra_contacts);
       } else {
@@ -639,6 +715,15 @@ module.exports = {
       if (req.user && req.user.tenant_id) payload.tenant_id = req.user.tenant_id;
       if (payload.gender === '') payload.gender = null;
       if (payload.national_id === '') payload.national_id = null;
+      if (payload.national_id) {
+        payload.national_id = normalizeNationalId(payload.national_id);
+        if (!payload.national_id) {
+          return res.status(400).json({
+            success: false,
+            message: 'T.C. kimlik no 11 haneli sayı olmalıdır',
+          });
+        }
+      }
       if (payload.student_number != null) payload.student_number = String(payload.student_number).trim();
       if (payload.extra_contacts !== undefined) {
         payload.extra_contacts = normalizeExtraContacts(payload.extra_contacts);
@@ -758,6 +843,11 @@ module.exports = {
       if (!preview) {
         preview = previewWorkbook(req.file.buffer, { headerRow: effectiveHeaderRow });
       }
+
+      columnMapping = fillMissingMappedFields(columnMapping, preview.headers, [
+        'mother_name',
+        'father_name',
+      ]);
 
       const mappedFields = Object.values(columnMapping);
       if (!mappedFields.includes('first_name') || !mappedFields.includes('last_name')) {
@@ -922,6 +1012,10 @@ module.exports = {
         }
 
         const nationalId = normalizeNationalId(raw.national_id);
+        if (hasNationalIdInput(raw.national_id) && !nationalId) {
+          errors.push({ row: rowNumber, message: 'T.C. kimlik no 11 haneli sayı olmalıdır' });
+          continue;
+        }
         const incoming = {
           school_id: schoolId || classroom.school_id,
           classroom_id: classroom.id,
@@ -941,16 +1035,20 @@ module.exports = {
           if (Number.isFinite(age)) incoming.yasi = age;
         }
         applyAgeFromBirthDate(incoming);
-        if (raw.registration_status) incoming.registration_status = raw.registration_status;
+        const registrationStatus = normalizeRegistrationStatus(raw.registration_status);
+        if (registrationStatus) incoming.registration_status = registrationStatus;
         if (raw.parent_name) incoming.parent_name = String(raw.parent_name).trim();
+        if (raw.mother_name) incoming.mother_name = String(raw.mother_name).trim();
+        if (raw.father_name) incoming.father_name = String(raw.father_name).trim();
         if (raw.parent_phone) incoming.parent_phone = String(raw.parent_phone).trim();
+        if (raw.student_phone) incoming.student_phone = String(raw.student_phone).trim();
         if (raw.is_inclusion != null && raw.is_inclusion !== '') {
           incoming.is_inclusion = normalizeBool(raw.is_inclusion);
         }
         if (raw.is_foreign != null && raw.is_foreign !== '') {
           incoming.is_foreign = normalizeBool(raw.is_foreign);
         }
-        if (raw.boarding_status) incoming.boarding_status = String(raw.boarding_status).trim();
+        incoming.boarding_status = normalizeBoardingStatus(raw.boarding_status);
 
         try {
           let existing = findExistingStudent(maps, nationalId, studentNumber);

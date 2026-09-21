@@ -8,7 +8,14 @@ import { AppLayout } from '../../components/AppLayout'
 import { cancelLicense, createLicense, listLicenses } from '../../api/licenses'
 import { listTenants } from '../../api/tenants'
 import { getErrorMessage } from '../../api/client'
-import { LICENSE_PLANS, MODULE_LABELS, getLicensePlan } from '../../constants/licensePlans'
+import {
+  ADDON_LICENSE_PLANS,
+  ALL_LICENSE_PLANS,
+  LICENSE_PLANS,
+  MODULE_LABELS,
+  getLicensePlan,
+  isAddonPlan,
+} from '../../constants/licensePlans'
 import type { License, LicenseStatus } from '../../types/license'
 import type { TenantListItem } from '../../types/tenant'
 import { tablePagination } from '../../utils/tablePagination'
@@ -35,6 +42,7 @@ export function LicensesPage() {
   const [form] = Form.useForm<LicenseFormValues>()
   const selectedPlanName = Form.useWatch('plan', form)
   const selectedPlan = selectedPlanName ? getLicensePlan(selectedPlanName) : undefined
+  const selectedIsAddon = selectedPlan?.kind === 'addon'
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -108,12 +116,27 @@ export function LicensesPage() {
           <Tooltip title={def.summary}>
             <Space size={4}>
               {plan}
+              {def.kind === 'addon' ? <Tag color="purple">Eklenti</Tag> : null}
               <InfoCircleOutlined style={{ color: '#9ca3af' }} />
             </Space>
           </Tooltip>
         ) : (
           plan
         )
+      },
+    },
+    {
+      title: 'SMS kotası',
+      render: (_: unknown, record) => {
+        if (!isAddonPlan(record.plan)) return <Typography.Text type="secondary">—</Typography.Text>
+        const quota = record.sms_quota
+        if (quota == null) return 'Sınırsız'
+        const used = record.sms_used ?? 0
+        const ended = record.status !== 'active' || record.sms_remaining === 0
+        const label = `${used.toLocaleString('tr-TR')} / ${quota.toLocaleString('tr-TR')}`
+        if (record.status !== 'active') return `${label} (sıfırlandı)`
+        if (ended && used < quota) return `${label} (süre bitti)`
+        return label
       },
     },
     {
@@ -167,11 +190,14 @@ export function LicensesPage() {
               label: 'Plan Açıklamaları',
               children: (
                 <List
-                  grid={{ gutter: 16, xs: 1, sm: 2, md: 2, lg: 4 }}
-                  dataSource={LICENSE_PLANS}
+                  grid={{ gutter: 16, xs: 1, sm: 2, md: 3, lg: 3 }}
+                  dataSource={ALL_LICENSE_PLANS}
                   renderItem={(plan) => (
                     <List.Item>
-                      <Typography.Text strong>{plan.name}</Typography.Text>
+                      <Space size={8}>
+                        <Typography.Text strong>{plan.name}</Typography.Text>
+                        {plan.kind === 'addon' ? <Tag color="purple">Eklenti</Tag> : null}
+                      </Space>
                       <Typography.Paragraph type="secondary" style={{ marginBottom: 8, fontSize: 13 }}>
                         {plan.summary}
                       </Typography.Paragraph>
@@ -233,12 +259,40 @@ export function LicensesPage() {
           <Form.Item name="plan" label="Plan" rules={[{ required: true, message: 'Plan seçin' }]}>
             <Select
               placeholder="Plan seçin"
-              options={LICENSE_PLANS.map((plan) => ({ value: plan.name, label: plan.name }))}
+              options={[
+                {
+                  label: 'Ana planlar',
+                  options: LICENSE_PLANS.map((plan) => ({ value: plan.name, label: plan.name })),
+                },
+                {
+                  label: 'Eklentiler',
+                  options: ADDON_LICENSE_PLANS.map((plan) => ({ value: plan.name, label: `${plan.name} (eklenti)` })),
+                },
+              ]}
             />
           </Form.Item>
-          {selectedPlan && (
+          {selectedPlan && !selectedIsAddon && (
             <Typography.Paragraph type="secondary" style={{ marginTop: -12, fontSize: 13 }}>
-              {selectedPlan.summary}
+              {selectedPlan.summary} Okul:{' '}
+              {selectedPlan.schoolLimit == null ? 'sınırsız' : selectedPlan.schoolLimit}
+              {' · '}
+              Kullanıcı:{' '}
+              {selectedPlan.userLimit == null
+                ? 'sınırsız'
+                : selectedPlan.userLimit === 0
+                  ? 'yok'
+                  : selectedPlan.name === 'Standart'
+                    ? `${selectedPlan.userLimit} (öğretmen/rehber öğretmen hariç)`
+                    : selectedPlan.userLimit}
+              . Yeni ana lisans mevcut ana lisansı iptal eder; SMS eklentisi kalır.
+            </Typography.Paragraph>
+          )}
+          {selectedIsAddon && (
+            <Typography.Paragraph type="secondary" style={{ marginTop: -12, fontSize: 13 }}>
+              {selectedPlan?.summary} Kota:{' '}
+              {selectedPlan?.smsQuota == null ? 'sınırsız' : selectedPlan.smsQuota.toLocaleString('tr-TR')} SMS.
+              Ana lisansı iptal etmez; hesabın aktif bir ana lisansı olmalıdır. Lisans bitiminde
+              kullanılmayan krediler sıfırlanır, yeni lisans paket kotasıyla başlar.
             </Typography.Paragraph>
           )}
           <Form.Item name="range" label="Başlangıç / Bitiş">

@@ -13,6 +13,7 @@ import type {
   MessageLogStatus,
 } from '../types/messageLog'
 import { SOURCE_MODULE_LABELS, STATUS_LABELS } from '../types/messageLog'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 function formatDate(iso: string | null) {
   return iso ? dayjs(iso).format('DD.MM.YYYY HH:mm') : '—'
@@ -48,7 +49,8 @@ export function MessageLogsPage() {
   const [view, setView] = useState<'visible' | 'hidden'>('visible')
   const [channel, setChannel] = useState<MessageLogChannel | 'all'>('all')
   const [status, setStatus] = useState<MessageLogStatus | 'all'>('all')
-  const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const search = useDebouncedValue(searchInput)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
   const [total, setTotal] = useState(0)
@@ -76,6 +78,10 @@ export function MessageLogsPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    setPage(1)
+  }, [search])
 
   const onHide = async (row: MessageLog) => {
     try {
@@ -213,10 +219,9 @@ export function MessageLogsPage() {
               placeholder="Alıcı, konu veya içerikte ara"
               allowClear
               style={{ width: 260 }}
-              onSearch={(v) => {
-                setSearch(v)
-                setPage(1)
-              }}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onSearch={(v) => setSearchInput(v)}
             />
           </Space>
         </Space>

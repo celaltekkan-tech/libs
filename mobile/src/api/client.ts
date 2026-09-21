@@ -77,7 +77,8 @@ client.interceptors.request.use(async (config) => {
   config.baseURL = currentBaseUrl || undefined;
 
   const url = config.url || '';
-  const isPublicAuth = url.includes('/api/auth/login');
+  const isPublicAuth =
+    url.includes('/api/auth/login') || url.includes('/api/auth/teacher-register');
   if (!isPublicAuth) {
     const token = await getStoredToken();
     if (token) {
@@ -96,8 +97,8 @@ client.interceptors.response.use(
       ? `Sunucuya bağlanılamadı (${currentBaseUrl || 'adres tanımsız'}). Sunucu adresini ve ağ bağlantınızı kontrol edin.`
       : error.message;
     const apiError = new ApiError(status, body, fallback);
-
-    if (status === 401) {
+    const reqUrl = String(error.config?.url || '');
+    if (status === 401 && !reqUrl.includes('/api/auth/teacher-register')) {
       onUnauthorized?.();
     }
 

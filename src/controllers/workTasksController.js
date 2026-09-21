@@ -8,6 +8,7 @@ const {
   normalizeNotifyChannels,
   isOccurrenceComplete,
 } = require('../services/workTaskService');
+const licenseService = require('../services/licenseService');
 
 const assigneeInclude = {
   model: User,
@@ -32,6 +33,26 @@ async function assertAssigneeInTenant(tenantId, assigneeUserId) {
     where: { id: assigneeUserId, tenant_id: tenantId, is_active: true, is_platform_admin: false },
   });
   return user;
+}
+
+async function assertSmsNotifyAllowed(res, tenantId, channels) {
+  const list = Array.isArray(channels) ? channels : [];
+  if (!list.includes('sms')) return true;
+  try {
+    await licenseService.assertCanSendSms(tenantId, 1);
+    return true;
+  } catch (err) {
+    if (err instanceof licenseService.SmsLicenseError) {
+      res.status(err.status).json({
+        success: false,
+        code: err.code,
+        message: err.message,
+        ...(err.details || {}),
+      });
+      return false;
+    }
+    throw err;
+  }
 }
 
 function serializeTask(row) {
@@ -100,6 +121,7 @@ module.exports = {
       if (!assignee) {
         return res.status(400).json({ success: false, message: 'Atanan kullanıcı bu kurumda bulunamadı' });
       }
+      if (!(await assertSmsNotifyAllowed(res, tenantId, body.notify_channels))) return;
 
       const row = await WorkTask.create({
         tenant_id: tenantId,
@@ -157,7 +179,10 @@ module.exports = {
       if (body.next_due_at != null) patch.next_due_at = body.next_due_at;
       if (body.remind_before_minutes != null) patch.remind_before_minutes = body.remind_before_minutes;
       if (body.is_mandatory != null) patch.is_mandatory = body.is_mandatory;
-      if (body.notify_channels != null) patch.notify_channels = normalizeNotifyChannels(body.notify_channels);
+      if (body.notify_channels != null) {
+        if (!(await assertSmsNotifyAllowed(res, tenantId, body.notify_channels))) return;
+        patch.notify_channels = normalizeNotifyChannels(body.notify_channels);
+      }
       if (body.status != null) patch.status = body.status;
 
       await row.update(patch);

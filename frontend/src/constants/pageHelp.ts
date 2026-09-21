@@ -68,11 +68,17 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
     topics: [
       {
         title: 'Yeni okul',
-        steps: ['Yeni Okul butonuna tıklayın.', 'Ad, kod ve diğer alanları doldurun.', 'Kaydet ile kaydı oluşturun.'],
+        steps: [
+          'Yeni Okul butonuna tıklayın.',
+          'İl ve ilçeyi seçin, ardından katalogdan okul adını seçin.',
+          'Okul listede yoksa «Okul listede yok, yeni ad gireceğim» kutusunu işaretleyip adı yazın.',
+          'Gerekiyorsa kademe ve okul kodunu kontrol edip kaydedin.',
+        ],
+        body: 'Katalogdan seçilen okullarda MEB kurum kodu varsa otomatik dolar. Okul sayısı plana göre sınırlıdır: Standart’ta 1, Premium’da en fazla 3 okul.',
       },
       {
         title: 'Düzenleme / silme',
-        body: 'Satırdaki düzenle veya sil işlemleriyle mevcut kaydı güncelleyebilirsiniz (yetkiye bağlı).',
+        body: 'Satırdaki düzenle veya sil işlemleriyle mevcut kaydı güncelleyebilirsiniz (yetkiye bağlı). Hesapta en az bir okul kalmalıdır; listede tek okul varken silme kapalıdır. Düzenle formundan okul logosu yükleyebilirsiniz; logosu olan okulların e-postalarında bu logo kullanılır.',
       },
     ],
   },
@@ -94,14 +100,14 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
         title: 'Öğrenci ekleme',
         steps: [
           'Yeni Öğrenci ile formu açın.',
-          'Kimlik, sınıf ve veli iletişim bilgilerini girin.',
+          'Kimlik, sınıf, anne/baba adı ve veli iletişim bilgilerini girin.',
           'İsterseniz öğrenci fotoğrafı yükleyin.',
           'Kayıt durumunu seçip kaydedin.',
         ],
       },
       {
         title: 'Arama ve filtre',
-        body: 'Ad, numara veya sınıf ile listede arama yapabilirsiniz.',
+        body: 'Ad, numara veya T.C. ile arayabilirsiniz. Filtre alanları butonuyla öğrenci kartındaki tüm alanlardan hangilerinin görüneceğini seçersiniz; tercih bu tarayıcıda size özel saklanır. Okul üst çubuktan seçilir.',
       },
       {
         title: 'Yaş',
@@ -116,6 +122,10 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       {
         title: 'Öğretmen kaydı',
         steps: ['Yeni Öğretmen butonunu kullanın.', 'Kimlik, branş ve iletişim bilgilerini doldurun.', 'Kaydedin.'],
+      },
+      {
+        title: 'Liste filtreleri',
+        body: 'Filtre alanları ile öğretmen kartındaki tüm alanlardan hangilerinin filtreleneceğini seçebilirsiniz. Tercih bu tarayıcıda size özel saklanır.',
       },
       {
         title: 'Maaş / belge işlemleri',
@@ -154,7 +164,7 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
     ],
   },
   '/norm-positions': {
-    title: 'Norm Kadro Takibi',
+    title: 'Norm Kadro',
     summary: 'Norm kadro ihtiyaç ve doluluk bilgisini takip eder; form çıktıları alabilirsiniz.',
     topics: [
       {
@@ -164,6 +174,28 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       {
         title: 'Çıktı',
         body: 'Yetkiniz varsa Excel / PDF çıktı veya maaş değişikliği formu işlemlerini kullanın.',
+      },
+    ],
+  },
+  '/promotions': {
+    title: 'Terfi Takibi',
+    summary: 'Öğretmen ve memurların derece/kademe ilerlemesini, 8 yıllık ceza-siz bonusu ve kariyer terfisini takip eder.',
+    topics: [
+      {
+        title: 'Yıllık kademe ilerlemesi',
+        body: 'Kademe tarihi dolan personelin sıradaki terfisini "Terfiyi Uygula" ile onaylayın; form otomatik indirilir.',
+      },
+      {
+        title: '8 yıllık kontrol',
+        body: 'Ceza almadan 8 yıl geçen personelde kademe bonusu uygulanır; ceza varsa tarihini girerek sayaç sıfırlanır.',
+      },
+      {
+        title: 'Kariyer terfisi',
+        body: 'Uzman Öğretmen / Başöğretmen olan öğretmene tek seferlik derece -1 uygulanır.',
+      },
+      {
+        title: 'Terfi tarihini değiştirme',
+        body: 'Özel durumlarda terfi tarihi değiştirilebilir; sebep girilmesi zorunludur. Sürekli seçilirse takvim o tarihe göre devam eder, tek seferlik seçilirse sıradaki yıllık takvim değişmez.',
       },
     ],
   },
@@ -297,17 +329,21 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       },
       {
         title: 'SMS notu',
-        body: 'SMS için öğrencinin veli telefonu tanımlı olmalıdır; aksi halde alıcı iptal / başarısız sayılır.',
+        body: 'SMS göndermek için hesabın aktif SMS 3000 veya SMS 10000 lisansı ve yeterli kotası olmalıdır. Lisans bitince kullanılmayan krediler sıfırlanır. Veli telefonu tanımlı olmayan alıcılar iptal sayılır ve kota düşmez. Öğretmen kayıt SMS’i lisans gerektirmez.',
       },
     ],
   },
   '/discipline': {
     title: 'Disiplin Modülü',
-    summary: 'Disiplin olaylarını kaydeder, süreç ve sonuçlarını takip edersiniz.',
+    summary: 'Disiplin olaylarını kaydeder, süreç ve sonuçlarını takip edersiniz. Mobil öğretmen bildirimleri ayrı sekmededir.',
     topics: [
       {
         title: 'Olay kaydı',
         steps: ['Yeni olay ekleyin.', 'Öğrenci, tarih ve açıklamayı girin.', 'Durumu güncelleyip kaydedin.'],
+      },
+      {
+        title: 'Öğretmen bildirimleri',
+        body: 'Öğretmen Bildirimleri sekmesinde mobil uygulamadan gelen kayıtlar listelenir. Ad, öğrenci no, öğretmen ve sebeple arayabilir; sınıf, öğretmen ve sebep filtrelerini kullanabilirsiniz.',
       },
     ],
   },
@@ -450,6 +486,21 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       },
     ],
   },
+  '/platform/directory-schools': {
+    title: 'MEB Okul Kataloğu',
+    summary:
+      'Türkiye genelindeki ortaokul ve liseleri il / ilçe bazında görürsünüz. Kiracılar okul eklerken bu referans listesinden seçer.',
+    topics: [
+      {
+        title: 'Arama',
+        steps: [
+          'İl ve ilçe seçerek listeyi daraltın.',
+          'Kademe (ortaokul / lise) filtresi uygulayın.',
+          'Okul adıyla arama yapın.',
+        ],
+      },
+    ],
+  },
   '/platform/licenses': {
     title: 'Lisans Yönetimi',
     summary: 'Tenant lisanslarını tanımlar, plan ve süre bilgisini yönetirsiniz.',
@@ -482,11 +533,18 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
   },
   '/platform/backups': {
     title: 'Veritabanı Yedekleme',
-    summary: 'Yedek alma ve yedek listesini yönetirsiniz (platform yöneticisi).',
+    summary: 'Yedek klasörünü, saati ve saklama süresini ayarlar; yedek alır veya geri yüklersiniz (platform yöneticisi).',
     topics: [
       {
-        title: 'Yedek alma',
-        body: 'Yedek oluştur komutuyla anlık yedek alın; listeden indirilebilir yedekleri kontrol edin.',
+        title: 'Zamanlanmış yedek',
+        body: 'Yedek klasörü ve günün saati kaydedildikten sonra her gün o saatte (Europe/Istanbul) otomatik yedek alınır.',
+      },
+      {
+        title: 'Manuel yedek ve geri yükleme',
+        steps: [
+          'Şimdi yedek al ile anlık yedek oluşturun.',
+          'Listeden Geri yükle deyip onay kelimesini yazarak seçilen yedeği veritabanına uygulayın.',
+        ],
       },
     ],
   },

@@ -58,6 +58,7 @@ async function getUserAccess(userId) {
   // Tenant'ın planına göre hangi modüllerin (menü/API) açık olduğu — platform
   // admin kendi tenant modüllerini kullanmaz, bu yüzden boş kalır.
   const modules = user.is_platform_admin || !activeLicense ? [] : getModulesForPlan(activeLicense.plan);
+  const smsLicense = user.is_platform_admin ? null : await licenseService.getSmsLicenseState(user.tenant_id);
 
   return {
     user,
@@ -68,6 +69,7 @@ async function getUserAccess(userId) {
     schools: Array.from(schools.values()),
     license_status: licenseStatus,
     license: activeLicense,
+    sms_license: smsLicense,
     modules,
   };
 }
@@ -107,6 +109,7 @@ async function buildSessionPayload(access) {
     is_platform_admin: access.is_platform_admin,
     license_status: access.license_status,
     license: access.license,
+    sms_license: access.sms_license || null,
     modules: access.modules,
     tenant_two_factor_enabled: Boolean(tenant?.two_factor_enabled),
     tenant_sms_login_enabled: Boolean(tenant?.sms_login_enabled),

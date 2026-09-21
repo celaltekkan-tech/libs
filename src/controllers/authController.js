@@ -6,6 +6,7 @@ const audit = require('../services/auditService');
 const totpService = require('../services/totpService');
 const smsLoginService = require('../services/smsLoginService');
 const loginLockout = require('../services/loginLockoutService');
+const licenseService = require('../services/licenseService');
 
 const BCRYPT_ROUNDS = 10;
 const PENDING_2FA_EXPIRES = '5m';
@@ -211,6 +212,14 @@ module.exports = {
       }
 
       if (!user.is_active) {
+        if (user.teacher_id) {
+          return res.status(403).json({
+            success: false,
+            code: 'ACCOUNT_UNVERIFIED',
+            message:
+              'Hesabınız henüz doğrulanmadı. Mobil uygulamadan e-posta veya SMS doğrulamasını tamamlayın.',
+          });
+        }
         return res.status(403).json({
           success: false,
           code: 'ACCOUNT_DISABLED',
@@ -240,6 +249,11 @@ module.exports = {
       }
 
       if (tenant.sms_login_enabled && !user.is_platform_admin) {
+        const smsState = await licenseService.getSmsLicenseState(user.tenant_id);
+        const canSms = Boolean(smsState && (smsState.sms_remaining == null || smsState.sms_remaining > 0));
+        if (!canSms) {
+          return finalizeLogin(req, res, user);
+        }
         const { isValidMobilePhone } = require('../utils/phone');
         if (!isValidMobilePhone(user.phone)) {
           return res.status(403).json({
@@ -264,6 +278,9 @@ module.exports = {
             },
           });
         } catch (err) {
+          if (err instanceof licenseService.SmsLicenseError) {
+            return finalizeLogin(req, res, user);
+          }
           return res.status(err.status || 500).json({
             success: false,
             code: err.code || 'SMS_SEND_FAILED',
@@ -730,6 +747,19 @@ module.exports = {
       }
 
       if (updates.sms_login_enabled === true) {
+        try {
+          await licenseService.assertCanSendSms(tenant.id, 1);
+        } catch (err) {
+          if (err instanceof licenseService.SmsLicenseError) {
+            return res.status(err.status).json({
+              success: false,
+              code: err.code,
+              message: err.message,
+              ...(err.details || {}),
+            });
+          }
+          throw err;
+        }
         const { assertTenantUsersHaveValidPhones } = require('../utils/phone');
         try {
           await assertTenantUsersHaveValidPhones(tenant.id, {

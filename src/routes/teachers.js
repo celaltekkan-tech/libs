@@ -10,7 +10,7 @@ const {
   exportTeacherSchema,
   importMebbisCommitSchema,
 } = require('../validators/teacher.validator');
-const { applyPromotionSchema } = require('../validators/promotionHistory.validator');
+const { applyPromotionSchema, reportEightYearCheckSchema } = require('../validators/promotionHistory.validator');
 const auth = require('../middlewares/auth');
 const requireModule = require('../middlewares/moduleGuard');
 const permission = require('../middlewares/permission');
@@ -65,6 +65,14 @@ router.post(
   permission('teachers.update'),
   validate(applyPromotionSchema),
   promotionsCtrl.applyPromotion,
+);
+router.post(
+  '/:id/promotions/eight-year-check',
+  auth,
+  moduleGuard,
+  permission('teachers.update'),
+  validate(reportEightYearCheckSchema),
+  promotionsCtrl.reportEightYearCheck,
 );
 router.post('/', auth, moduleGuard, permission('teachers.create'), validate(createTeacherSchema), ctrl.create);
 router.put('/:id', auth, moduleGuard, permission('teachers.update'), validate(updateTeacherSchema), ctrl.update);

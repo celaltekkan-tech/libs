@@ -1,6 +1,6 @@
 const Joi = require('joi');
 
-const REGISTRATION_STATUSES = ['aktif', 'nakil_gelen', 'nakil_giden', 'kayit_silindi'];
+const REGISTRATION_STATUSES = ['aktif', 'nakil_giden', 'orgun_egitim_disi'];
 const BOARDING_STATUSES = ['Yatılı', 'Gündüzlü'];
 
 const extraContactSchema = Joi.object({
@@ -15,7 +15,21 @@ const createStudentSchema = Joi.object({
   school_id: Joi.number().integer().allow(null),
   classroom_id: Joi.number().integer().required(),
   student_number: Joi.string().required().max(50),
-  national_id: Joi.string().allow('', null),
+  national_id: Joi.string()
+    .allow('', null)
+    .custom((value, helpers) => {
+      if (value == null || value === '') return null;
+      let s = String(value).trim();
+      if (/^\d+\.0+$/.test(s)) s = s.replace(/\.0+$/, '');
+      const digits = s.replace(/\D/g, '');
+      if (!/^\d{11}$/.test(digits)) {
+        return helpers.error('any.custom');
+      }
+      return digits;
+    })
+    .messages({
+      'any.custom': 'T.C. kimlik no 11 haneli sayı olmalıdır',
+    }),
   first_name: Joi.string().required(),
   last_name: Joi.string().required(),
   gender: Joi.string().valid('K', 'E', '', null).allow(null),
@@ -25,7 +39,10 @@ const createStudentSchema = Joi.object({
     .valid(...REGISTRATION_STATUSES)
     .allow(null),
   parent_name: Joi.string().allow('', null),
+  mother_name: Joi.string().allow('', null),
+  father_name: Joi.string().allow('', null),
   parent_phone: Joi.string().allow('', null),
+  student_phone: Joi.string().allow('', null).max(50),
   extra_contacts: Joi.array().items(extraContactSchema).max(20).optional(),
   is_inclusion: Joi.boolean().allow(null),
   is_foreign: Joi.boolean().allow(null),
@@ -53,6 +70,7 @@ const exportStudentSchema = Joi.object({
     class_level: Joi.string().allow('').optional(),
     section: Joi.string().allow('').optional(),
     gender: Joi.string().valid('K', 'E').optional(),
+    yasi: Joi.number().integer().min(0).max(120).optional(),
     registration_status: Joi.string()
       .valid(...REGISTRATION_STATUSES)
       .optional(),

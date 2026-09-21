@@ -2,6 +2,8 @@ const bcrypt = require('bcrypt');
 const db = require('../models');
 const { Tenant, School, User, Role, UserSchool } = db;
 const { seedDefaultHolidays } = require('../services/holidayService');
+const { applyDirectorySchoolToPayload } = require('../services/directorySchoolService');
+const licenseService = require('../services/licenseService');
 
 const MANAGER_ROLE_NAME = 'Müdür';
 const BCRYPT_ROUNDS = 10;
@@ -93,7 +95,15 @@ module.exports = {
   async create(req, res, next) {
     const payload = req.validatedBody || req.body;
 
-    const existingSchool = await School.findOne({ where: { code: payload.school.code } });
+    const schoolPayload = { ...payload.school };
+    try {
+      await applyDirectorySchoolToPayload(schoolPayload);
+    } catch (err) {
+      if (err.status) return res.status(err.status).json({ success: false, message: err.message });
+      return next(err);
+    }
+
+    const existingSchool = await School.findOne({ where: { code: schoolPayload.code } });
     if (existingSchool) {
       return res.status(409).json({ success: false, message: 'Bu okul kodu zaten kullanılıyor' });
     }
@@ -137,9 +147,12 @@ module.exports = {
       const school = await School.create(
         {
           tenant_id: tenant.id,
-          name: payload.school.name,
-          code: payload.school.code,
-          school_type: payload.school.school_type,
+          name: schoolPayload.name,
+          code: schoolPayload.code,
+          school_type: schoolPayload.school_type,
+          province_id: schoolPayload.province_id || null,
+          district_id: schoolPayload.district_id || null,
+          directory_school_id: schoolPayload.directory_school_id || null,
         },
         { transaction }
       );
@@ -228,6 +241,19 @@ module.exports = {
       }
 
       if (enablingSms) {
+        try {
+          await licenseService.assertCanSendSms(tenant.id, 1);
+        } catch (err) {
+          if (err instanceof licenseService.SmsLicenseError) {
+            return res.status(err.status).json({
+              success: false,
+              code: err.code,
+              message: err.message,
+              ...(err.details || {}),
+            });
+          }
+          throw err;
+        }
         const { assertTenantUsersHaveValidPhones } = require('../utils/phone');
         try {
           await assertTenantUsersHaveValidPhones(tenant.id, {

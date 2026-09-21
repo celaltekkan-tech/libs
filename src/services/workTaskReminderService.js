@@ -4,7 +4,10 @@ const { WorkTask, WorkTaskNotificationLog, User, Notification } = require('../mo
 const { isOccurrenceComplete } = require('./workTaskService');
 const smsEngine = require('./smsEngine');
 const emailEngine = require('./emailEngine');
+const { buildSchoolEmailAssets } = require('./schoolEmailAssets');
+const { buildSimpleNoticeEmail } = require('./emailTemplates/simpleNotice');
 const messageLogService = require('./messageLogService');
+const licenseService = require('./licenseService');
 
 function startOfIstanbulDay(date) {
   const d = date instanceof Date ? date : new Date(date);
@@ -60,6 +63,12 @@ async function dispatchChannel(task, assignee, channel, kind, title, body) {
     return;
   }
   if (channel === 'sms') {
+    try {
+      await licenseService.assertCanSendSms(task.tenant_id, 1);
+    } catch (err) {
+      if (err instanceof licenseService.SmsLicenseError) return;
+      throw err;
+    }
     const result = await smsEngine.sendSms({ phoneNumber: assignee.phone, message: `${title}\n${body}` });
     await logNotification({
       task,
@@ -83,14 +92,31 @@ async function dispatchChannel(task, assignee, channel, kind, title, body) {
       error: result.error,
       sentAt: result.status === smsEngine.SMS_STATUS.SUCCESS ? new Date() : null,
     });
+    if (result.status === smsEngine.SMS_STATUS.SUCCESS) {
+      await licenseService.consumeSmsCredits(task.tenant_id, 1);
+    }
     return;
   }
   if (channel === 'email') {
     try {
+      const branding = await buildSchoolEmailAssets({
+        schoolId: assignee.school_id,
+        tenantId: task.tenant_id,
+      });
+      const html = branding.logoCid
+        ? buildSimpleNoticeEmail({
+            title,
+            body,
+            schoolName: branding.schoolName,
+            logoCid: branding.logoCid,
+          }).html
+        : undefined;
       const result = await emailEngine.sendEmail({
         to: assignee.email,
         subject: title,
         text: body,
+        html,
+        attachments: branding.attachments,
       });
       await logNotification({
         task,
@@ -175,7 +201,7 @@ async function processWorkTaskReminders() {
   const now = new Date();
   const tasks = await WorkTask.findAll({
     where: { status: 'active' },
-    include: [{ model: User, as: 'Assignee', attributes: ['id', 'email', 'phone', 'full_name', 'tenant_id', 'is_active'] }],
+    include: [{ model: User, as: 'Assignee', attributes: ['id', 'email', 'phone', 'full_name', 'tenant_id', 'school_id', 'is_active'] }],
   });
 
   let reminders = 0;

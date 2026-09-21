@@ -1,13 +1,19 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { clearToken, getStoredToken, persistToken, setUnauthorizedHandler } from '../api/client';
-import { fetchCurrentSession, login as loginRequest } from '../api/auth';
-import type { SessionUser } from '../types/api';
+import {
+  changePassword as changePasswordRequest,
+  fetchCurrentSession,
+  login as loginRequest,
+} from '../api/auth';
+import type { AuthSession, SessionUser } from '../types/api';
 
 interface AuthContextValue {
   user: SessionUser | null;
   permissions: string[];
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  applySession: (session: AuthSession) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -24,6 +30,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPermissions([]);
   }, []);
 
+  const applySession = useCallback(async (session: AuthSession) => {
+    await persistToken(session.token);
+    setUser(session.user);
+    setPermissions(session.permissions);
+  }, []);
+
   useEffect(() => {
     (async () => {
       const token = await getStoredToken();
@@ -37,7 +49,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(session.user);
         setPermissions(session.permissions);
       } catch {
-        // Token geçersiz/süresi dolmuş: 401 interceptor'ı zaten token'ı temizledi.
         setUser(null);
         setPermissions([]);
       } finally {
@@ -50,16 +61,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, [logout]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const session = await loginRequest(email, password);
-    await persistToken(session.token);
-    setUser(session.user);
-    setPermissions(session.permissions);
+  const login = useCallback(
+    async (email: string, password: string) => {
+      const session = await loginRequest(email, password);
+      await applySession(session);
+    },
+    [applySession],
+  );
+
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    const result = await changePasswordRequest(currentPassword, newPassword);
+    await persistToken(result.token);
   }, []);
 
   const value = useMemo(
-    () => ({ user, permissions, isLoading, login, logout }),
-    [user, permissions, isLoading, login, logout],
+    () => ({ user, permissions, isLoading, login, applySession, changePassword, logout }),
+    [user, permissions, isLoading, login, applySession, changePassword, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

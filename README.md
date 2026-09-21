@@ -163,6 +163,18 @@ Ayrıca tenant'ın planında `schools` modülü açık olmalıdır (bkz. Lisans 
 - `PUT /api/schools/:id` - Okul güncelle
 - `DELETE /api/schools/:id` - Okul sil
 
+### Coğrafi referans ve MEB okul kataloğu
+
+Giriş yapmış kullanıcılar okuyabilir; özel izin gerekmez. `Schools` tablosundaki kurum okullarından ayrıdır.
+Katalog tarama sayfası yalnızca platform yöneticisi menüsündedir (`/platform/directory-schools`); kiracılar okul eklerken aynı API üzerinden seçer.
+
+- `GET /api/geo/provinces` - 81 il
+- `GET /api/geo/districts?province_id=` - İlçeler
+- `GET /api/geo/provinces/:provinceId/districts` - İlçeler (alternatif yol)
+- `GET /api/geo/directory-schools` - Ortaokul/lise kataloğu (`province_id`, `district_id`, `school_type=ortaokul|lise`, `q`, `limit`, `offset`). Yanıtta varsa 6 haneli MEB `code` alanı da döner.
+
+Kaynak: iller/ilçeler TurkiyeAPI 2025 veri seti; okullar MEB kurum listesinden derlenmiş açık veri (kurum kodları YOL alanından). Seed: `npm run seed`.
+
 ### Teachers
 
 Gerekli izinler: `teachers.read`, `teachers.create`, `teachers.update`, `teachers.delete`.
@@ -326,12 +338,14 @@ denenmeye devam eder.
 ### Licenses (Lisans Yönetimi)
 
 Tenant'lara lisans tanımlama/iptal etme sadece platform admin yetkisindedir. Bir tenant'a
-yeni lisans tanımlandığında, o tenant'ın varsa mevcut aktif lisansı otomatik olarak iptal edilir
-(bir tenant'ın aynı anda tek aktif lisansı olur, geçmiş kayıtları korunur).
+yeni **ana** lisans tanımlandığında, o tenant'ın varsa mevcut aktif ana lisansı otomatik olarak
+iptal edilir (geçmiş kayıtları korunur). **SMS** eklenti lisansı ana lisansı iptal etmez; yanına
+eklenir. Yeni SMS lisansı yalnızca önceki SMS eklentisini değiştirir. SMS vermek için hesabın
+aktif bir ana lisansı olmalıdır.
 
 - `GET /api/licenses` - Tüm lisansları listele (Platform admin), `?tenant_id=` ve `?status=` ile filtrelenebilir
 - `GET /api/licenses/:id` - Lisans detayı (Platform admin)
-- `POST /api/licenses` - Tenant'a lisans tanımla (Platform admin) — gövde: `{ "tenant_id", "plan", "starts_at"?, "ends_at"?, "notes"? }`
+- `POST /api/licenses` - Tenant'a lisans tanımla (Platform admin) — gövde: `{ "tenant_id", "plan", "starts_at"?, "ends_at"?, "notes"? }` (SMS paketlerinde kota plandan gelir: SMS 3000 / SMS 10000)
 - `PUT /api/licenses/:id/cancel` - Lisansı iptal et (Platform admin)
 
 Frontend: `/platform/licenses` sayfasından platform admin lisansları görüntüleyip
@@ -358,12 +372,15 @@ alma/yenileme" arayüzüne yönlendirilmesi ve sadece o arayüze erişebilmesi.
 Her planın hangi tenant modüllerini (menü + API) açtığı `src/config/licensePlans.js`
 içinde tanımlıdır (frontend karşılığı: `frontend/src/constants/licensePlans.ts`):
 
-| Plan | Modüller | Kullanıcı kotası |
-|---|---|---|
-| Free | Öğretmenler, Öğrenciler, Sınıflar | Yok |
-| Standart | Okullar, Öğretmenler, Öğrenciler, Sınıflar, Yetkilendirme | En fazla 2 kullanıcı |
-| Premium | Okullar, Öğretmenler, Kullanıcılar, Öğrenciler, Sınıflar | Sınırsız |
-| Kurumsal | Okullar, Öğretmenler, Kullanıcılar, Öğrenciler, Sınıflar | Sınırsız |
+| Plan | Tür | Modüller | Kota |
+|---|---|---|---|
+| Basic | Ana | Öğretmenler, Öğrenciler, Sınıflar | 1 okul; kullanıcı yok |
+| Standart | Ana | Okullar, Öğretmenler, Öğrenciler, Sınıflar, Yetkilendirme, Mobil ve diğer idari modüller | 1 okul; öğretmen/rehber hariç 2 kullanıcı |
+| Premium | Ana | Standart ile aynı | En fazla 3 okul; sınırsız kullanıcı |
+| SMS 3000 | Eklenti | Modül açmaz | 3.000 başarılı SMS (lisans süresince) |
+| SMS 10000 | Eklenti | Modül açmaz | 10.000 başarılı SMS (lisans süresince) |
+
+SMS eklentisi olmayan hesaplar öğretmen kayıt doğrulaması dışında SMS kullanamaz (veli duyurusu, görev hatırlatması, SMS ile giriş). Kota dolunca gönderim `402 SMS_QUOTA_EXCEEDED`, lisans yoksa `403 SMS_LICENSE_REQUIRED` döner. Lisans bitiminde veya yenilemede kullanılmayan SMS kredileri sıfırlanır; yeni lisans paket kotasıyla (0 kullanılmış) başlar. `login`/`me` yanıtındaki `sms_license` alanı kalan kotayı taşır.
 
 `moduleGuard` middleware'i (`src/middlewares/moduleGuard.js`) `teachers`/`students`/`schools`/`users`
 uçlarını korur: aktif lisans yoksa `402 LICENSE_EXPIRED`, lisans var ama modül plana
@@ -406,7 +423,7 @@ Response:
     },
     "roles": ["Müdür"],
     "permissions": ["schools.create", "teachers.read", "users.read", "..."],
-    "schools": [{ "id": 1, "name": "Demo Anadolu Lisesi", "code": "DEMO-001", "role": "Müdür" }],
+    "schools": [{ "id": 1, "name": "Demo Anadolu Lisesi", "code": "100001", "role": "Müdür" }],
     "is_global_admin": true,
     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "expires_at": "2026-09-01T21:40:00.000Z"
@@ -498,7 +515,7 @@ npm run build:frontend
 
 ## Mobil Uygulama (Expo)
 
-Öğretmenlerin sınıfta hızlıca öğrenci arayıp disiplin bildirimi (öğretmen notu) oluşturması için `mobile/` klasöründe ayrı bir React Native (Expo) uygulaması bulunur: sunucu adresi girme, giriş, öğrenci numarasıyla arama, hazır/serbest sebep etiketleriyle not oluşturma, kendi gönderdiği bildirimleri listeleme. Aynı backend uçlarını kullanır (`POST /api/auth/login`, `GET /api/auth/me`, `GET /api/students/lookup/:number`, `GET /api/teacher-notes/tag-options`, `POST /api/teacher-notes`, `GET /api/teacher-notes/mine`), ayrı bir API'si yoktur. **Bu, web yönetim panelinden tamamen farklı, ayrı bir uygulamadır** — panelin URL'sini telefon tarayıcısında açmak bu deneyimi vermez, aşağıdaki gibi kurulmuş/başlatılmış olması gerekir.
+Öğretmenlerin sınıfta hızlıca öğrenci arayıp disiplin bildirimi (öğretmen notu) oluşturması için `mobile/` klasöründe ayrı bir React Native (Expo) uygulaması bulunur: sunucu adresi girme, öğretmen kaydı (lisanslı okul + sicil/soyad/e-posta, e-posta veya SMS doğrulama), giriş, şifre değiştirme, öğrenci numarasıyla arama, hazır/serbest sebep etiketleriyle not oluşturma, kendi gönderdiği bildirimleri listeleme. Aynı backend uçlarını kullanır (`POST /api/auth/teacher-register`, `POST /api/auth/login`, `POST /api/auth/change-password`, `GET /api/auth/me`, `GET /api/students/lookup/:number`, `GET /api/teacher-notes/tag-options`, `POST /api/teacher-notes`, `GET /api/teacher-notes/mine`). **Bu, web yönetim panelinden tamamen farklı, ayrı bir uygulamadır** — panelin URL'sini telefon tarayıcısında açmak bu deneyimi vermez, aşağıdaki gibi kurulmuş/başlatılmış olması gerekir.
 
 Backend adresi APK'ya gömülü değildir: uygulama ilk açılışta "Sunucu Adresi" ekranını gösterir, girilen adres yalnızca o cihazda saklanır. Adres değiştiğinde (örn. LAN IP'den `https://api.oids.com.tr`'ye geçince) uygulamayı yeniden kurmaya gerek yoktur — giriş ekranındaki **Sunucu: ... (değiştir)** bağlantısına dokunup yeni adresi girmek yeterlidir.
 
@@ -548,16 +565,18 @@ Adres netleştiğinde ve sabitlendiğinde tekrar build almanıza gerek yok — s
 ### Kullanım (öğretmen için)
 
 0. **Sunucu Adresi** (yalnızca ilk açılışta): Okul yöneticisinin verdiği backend adresini girip **Kaydet ve Devam Et**'e basılır.
-1. **Giriş**: E-posta ve şifre ile giriş yapılır — panel ile aynı hesap kullanılır, ayrı bir mobil kayıt yoktur. Hesabında iki adımlı doğrulama (2FA) veya SMS girişi açıksa mobil uygulama şu an bunu desteklemez; okul yöneticisinden bu ayarın kapatılmasını isteyin.
-2. **Öğrenci arama**: "Öğrenci Ara" ekranında öğrenci numarası girilip **Ara**'ya basılır. Öğrenci bulunursa fotoğrafı, adı-soyadı ve sınıfı gösterilir.
-3. **Bildirim oluşturma**: Öğrenci kartındaki **Bildirim Oluştur**'a basılır. Açılan ekranda:
+1. **Kayıt** (ilk kez): Giriş ekranında **Hesabım yok, öğretmen kaydı oluştur**. İl / ilçe / okul seçilir (yalnızca sistemde geçerli lisansı olan okullar listelenir). Sicil numarası, soyad ve e-posta girilir. Kayıt, o okuldaki öğretmen kartıyla eşleşirse **Öğretmen** yetkisiyle kullanıcı açılır ve e-postaya 6 haneli doğrulama kodu gider. E-postaya erişilemiyorsa cep telefonu girilip SMS kodu ile doğrulanır. Varsayılan şifre **sicil numarası**dır.
+2. **Giriş** (kayıtlı öğretmen): E-posta ve şifre ile giriş yapılır. Hesabında iki adımlı doğrulama (2FA) veya SMS girişi açıksa mobil uygulama şu an bunu desteklemez; okul yöneticisinden bu ayarın kapatılmasını isteyin.
+3. **Şifre değiştirme**: "Öğrenci Ara" ekranındaki **Şifre** ile mevcut şifre (ilk girişte sicil) değiştirilir; yeni şifre en az 8 karakter olmalıdır.
+4. **Öğrenci arama**: "Öğrenci Ara" ekranında öğrenci numarası girilip **Ara**'ya basılır. Öğrenci bulunursa fotoğrafı, adı-soyadı ve sınıfı gösterilir.
+5. **Bildirim oluşturma**: Öğrenci kartındaki **Bildirim Oluştur**'a basılır. Açılan ekranda:
    - Hazır sebep etiketlerinden istenildiği kadarı seçilir (çoklu seçim),
    - gerekirse kendi sebebiniz yazılıp **Ekle**'ye basılır,
    - isteğe bağlı bir not eklenebilir,
    - en az bir etiket/sebep veya not girildikten sonra **Gönder**'e basılır.
    Bildirim kaydedilince okul yönetiminin disiplin ekranına düşer.
-4. **Geçmiş bildirimler**: "Öğrenci Ara" ekranının sağ üstündeki **Geçmiş** bağlantısıyla, o öğretmenin daha önce gönderdiği tüm bildirimler (öğrenci, etiketler, not, tarih) listelenir; aşağı çekerek yenilenebilir.
-5. **Çıkış**: "Öğrenci Ara" ekranının sağ üstündeki **Çıkış** ile oturum kapatılır ve cihazdaki token silinir (sunucu adresi silinmez).
+6. **Geçmiş bildirimler**: "Öğrenci Ara" ekranının sağ üstündeki **Geçmiş** bağlantısıyla, o öğretmenin daha önce gönderdiği tüm bildirimler (öğrenci, etiketler, not, tarih) listelenir; aşağı çekerek yenilenebilir.
+7. **Çıkış**: "Öğrenci Ara" ekranının sağ üstündeki **Çıkış** ile oturum kapatılır ve cihazdaki token silinir (sunucu adresi silinmez).
 
 Uygulamayı kapatıp yeniden açtığınızda oturum açık kalır (token cihazda saklanır); şifre değiştirildiyse veya hesap pasifleştirildiyse bir sonraki açılışta otomatik çıkış yapılır.
 
@@ -744,30 +763,21 @@ Notlar:
 
 ### Veritabanı Yedekleme
 
-`scripts/db-backup.sh`, `db` container'ının kendi `pg_dump`'ı ile (sunucuyla birebir aynı
-sürüm) sıkıştırılmış (`.sql.gz`) bir yedek alır ve saklama süresini aşan eski yedekleri siler.
-Saklama süresi (gün) **Platform Yönetimi → Yedekleme** ekranından değiştirilebilir; script her
-çalıştığında bu değeri `BackupSettings` tablosundan okur (varsayılan 30 gün).
+Uygulama `pg_dump` ile sıkıştırılmış (`.sql.gz`) yedek alır. **Platform Yönetimi → Yedekleme** ekranından:
 
-Sunucuda tek seferlik kurulum:
+- yedek klasörü
+- her gün başlama saati (Europe/Istanbul)
+- saklama süresi (gün)
 
-```bash
-chmod +x scripts/db-backup.sh
+ayarlanır. Aynı ekrandan **Şimdi yedek al** ve **Geri yükle** çalışır. Saklama süresini aşan dosyalar bir sonraki yedeklemede silinir.
 
-crontab -e
-# her gece 03:30'da yedek al:
-30 3 * * * /opt/libs/scripts/db-backup.sh >> /opt/libs/logs/backup.log 2>&1
-```
+Docker'da yedekler host'taki `BACKUP_HOST_DIR` (varsayılan `./backups`) klasörüne yazılır; paneldeki yol container içinde `/app/backups` olur. Geliştirmede Windows için `PG_DUMP_PATH` / `PSQL_PATH` gerekebilir.
 
 Notlar:
-- Yedekler `./backups` klasöründe tutulur (host'ta, `data/postgres` ve `uploads` ile
-  aynı mantıkla); admin panelindeki "Yedekleme" ekranı bu klasörü salt-okunur olarak
-  (`backend` container'ına `ro` mount ile) listeler, silme işlemi de aynı ekrandan yapılabilir.
-  Yeni yedek alma işlemi panelden değil, yalnızca `scripts/db-backup.sh` (cron) üzerinden
-  yapılır — panel/backend container'ının Docker'ı tetikleme yetkisi (docker.sock erişimi)
-  bilinçli olarak yoktur.
-- Aynı anda iki yedekleme çakışmasın diye `flock` ile kilitlenir.
-- Geri yükleme (restore) örneği: `gunzip -c backups/<dosya>.sql.gz | docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME"`
+- Zamanlama uygulama içindedir; ayrı bir host crontab satırı gerekmez. Eski `scripts/db-backup.sh` cron'u varsa çift yedek alınmaması için kaldırın.
+- Aynı anda iki yedekleme/geri yükleme çakışmasın diye kilitlenir.
+- Geri yükleme mevcut veritabanının üzerine yazar; onay kelimesi ister.
+- Elle geri yükleme örneği: `gunzip -c backups/<dosya>.sql.gz | docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME"`
 
 ## Güvenlik
 

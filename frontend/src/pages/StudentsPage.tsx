@@ -20,6 +20,7 @@ import { ClearFiltersButton } from '../components/ClearFiltersButton'
 import { FilterBar } from '../components/FilterBar'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
+import { useActiveSchool } from '../auth/ActiveSchoolContext'
 import {
   createStudent,
   deleteStudent,
@@ -33,10 +34,8 @@ import {
 } from '../api/students'
 import { createExportTemplate, deleteExportTemplate, listExportTemplates } from '../api/exportTemplates'
 import type { ExportTemplate } from '../api/exportTemplates'
-import { listSchools } from '../api/schools'
 import { listClassrooms } from '../api/classrooms'
 import { getErrorMessage } from '../api/client'
-import type { School } from '../types/school'
 import type { Classroom } from '../types/classroom'
 import { classroomLabel } from '../types/classroom'
 import type {
@@ -60,6 +59,12 @@ import { downloadBlob, exportFilename, type ExportFormat } from '../utils/downlo
 import { tablePagination } from '../utils/tablePagination'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
 import { personNameSorter, SORT_AZ } from '../utils/tableSort'
+import { NATIONAL_ID_RULE, digitsOnlyNationalId } from '../utils/nationalId'
+import { uniqueSelectOptions } from '../utils/uniqueSelectOptions'
+import { DynamicListFilters, isActiveFilterValue, matchesListFilter, type ListFilterValue } from '../components/DynamicListFilters'
+import { useVisibleFilterFields } from '../hooks/useVisibleFilterFields'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { FilterFieldsPicker, type FilterFieldOption } from '../components/FilterFieldsPicker'
 
 interface StudentFormValues {
   first_name: string
@@ -73,7 +78,10 @@ interface StudentFormValues {
   yasi?: number | null
   registration_status?: RegistrationStatus
   parent_name?: string
+  mother_name?: string
+  father_name?: string
   parent_phone?: string
+  student_phone?: string
   extra_contacts?: StudentExtraContact[]
   is_inclusion?: boolean
   is_foreign?: boolean
@@ -82,13 +90,86 @@ interface StudentFormValues {
 
 const STATUS_LABEL: Record<RegistrationStatus, string> = {
   aktif: 'Aktif',
-  nakil_gelen: 'Nakil gelen',
   nakil_giden: 'Nakil giden',
-  kayit_silindi: 'Kayıt silindi',
+  orgun_egitim_disi: 'Örgün eğitim dışı',
+}
+
+const STUDENT_FILTER_FIELDS = [
+  'first_name',
+  'last_name',
+  'student_number',
+  'national_id',
+  'classroom',
+  'birth_date',
+  'yasi',
+  'gender',
+  'registration_status',
+  'mother_name',
+  'father_name',
+  'parent_name',
+  'parent_phone',
+  'student_phone',
+  'is_inclusion',
+  'is_foreign',
+  'boarding_status',
+] as const
+type StudentFilterField = (typeof STUDENT_FILTER_FIELDS)[number]
+const STUDENT_FILTER_DEFAULTS: StudentFilterField[] = ['classroom', 'yasi', 'gender', 'registration_status']
+const STUDENT_FILTER_OPTIONS: FilterFieldOption<StudentFilterField>[] = [
+  { key: 'first_name', label: 'Ad' },
+  { key: 'last_name', label: 'Soyad' },
+  { key: 'student_number', label: 'Öğrenci No' },
+  { key: 'national_id', label: 'T.C. Kimlik No' },
+  { key: 'classroom', label: 'Sınıf / Şube' },
+  { key: 'birth_date', label: 'Doğum Tarihi', kind: 'dateRange' },
+  { key: 'yasi', label: 'Yaşı' },
+  { key: 'gender', label: 'Cinsiyet' },
+  { key: 'registration_status', label: 'Kayıt durumu' },
+  { key: 'mother_name', label: 'Anne Adı' },
+  { key: 'father_name', label: 'Baba Adı' },
+  { key: 'parent_name', label: 'Veli Adı' },
+  { key: 'parent_phone', label: 'Veli Telefon' },
+  { key: 'student_phone', label: 'Öğrenci Telefon' },
+  { key: 'is_inclusion', label: 'Kaynaştırma' },
+  { key: 'is_foreign', label: 'Yabancı Uyruklu' },
+  { key: 'boarding_status', label: 'Yurt Durumu' },
+]
+const YES_NO_OPTIONS = [
+  { value: 'true', label: 'Evet' },
+  { value: 'false', label: 'Hayır' },
+]
+const GENDER_FILTER_OPTIONS = [
+  { value: 'K', label: 'Kız' },
+  { value: 'E', label: 'Erkek' },
+]
+
+function studentFieldValue(student: Student, key: StudentFilterField): string {
+  switch (key) {
+    case 'classroom':
+      return student.classroom_id != null ? String(student.classroom_id) : ''
+    case 'yasi': {
+      const age = student.yasi ?? (student.birth_date ? Math.max(0, dayjs().diff(dayjs(student.birth_date), 'year')) : null)
+      return age == null ? '' : String(age)
+    }
+    case 'birth_date':
+      return String(student.birth_date || '').slice(0, 10)
+    case 'is_inclusion':
+      return student.is_inclusion ? 'true' : 'false'
+    case 'is_foreign':
+      return student.is_foreign ? 'true' : 'false'
+    default:
+      return String(student[key] ?? '').trim()
+  }
 }
 
 const PHOTO_MAX_BYTES = 3 * 1024 * 1024
 const PHOTO_TYPES = new Set(['image/png', 'image/jpeg', 'image/jpg', 'image/webp'])
+
+function studentAge(student: Student): number | null {
+  if (student.yasi != null) return student.yasi
+  if (student.birth_date) return Math.max(0, dayjs().diff(dayjs(student.birth_date), 'year'))
+  return null
+}
 
 function validateStudentPhotoFile(file: File): string | null {
   const name = file.name.toLowerCase()
@@ -102,8 +183,8 @@ function validateStudentPhotoFile(file: File): string | null {
 export function StudentsPage() {
   const { message, modal } = App.useApp()
   const { session, hasPermission, hasModule } = useAuth()
+  const { activeSchoolId, schools } = useActiveSchool()
   const [students, setStudents] = useState<Student[]>([])
-  const [schools, setSchools] = useState<School[]>([])
   const [classrooms, setClassrooms] = useState<Classroom[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
@@ -133,6 +214,14 @@ export function StudentsPage() {
   ])
   const [filters, setFilters] = useState<StudentFilters>({})
   const [search, setSearch] = useState('')
+  const searchQuery = useDebouncedValue(search)
+  const [filterValues, setFilterValues] = useState<Partial<Record<StudentFilterField, ListFilterValue>>>({})
+  const { visible: visibleFilters, setVisible: setVisibleFilters, isVisible } = useVisibleFilterFields(
+    'students',
+    session?.user.id,
+    STUDENT_FILTER_FIELDS,
+    STUDENT_FILTER_DEFAULTS,
+  )
   const [templates, setTemplates] = useState<ExportTemplate[]>([])
   const [saveTemplateName, setSaveTemplateName] = useState('')
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null)
@@ -193,43 +282,89 @@ export function StudentsPage() {
     void loadTemplates()
   }, [loadTemplates])
 
+  const listFilters = useMemo(
+    () => ({
+      school_id: filters.school_id,
+      classroom_id: typeof filterValues.classroom === 'number' ? filterValues.classroom : undefined,
+      gender: typeof filterValues.gender === 'string' ? (filterValues.gender as StudentGender) : undefined,
+      registration_status:
+        typeof filterValues.registration_status === 'string'
+          ? (filterValues.registration_status as RegistrationStatus)
+          : undefined,
+    }),
+    [filters.school_id, filterValues.classroom, filterValues.gender, filterValues.registration_status],
+  )
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [studentData, classroomData, schoolData] = await Promise.all([
-        listStudents(filters),
+      const [studentData, classroomData] = await Promise.all([
+        listStudents(listFilters),
         listClassrooms({ is_active: true }).catch(() => []),
-        canSchools ? listSchools().catch(() => []) : Promise.resolve([]),
       ])
       setStudents(studentData)
       setClassrooms(classroomData)
-      setSchools(schoolData)
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
-  }, [filters, canSchools, message])
+  }, [listFilters, message])
 
   useEffect(() => {
     void load()
   }, [load])
 
-  const schoolName = (schoolId: number | null) => schools.find((s) => s.id === schoolId)?.name || '—'
+  useEffect(() => {
+    setFilters((f) => {
+      const next = activeSchoolId ?? undefined
+      if (f.school_id === next) return f
+      return { ...f, school_id: next, classroom_id: undefined }
+    })
+    setFilterValues((current) => ({ ...current, classroom: undefined }))
+  }, [activeSchoolId])
 
   const classroomOptions = useMemo(
     () =>
-      classrooms.map((c) => ({
-        value: c.id,
-        label: classroomLabel(c),
-      })),
-    [classrooms],
+      classrooms
+        .filter((c) => activeSchoolId == null || c.school_id === activeSchoolId || c.school_id == null)
+        .map((c) => ({
+          value: c.id,
+          label: classroomLabel(c),
+        })),
+    [classrooms, activeSchoolId],
   )
 
+  const filterOptionsByKey = useMemo(() => {
+    return {
+      first_name: uniqueSelectOptions(students.map((s) => s.first_name)),
+      last_name: uniqueSelectOptions(students.map((s) => s.last_name)),
+      student_number: uniqueSelectOptions(students.map((s) => s.student_number)),
+      national_id: uniqueSelectOptions(students.map((s) => s.national_id)),
+      classroom: classroomOptions,
+      yasi: uniqueSelectOptions(students.map((s) => studentAge(s)).filter((age): age is number => age != null)),
+      gender: GENDER_FILTER_OPTIONS,
+      registration_status: REGISTRATION_STATUS_OPTIONS,
+      mother_name: uniqueSelectOptions(students.map((s) => s.mother_name)),
+      father_name: uniqueSelectOptions(students.map((s) => s.father_name)),
+      parent_name: uniqueSelectOptions(students.map((s) => s.parent_name)),
+      parent_phone: uniqueSelectOptions(students.map((s) => s.parent_phone)),
+      student_phone: uniqueSelectOptions(students.map((s) => s.student_phone)),
+      is_inclusion: YES_NO_OPTIONS,
+      is_foreign: YES_NO_OPTIONS,
+      boarding_status: BOARDING_STATUS_OPTIONS,
+    } satisfies Partial<Record<StudentFilterField, Array<{ value: string | number; label: string }>>>
+  }, [students, classroomOptions])
+
   const filteredStudents = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase('tr-TR')
-    if (!q) return students
+    const q = searchQuery.trim().toLocaleLowerCase('tr-TR')
     return students.filter((s) => {
+      for (const key of STUDENT_FILTER_FIELDS) {
+        const selected = filterValues[key]
+        if (!isActiveFilterValue(selected)) continue
+        if (!matchesListFilter(studentFieldValue(s, key), selected)) return false
+      }
+      if (!q) return true
       const fullName = `${s.first_name} ${s.last_name}`.toLocaleLowerCase('tr-TR')
       const reverseName = `${s.last_name} ${s.first_name}`.toLocaleLowerCase('tr-TR')
       return (
@@ -241,14 +376,10 @@ export function StudentsPage() {
         (s.national_id || '').toLocaleLowerCase('tr-TR').includes(q)
       )
     })
-  }, [students, search])
+  }, [students, searchQuery, filterValues])
 
   const hasActiveFilters = Boolean(
-    search.trim() ||
-      filters.school_id ||
-      filters.classroom_id ||
-      filters.gender ||
-      filters.registration_status,
+    search.trim() || STUDENT_FILTER_FIELDS.some((key) => isActiveFilterValue(filterValues[key])),
   )
 
   const openCreate = () => {
@@ -257,9 +388,11 @@ export function StudentsPage() {
     form.resetFields()
     form.setFieldsValue({
       registration_status: 'aktif',
+      boarding_status: 'Gündüzlü',
       is_inclusion: false,
       is_foreign: false,
       extra_contacts: [],
+      school_id: activeSchoolId ?? undefined,
     })
     setModalOpen(true)
   }
@@ -279,11 +412,14 @@ export function StudentsPage() {
       yasi: student.yasi ?? undefined,
       registration_status: student.registration_status || 'aktif',
       parent_name: student.parent_name || undefined,
+      mother_name: student.mother_name || undefined,
+      father_name: student.father_name || undefined,
       parent_phone: student.parent_phone || undefined,
+      student_phone: student.student_phone || undefined,
       extra_contacts: student.extra_contacts?.length ? student.extra_contacts : [],
       is_inclusion: student.is_inclusion,
       is_foreign: student.is_foreign,
-      boarding_status: student.boarding_status || undefined,
+      boarding_status: student.boarding_status || 'Gündüzlü',
     })
     setModalOpen(true)
     if (student.photo_url) void loadStudentPhoto(student.id)
@@ -309,12 +445,14 @@ export function StudentsPage() {
         ...values,
         classroom_id: values.classroom_id,
         student_number: values.student_number.trim(),
+        national_id: values.national_id ? digitsOnlyNationalId(values.national_id) || null : null,
         birth_date: values.birth_date ? values.birth_date.format('YYYY-MM-DD') : null,
         yasi: values.yasi ?? null,
         gender: values.gender || null,
         extra_contacts: (values.extra_contacts || []).filter(
           (c) => c.label || c.phone || c.address || c.description,
         ),
+        boarding_status: values.boarding_status || 'Gündüzlü',
       }
 
       let savedId: number
@@ -388,7 +526,7 @@ export function StudentsPage() {
   const resetImportState = () => {
     setImportStep(0)
     setImportFile(null)
-    setImportSchoolId(null)
+    setImportSchoolId(activeSchoolId)
     setImportClassroomId(null)
     setImportPreview(null)
     setImportHeaderRow(1)
@@ -582,7 +720,7 @@ export function StudentsPage() {
         columns: exportColumns,
         filters: {
           ...filters,
-          ...(search.trim() ? { q: search.trim() } : {}),
+          ...(searchQuery.trim() ? { q: searchQuery.trim() } : {}),
         },
       })
       downloadBlob(blob, exportFilename('ogrenciler', exportFormat))
@@ -670,14 +808,14 @@ export function StudentsPage() {
       title: 'Yaşı',
       dataIndex: 'yasi',
       width: 80,
-      render: (v: number | null) => (v != null ? v : '—'),
+      sorter: (a, b) => (studentAge(a) ?? -1) - (studentAge(b) ?? -1),
+      render: (_: unknown, record) => studentAge(record) ?? '—',
     },
     {
       title: 'Durum',
       dataIndex: 'registration_status',
-      render: (v: RegistrationStatus | null) => (v ? STATUS_LABEL[v] : '—'),
+      render: (v: RegistrationStatus | null) => (v ? STATUS_LABEL[v] || v : '—'),
     },
-    { title: 'Okul', render: (_: unknown, record) => schoolName(record.school_id) },
     {
       title: 'İşlemler',
       width: 120,
@@ -738,48 +876,31 @@ export function StudentsPage() {
             onChange={(e) => setSearch(e.target.value)}
             style={{ width: 320 }}
           />
-          {canSchools && (
-            <Select
-              allowClear
-              placeholder="Okul"
-              style={{ width: 180 }}
-              options={schools.map((s) => ({ value: s.id, label: s.name }))}
-              value={filters.school_id}
-              onChange={(school_id) => setFilters((f) => ({ ...f, school_id }))}
-            />
-          )}
-          <Select
-            allowClear
-            placeholder="Sınıf / Şube"
-            style={{ width: 180 }}
-            options={classroomOptions}
-            value={filters.classroom_id}
-            onChange={(classroom_id) => setFilters((f) => ({ ...f, classroom_id }))}
+          <DynamicListFilters
+            fields={STUDENT_FILTER_OPTIONS}
+            isVisible={isVisible}
+            values={filterValues}
+            optionsByKey={filterOptionsByKey}
+            onChange={(key, value) => setFilterValues((current) => ({ ...current, [key]: value }))}
           />
-          <Select
-            allowClear
-            placeholder="Cinsiyet"
-            style={{ width: 120 }}
-            options={[
-              { value: 'K', label: 'Kız' },
-              { value: 'E', label: 'Erkek' },
-            ]}
-            value={filters.gender}
-            onChange={(gender) => setFilters((f) => ({ ...f, gender }))}
-          />
-          <Select
-            allowClear
-            placeholder="Kayıt durumu"
-            style={{ width: 160 }}
-            options={REGISTRATION_STATUS_OPTIONS}
-            value={filters.registration_status}
-            onChange={(registration_status) => setFilters((f) => ({ ...f, registration_status }))}
+          <FilterFieldsPicker
+            options={STUDENT_FILTER_OPTIONS}
+            value={visibleFilters}
+            onChange={(next) => {
+              setVisibleFilters(next)
+              setFilterValues((current) => {
+                const kept: Partial<Record<StudentFilterField, ListFilterValue>> = {}
+                for (const key of next) kept[key] = current[key]
+                return kept
+              })
+            }}
           />
           <ClearFiltersButton
             active={hasActiveFilters}
             onClick={() => {
               setSearch('')
-              setFilters({})
+              setFilterValues({})
+              setFilters({ school_id: activeSchoolId ?? undefined })
             }}
           />
         </FilterBar>
@@ -899,8 +1020,13 @@ export function StudentsPage() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="national_id" label="T.C. Kimlik No">
-                <Input />
+              <Form.Item
+                name="national_id"
+                label="T.C. Kimlik No"
+                rules={[NATIONAL_ID_RULE]}
+                getValueFromEvent={(e) => digitsOnlyNationalId(e.target.value)}
+              >
+                <Input inputMode="numeric" maxLength={11} placeholder="11 haneli" />
               </Form.Item>
             </Col>
           </Row>
@@ -960,12 +1086,31 @@ export function StudentsPage() {
           </Row>
           <Row gutter={16}>
             <Col span={12}>
+              <Form.Item name="mother_name" label="Anne Adı">
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="father_name" label="Baba Adı">
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
               <Form.Item name="parent_name" label="Veli Adı">
                 <Input />
               </Form.Item>
             </Col>
             <Col span={12}>
               <Form.Item name="parent_phone" label="Veli Telefon">
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="student_phone" label="Öğrenci Telefon">
                 <Input />
               </Form.Item>
             </Col>
@@ -1064,7 +1209,7 @@ export function StudentsPage() {
             </Col>
           </Row>
           <Form.Item name="boarding_status" label="Yurt Durumu">
-            <Select allowClear placeholder="Seçin" options={BOARDING_STATUS_OPTIONS} />
+            <Select placeholder="Gündüzlü" options={BOARDING_STATUS_OPTIONS} />
           </Form.Item>
         </Form>
       </Modal>

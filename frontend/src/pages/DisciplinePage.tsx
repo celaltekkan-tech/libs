@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Dropdown, Form, Input, Modal, Select, Space, Tag, Typography } from 'antd'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { App, Button, Dropdown, Form, Input, Modal, Select, Space, Tabs, Tag, Typography } from 'antd'
 import dayjs from 'dayjs'
 import { SortableTable } from '../components/SortableTable'
-import { DeleteOutlined, FileTextOutlined, PlusOutlined } from '@ant-design/icons'
+import { DeleteOutlined, FileTextOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { ClearFiltersButton } from '../components/ClearFiltersButton'
+import { FilterBar } from '../components/FilterBar'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import {
@@ -19,23 +22,41 @@ import type { DisciplinaryDocumentType } from '../api/disciplinaryCases'
 import { deleteTeacherNote, listTeacherNotes } from '../api/teacherNotes'
 import { listStudents } from '../api/students'
 import { getErrorMessage } from '../api/client'
-import { nestedPersonNameSorter, SORT_AZ } from '../utils/tableSort'
+import { compareValues, nestedPersonNameSorter, SORT_AZ } from '../utils/tableSort'
 import {
   CASE_STATUS_LABELS,
   CASE_STATUS_OPTIONS,
   SANCTION_LEVEL_LABELS,
   SANCTION_LEVEL_OPTIONS,
 } from '../types/disciplinaryCase'
-import type { DisciplinaryCase, DisciplinaryCasePayload, DisciplinaryStats } from '../types/disciplinaryCase'
+import type { DisciplinaryCase, DisciplinaryCasePayload, DisciplinaryCaseStudent, DisciplinaryStats } from '../types/disciplinaryCase'
 import type { TeacherNote } from '../types/teacherNote'
 import type { Student } from '../types/student'
 import { downloadBlob } from '../utils/download'
 import { tablePagination } from '../utils/tablePagination'
 import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
+
+function classroomLabel(student?: DisciplinaryCaseStudent | null): string {
+  if (!student?.Classroom) return ''
+  return `${student.Classroom.class_level}/${student.Classroom.section}`
+}
+
+function studentFullName(student?: DisciplinaryCaseStudent | null): string {
+  if (!student) return ''
+  return `${student.first_name} ${student.last_name}`
+}
+
+function matchesQuery(q: string, ...parts: Array<string | null | undefined>): boolean {
+  if (!q) return true
+  return parts.some((part) => (part || '').toLocaleLowerCase('tr-TR').includes(q))
+}
 
 export function DisciplinePage() {
   const { message, modal } = App.useApp()
   const { session, hasPermission } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = searchParams.get('tab') === 'notes' ? 'notes' : 'cases'
 
   const [cases, setCases] = useState<DisciplinaryCase[]>([])
   const [teacherNotes, setTeacherNotes] = useState<TeacherNote[]>([])
@@ -47,6 +68,15 @@ export function DisciplinePage() {
   const [submitting, setSubmitting] = useState(false)
   const [createForm] = Form.useForm<DisciplinaryCasePayload>()
   const [editForm] = Form.useForm<{ status: string; sanction_level?: string; decision_date?: string; decision_summary?: string }>()
+
+  const [caseSearch, setCaseSearch] = useState('')
+  const caseSearchQuery = useDebouncedValue(caseSearch)
+  const [caseStatusFilter, setCaseStatusFilter] = useState<string | undefined>()
+  const [noteSearch, setNoteSearch] = useState('')
+  const noteSearchQuery = useDebouncedValue(noteSearch)
+  const [noteClassroomFilter, setNoteClassroomFilter] = useState<string | undefined>()
+  const [noteTeacherFilter, setNoteTeacherFilter] = useState<number | undefined>()
+  const [noteTagFilter, setNoteTagFilter] = useState<string | undefined>()
 
   const canCreate = hasPermission('discipline.create')
   const canUpdate = hasPermission('discipline.update')
@@ -76,8 +106,79 @@ export function DisciplinePage() {
     void load()
   }, [load])
 
+  const setTab = (key: string) => {
+    if (key === 'notes') setSearchParams({ tab: 'notes' })
+    else setSearchParams({})
+  }
+
+  const filteredCases = useMemo(() => {
+    const q = caseSearchQuery.trim().toLocaleLowerCase('tr-TR')
+    return cases.filter((row) => {
+      if (caseStatusFilter && row.status !== caseStatusFilter) return false
+      return matchesQuery(
+        q,
+        studentFullName(row.Student),
+        row.Student?.last_name,
+        row.Student?.first_name,
+        row.Student?.student_number,
+        classroomLabel(row.Student),
+        row.description,
+        SANCTION_LEVEL_LABELS[row.sanction_level || ''] || row.sanction_level,
+        CASE_STATUS_LABELS[row.status] || row.status,
+      )
+    })
+  }, [cases, caseSearchQuery, caseStatusFilter])
+
+  const filteredTeacherNotes = useMemo(() => {
+    const q = noteSearchQuery.trim().toLocaleLowerCase('tr-TR')
+    return teacherNotes.filter((row) => {
+      if (noteClassroomFilter && classroomLabel(row.Student) !== noteClassroomFilter) return false
+      if (noteTeacherFilter && row.teacher_id !== noteTeacherFilter) return false
+      if (noteTagFilter && !row.tags.includes(noteTagFilter)) return false
+      return matchesQuery(
+        q,
+        studentFullName(row.Student),
+        row.Student?.last_name,
+        row.Student?.first_name,
+        row.Student?.student_number,
+        classroomLabel(row.Student),
+        row.Teacher?.full_name,
+        row.note,
+        row.tags.join(' '),
+      )
+    })
+  }, [teacherNotes, noteSearchQuery, noteClassroomFilter, noteTeacherFilter, noteTagFilter])
+
+  const noteClassroomOptions = useMemo(() => {
+    const labels = new Set<string>()
+    teacherNotes.forEach((row) => {
+      const label = classroomLabel(row.Student)
+      if (label) labels.add(label)
+    })
+    return [...labels].sort((a, b) => a.localeCompare(b, 'tr')).map((label) => ({ value: label, label }))
+  }, [teacherNotes])
+
+  const noteTeacherOptions = useMemo(() => {
+    const byId = new Map<number, string>()
+    teacherNotes.forEach((row) => {
+      if (row.Teacher && !byId.has(row.teacher_id)) byId.set(row.teacher_id, row.Teacher.full_name)
+    })
+    return [...byId.entries()]
+      .sort((a, b) => a[1].localeCompare(b[1], 'tr'))
+      .map(([value, label]) => ({ value, label }))
+  }, [teacherNotes])
+
+  const noteTagOptions = useMemo(() => {
+    const tags = new Set<string>()
+    teacherNotes.forEach((row) => row.tags.forEach((tag) => tags.add(tag)))
+    return [...tags].sort((a, b) => a.localeCompare(b, 'tr')).map((tag) => ({ value: tag, label: tag }))
+  }, [teacherNotes])
+
+  const caseFiltersActive = Boolean(caseSearch.trim() || caseStatusFilter)
+  const noteFiltersActive = Boolean(noteSearch.trim() || noteClassroomFilter || noteTeacherFilter || noteTagFilter)
+
   const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
-    getIds: () => cases.map((c) => c.id),
+    getIds: () => filteredCases.map((c) => c.id),
     deleteOne: (id) => deleteDisciplinaryCase(Number(id)),
     noun: 'disiplin dosyası',
     reload: () => void load(),
@@ -179,7 +280,13 @@ export function DisciplinePage() {
 
   const columns: ColumnsType<DisciplinaryCase> = [
     {
-      title: 'Öğrenci',
+      title: 'Öğrenci No',
+      sorter: (a, b) => compareValues(a.Student?.student_number, b.Student?.student_number),
+      sortDirections: [...SORT_AZ],
+      render: (_: unknown, r: DisciplinaryCase) => r.Student?.student_number || '—',
+    },
+    {
+      title: 'Adı Soyadı',
       sorter: nestedPersonNameSorter((r: DisciplinaryCase) => r.Student),
       sortDirections: [...SORT_AZ],
       render: (_: unknown, r: DisciplinaryCase) => (r.Student ? `${r.Student.first_name} ${r.Student.last_name}` : '—'),
@@ -227,18 +334,27 @@ export function DisciplinePage() {
 
   const teacherNoteColumns: ColumnsType<TeacherNote> = [
     {
-      title: 'Öğrenci',
+      title: 'Öğrenci No',
+      sorter: (a, b) => compareValues(a.Student?.student_number, b.Student?.student_number),
+      sortDirections: [...SORT_AZ],
+      render: (_: unknown, r: TeacherNote) => r.Student?.student_number || '—',
+    },
+    {
+      title: 'Adı Soyadı',
       sorter: nestedPersonNameSorter((r: TeacherNote) => r.Student),
       sortDirections: [...SORT_AZ],
       render: (_: unknown, r: TeacherNote) => (r.Student ? `${r.Student.first_name} ${r.Student.last_name}` : '—'),
     },
     {
       title: 'Sınıf',
-      render: (_: unknown, r: TeacherNote) =>
-        r.Student?.Classroom ? `${r.Student.Classroom.class_level}/${r.Student.Classroom.section}` : '—',
+      sorter: (a, b) => compareValues(classroomLabel(a.Student), classroomLabel(b.Student)),
+      sortDirections: [...SORT_AZ],
+      render: (_: unknown, r: TeacherNote) => classroomLabel(r.Student) || '—',
     },
     {
       title: 'Bildiren Öğretmen',
+      sorter: (a, b) => compareValues(a.Teacher?.full_name, b.Teacher?.full_name),
+      sortDirections: [...SORT_AZ],
       render: (_: unknown, r: TeacherNote) => r.Teacher?.full_name || '—',
     },
     {
@@ -273,47 +389,141 @@ export function DisciplinePage() {
         Disiplin Modülü
       </Typography.Title>
 
-      {stats && (
-        <Space wrap style={{ marginBottom: 16 }}>
-          <Tag color="blue">Toplam: {stats.total}</Tag>
-          {Object.entries(stats.by_status).map(([status, count]) => (
-            <Tag key={status}>{CASE_STATUS_LABELS[status] || status}: {count}</Tag>
-          ))}
-        </Space>
-      )}
+      <Tabs
+        activeKey={tab}
+        onChange={setTab}
+        items={[
+          {
+            key: 'cases',
+            label: `Disiplin Dosyaları (${cases.length})`,
+            children: (
+              <>
+                {stats && (
+                  <Space wrap style={{ marginBottom: 16 }}>
+                    <Tag color="blue">Toplam: {stats.total}</Tag>
+                    {Object.entries(stats.by_status).map(([status, count]) => (
+                      <Tag key={status}>
+                        {CASE_STATUS_LABELS[status] || status}: {count}
+                      </Tag>
+                    ))}
+                  </Space>
+                )}
 
-      <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 16 }} wrap>
-        {canDelete && cases.length > 0 && (
-          <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
-            Toplu sil ({cases.length})
-          </Button>
-        )}
-        {canCreate && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
-            Yeni Disiplin Dosyası
-          </Button>
-        )}
-      </Space>
+                <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 16 }} wrap>
+                  {canDelete && filteredCases.length > 0 && (
+                    <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+                      Toplu sil ({filteredCases.length})
+                    </Button>
+                  )}
+                  {canCreate && (
+                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
+                      Yeni Disiplin Dosyası
+                    </Button>
+                  )}
+                </Space>
 
-      <SortableTable
-        rowKey="id"
-        loading={loading}
-        columns={columns}
-        dataSource={cases}
-        pagination={tablePagination(20)}
-        scroll={{ x: 'max-content' }}
-      />
+                <FilterBar>
+                  <Input
+                    allowClear
+                    prefix={<SearchOutlined />}
+                    placeholder="Ad, soyad, öğrenci no veya açıklama ile ara..."
+                    value={caseSearch}
+                    onChange={(e) => setCaseSearch(e.target.value)}
+                    style={{ width: 320 }}
+                  />
+                  <Select
+                    allowClear
+                    placeholder="Durum"
+                    style={{ width: 180 }}
+                    options={CASE_STATUS_OPTIONS}
+                    value={caseStatusFilter}
+                    onChange={setCaseStatusFilter}
+                  />
+                  <ClearFiltersButton
+                    active={caseFiltersActive}
+                    onClick={() => {
+                      setCaseSearch('')
+                      setCaseStatusFilter(undefined)
+                    }}
+                  />
+                </FilterBar>
 
-      <Typography.Title level={4} style={{ margin: 0, marginTop: 32, marginBottom: 16 }}>
-        Öğretmen Bildirimleri (Mobil)
-      </Typography.Title>
-      <SortableTable
-        rowKey="id"
-        loading={loading}
-        columns={teacherNoteColumns}
-        dataSource={teacherNotes}
-        pagination={tablePagination(20)}
-        scroll={{ x: 'max-content' }}
+                <SortableTable
+                  rowKey="id"
+                  loading={loading}
+                  columns={columns}
+                  dataSource={filteredCases}
+                  pagination={tablePagination(20)}
+                  scroll={{ x: 'max-content' }}
+                />
+              </>
+            ),
+          },
+          {
+            key: 'notes',
+            label: `Öğretmen Bildirimleri (${teacherNotes.length})`,
+            children: (
+              <>
+                <FilterBar>
+                  <Input
+                    allowClear
+                    prefix={<SearchOutlined />}
+                    placeholder="Ad, soyad, öğrenci no, öğretmen veya sebep ile ara..."
+                    value={noteSearch}
+                    onChange={(e) => setNoteSearch(e.target.value)}
+                    style={{ width: 360 }}
+                  />
+                  <Select
+                    allowClear
+                    placeholder="Sınıf"
+                    style={{ width: 140 }}
+                    options={noteClassroomOptions}
+                    value={noteClassroomFilter}
+                    onChange={setNoteClassroomFilter}
+                  />
+                  <Select
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    placeholder="Öğretmen"
+                    style={{ width: 200 }}
+                    options={noteTeacherOptions}
+                    value={noteTeacherFilter}
+                    onChange={setNoteTeacherFilter}
+                  />
+                  <Select
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    placeholder="Sebep"
+                    style={{ width: 220 }}
+                    options={noteTagOptions}
+                    value={noteTagFilter}
+                    onChange={setNoteTagFilter}
+                  />
+                  <ClearFiltersButton
+                    active={noteFiltersActive}
+                    onClick={() => {
+                      setNoteSearch('')
+                      setNoteClassroomFilter(undefined)
+                      setNoteTeacherFilter(undefined)
+                      setNoteTagFilter(undefined)
+                    }}
+                  />
+                </FilterBar>
+
+                <SortableTable
+                  rowKey="id"
+                  loading={loading}
+                  columns={teacherNoteColumns}
+                  dataSource={filteredTeacherNotes}
+                  pagination={tablePagination(20)}
+                  scroll={{ x: 'max-content' }}
+                />
+              </>
+            ),
+          },
+        ]}
       />
 
       <Modal
@@ -331,7 +541,10 @@ export function DisciplinePage() {
             <Select
               showSearch
               optionFilterProp="label"
-              options={students.map((s) => ({ value: s.id, label: `${s.first_name} ${s.last_name}` }))}
+              options={students.map((s) => ({
+                value: s.id,
+                label: `${s.first_name} ${s.last_name}${s.student_number ? ` (${s.student_number})` : ''}`,
+              }))}
             />
           </Form.Item>
           <Form.Item name="incident_date" label="Olay tarihi" rules={[{ required: true, message: 'Tarih zorunludur' }]}>
@@ -374,7 +587,7 @@ export function DisciplinePage() {
       <TypedPhraseConfirmModal
         open={bulkOpen}
         title="Disiplin dosyalarını toplu sil"
-        description={`Listedeki ${cases.length} disiplin dosyası silinecek.`}
+        description={`Filtreye uyan ${filteredCases.length} disiplin dosyası silinecek.`}
         loading={bulkLoading}
         onCancel={() => setBulkOpen(false)}
         onConfirm={onBulkDelete}

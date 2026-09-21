@@ -16,7 +16,10 @@ module.exports = (sequelize, DataTypes) => {
       yasi: DataTypes.INTEGER,
       registration_status: DataTypes.STRING,
       parent_name: DataTypes.STRING,
+      mother_name: DataTypes.STRING,
+      father_name: DataTypes.STRING,
       parent_phone: DataTypes.STRING,
+      student_phone: DataTypes.STRING,
       extra_contacts: {
         type: DataTypes.JSONB,
         allowNull: false,
@@ -24,7 +27,11 @@ module.exports = (sequelize, DataTypes) => {
       },
       is_inclusion: DataTypes.BOOLEAN,
       is_foreign: DataTypes.BOOLEAN,
-      boarding_status: DataTypes.STRING,
+      boarding_status: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        defaultValue: 'Gündüzlü',
+      },
       photo_path: DataTypes.STRING,
       meta: DataTypes.JSONB,
     },

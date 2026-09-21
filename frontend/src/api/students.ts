@@ -15,6 +15,7 @@ function toParams(filters?: StudentFilters): Record<string, string | number> | u
   if (filters.class_level) params.class_level = filters.class_level
   if (filters.section) params.section = filters.section
   if (filters.gender) params.gender = filters.gender
+  if (filters.yasi != null) params.yasi = filters.yasi
   if (filters.registration_status) params.registration_status = filters.registration_status
   return Object.keys(params).length ? params : undefined
 }

@@ -1,9 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/authController');
+const teacherRegisterCtrl = require('../controllers/teacherRegisterController');
 const auth = require('../middlewares/auth');
 const validate = require('../middlewares/validate');
 const {
+  teacherRegisterStartSchema,
+  teacherRegisterPendingSchema,
+  teacherRegisterSmsSchema,
+  teacherRegisterVerifySchema,
   registerSchema,
   loginSchema,
   verify2faSchema,
@@ -16,6 +21,22 @@ const {
   updateProfileSchema,
   tenantMenuLayoutSchema,
 } = require('../validators/auth.validator');
+
+router.get('/teacher-register/provinces', teacherRegisterCtrl.listProvinces);
+router.get('/teacher-register/districts', teacherRegisterCtrl.listDistricts);
+router.get('/teacher-register/schools', teacherRegisterCtrl.listSchools);
+router.post('/teacher-register', validate(teacherRegisterStartSchema), teacherRegisterCtrl.start);
+router.post(
+  '/teacher-register/resend-email',
+  validate(teacherRegisterPendingSchema),
+  teacherRegisterCtrl.resendEmail,
+);
+router.post(
+  '/teacher-register/request-sms',
+  validate(teacherRegisterSmsSchema),
+  teacherRegisterCtrl.requestSms,
+);
+router.post('/teacher-register/verify', validate(teacherRegisterVerifySchema), teacherRegisterCtrl.verify);
 
 router.post('/register', validate(registerSchema), ctrl.register);
 router.post('/login', validate(loginSchema), ctrl.login);
