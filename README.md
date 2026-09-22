@@ -675,8 +675,9 @@ Tenant (Kiracı)
 
 ## Docker ile Çalıştırma (Production)
 
-Proje, biri veritabanı (`db`), biri backend (`backend`), biri de frontend (`frontend`)
-olmak üzere üç ayrı container olarak çalışacak şekilde yapılandırılmıştır.
+Proje; veritabanı (`db`), backend (`backend`), yönetici paneli (`frontend`) ve
+tanıtım/landing sayfası (`landing`) olmak üzere dört ayrı container olarak
+çalışacak şekilde yapılandırılmıştır.
 
 **Kullanılan kurulum: ayrı subdomain'ler** (`app.oids.com.tr` → frontend, `api.oids.com.tr`
 → backend). Bu yüzden hem `frontend` hem `backend` NPM'in Docker network'üne katılır ve
@@ -718,8 +719,18 @@ Notlar:
   `docker compose down`, `up -d --build`, container silme/yeniden oluşturma gibi
   işlemler bu klasörlere dokunmaz; veri kaybı yaşamamak için tek şart bu klasörleri
   **silmemek** ve düzenli yedeklemektir (`data/postgres` ve `uploads`).
-- Landing sayfası bu compose dosyasının kapsamında değildir; ayrı bir servis/proje olarak
-  eklenmek istendiğinde aynı `proxy` network'üne katılacak şekilde entegre edilebilir.
+
+### Landing Sayfası
+
+`landing/` altında, build adımı gerektirmeyen statik bir tanıtım sayfası vardır
+(`index.html` + `styles.css` + `script.js`, nginx ile servis edilir). Modülleri
+kısa ve öz şekilde tanıtır, plan/fiyat bilgisi `frontend/src/constants/licensePlans.ts`
+ile tutarlıdır. NPM'de eklenecek proxy host:
+
+- `oids.com.tr` (ve isteğe bağlı `www.oids.com.tr`) → Forward Hostname/IP: `landing`, Port: `80`
+
+İçeriği güncellemek için `landing/index.html` düzenlenir, `docker compose up -d --build landing`
+ile yeniden build edilir — ayrı bir build aracı veya bağımlılık gerekmez.
 
 ### Otomatik Deploy (dev → master)
 

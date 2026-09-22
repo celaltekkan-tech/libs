@@ -53,6 +53,14 @@ services:
       - internal
       - proxy
 
+  landing:
+    build:
+      context: ./landing
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - proxy
+
 networks:
   internal:
     driver: bridge
