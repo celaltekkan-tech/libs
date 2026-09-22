@@ -36,7 +36,7 @@ export async function runBackup(): Promise<BackupRunResult> {
 
 export async function restoreBackup(filename: string): Promise<void> {
   await client.post(`/api/backups/${encodeURIComponent(filename)}/restore`, null, {
-    timeout: LONG_TIMEOUT_MS,
+    timeout: 600000,
   })
 }
 

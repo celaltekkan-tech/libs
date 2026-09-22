@@ -51,6 +51,7 @@ const geoRoutes = require('./routes/geo');
 const regulationsRoutes = require('./routes/regulations');
 const serverMetricsRoutes = require('./routes/serverMetrics');
 const errorHandler = require('./middlewares/errorHandler');
+const backupService = require('./services/backupService');
 const db = require('./models');
 
 const app = express();
@@ -152,6 +153,14 @@ app.get('/health', (req, res) =>
 );
 
 app.use('/api', apiLimiter);
+app.use('/api', (req, res, next) => {
+  if (!backupService.isDbSuspended()) return next();
+  return res.status(503).json({
+    success: false,
+    code: 'RESTORE_IN_PROGRESS',
+    message: 'Veritabanı geri yükleniyor. Birkaç dakika sonra tekrar deneyin.',
+  });
+});
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/verify-2fa', authLimiter);
