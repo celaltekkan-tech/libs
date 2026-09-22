@@ -744,16 +744,19 @@ ekranına bu domaini girmesi gerekir. Bu bir geliştirme sunucusudur, EAS'in
 canlı servis eder; kalıcı/store dağıtımı için yine `eas build --profile
 production` kullanılmalıdır.
 
-**NPM'den geçmez:** Expo Go'nun "Enter URL" alanına girilen `exp://mobil.oids.com.tr`,
-istemciyi doğrudan `http://mobil.oids.com.tr:8081`'e düz HTTP ile bağlar — NPM'in
-443'te TLS sonlandırdığı proxy host akışını hiç kullanmaz. Bu yüzden:
+NPM'de eklenecek proxy host:
 
-- `docker-compose.yml`'de `mobile` servisi `8081:8081` ile host'a doğrudan port açar
-  (bir NPM Proxy Host **tanımlanmaz** — o mekanizma bu bağlantı şekli için işlemez).
-- Router/firewall'da dış port `8081`, `192.168.1.10:8081`'e yönlendirilmelidir
-  (80/443'ün NPM için zaten yönlendirildiği gibi).
-- DNS'te `mobil.oids.com.tr` A kaydı sunucunun dış IP'sini göstermelidir; sertifika
-  bu akışta kullanılmaz (bağlantı zaten düz HTTP).
+- `mobile.oids.com.tr` → Forward Hostname/IP: `mobile`, Port: `8081`
+  **Websockets Support mutlaka açılmalı** (Metro'nun bundle/HMR trafiği
+  WebSocket üzerinden gider; kapalıysa dev-client/Expo Go bağlanamaz).
+
+**Expo Go'da bağlantı adresi önemli:** "Enter URL" alanına `exp://mobile.oids.com.tr`
+yazılırsa istemci portu kendisi `:8081` olarak varsayar ve düz `http://` ile doğrudan
+o porta bağlanmaya çalışır — NPM'in 443'te TLS sonlandırdığı proxy host'u hiç
+kullanmaz, bu yüzden bağlanamaz. Bunun yerine **`https://mobile.oids.com.tr`**
+(açık şema + portsuz) girilmeli; bu, standart 443 üzerinden NPM'e gider ve NPM
+zaten container'ın 8081 portuna yönlendirir. `exp://` yalnızca `expo start`'ın
+kendi bastığı LAN QR/URL'sinde (dev makinesi ile aynı ağda) anlamlıdır.
 
 Kod değişikliği sonrası yeniden build gerekmez (Metro dosya değişikliklerini
 canlı yakalar); container'ın kendisini güncellemek için
