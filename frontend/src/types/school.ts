@@ -6,6 +6,23 @@ export const SCHOOL_TYPE_LABELS: Record<SchoolType, string> = {
   lise: 'Lise',
 }
 
+export const FOREIGN_LANGUAGE_OPTIONS = [
+  'İngilizce',
+  'Almanca',
+  'Rusça',
+  'Çince',
+  'Fransızca',
+  'İspanyolca',
+  'Portekizce',
+  'Arapça',
+  'Farsça',
+] as const
+
+export interface SchoolMeta {
+  first_foreign_language?: string | null
+  second_foreign_language?: string | null
+}
+
 export interface School {
   id: number
   tenant_id: number
@@ -17,6 +34,7 @@ export interface School {
   district_id?: number | null
   directory_school_id?: number | null
   logo_url?: string | null
+  meta?: SchoolMeta | null
   Province?: { id: number; name: string } | null
   District?: { id: number; name: string } | null
   created_at: string
@@ -38,4 +56,5 @@ export interface SchoolPayload {
   province_id?: number | null
   district_id?: number | null
   directory_school_id?: number | null
+  meta?: SchoolMeta | null
 }
