@@ -66,6 +66,11 @@ services:
       context: ./mobile
       dockerfile: Dockerfile
     restart: unless-stopped
+    # Expo Go'nun manuel "exp://host" bağlantısı NPM'in HTTPS proxy'sini değil,
+    # doğrudan host:8081'i düz HTTP ile hedefler — bu yüzden container portu
+    # doğrudan host'a açılır (router'da 8081 dış porta yönlendirilmelidir).
+    ports:
+      - "8081:8081"
     networks:
       - proxy
 
