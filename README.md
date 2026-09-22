@@ -702,16 +702,14 @@ cp .env.example .env
 docker network ls
 # .env içine NPM_NETWORK_NAME=<bulduğunuz-ad> yazın (örn. nginx-proxy-manager_default)
 
-# 3) Build edip ayağa kaldırın
+# 3) Build edip ayağa kaldırın (migration'lar ve seed'ler backend başlarken otomatik çalışır)
 docker compose up -d --build
-
-# 4) İlk kurulumda demo/platform admin verisini oluşturmak isterseniz
-docker compose exec backend npm run seed
 ```
 
 Notlar:
-- Migration'lar `backend` container'ı her başladığında otomatik çalışır
-  (`docker/backend-entrypoint.sh`).
+- Migration'lar ve seed'ler `backend` container'ı her başladığında otomatik çalışır
+  (`docker/backend-entrypoint.sh`, `npx sequelize db:migrate` + `db:seed:all`). Seed'ler
+  `SequelizeData` tablosunda takip edildiği için sadece yeni eklenenler çalışır, idempotent'tir.
 - `db` yalnızca dahili (`internal`) network'te yer alır, dışarıya hiç port açmaz.
   `backend` ve `frontend` NPM'in network'üne katılır ama kendi başlarına host'a port
   açmazlar; dışarıdan erişim yalnızca NPM üzerinden mümkündür.
@@ -727,7 +725,8 @@ Notlar:
 
 Geliştirme `dev` branch'inde yapılır. `dev` → `master` merge/push edildiğinde,
 sunucuda cron ile periyodik çalışan `scripts/deploy-watch.sh` yeni commit'i görüp
-otomatik olarak `git pull` + `docker compose up -d --build` yapar.
+otomatik olarak `git pull` yapar. Build/deploy (`docker compose up -d --build`)
+otomatik tetiklenmez, elle çalıştırılır.
 
 Sunucuda tek seferlik kurulum:
 
@@ -744,11 +743,11 @@ docker compose up -d --build
 # 3) Deploy script'ini çalıştırılabilir yapın
 chmod +x scripts/deploy-watch.sh
 
-# 4) Cron'a ekleyin (her 2 dakikada bir kontrol eder, log dosyasına yazar)
+# 4) Cron'a ekleyin (her 5 dakikada bir kontrol eder, log dosyasına yazar)
 mkdir -p logs
 crontab -e
 # aşağıdaki satırı ekleyin:
-*/2 * * * * /opt/libs/scripts/deploy-watch.sh >> /opt/libs/logs/deploy.log 2>&1
+*/5 * * * * /opt/libs/scripts/deploy-watch.sh >> /opt/libs/logs/deploy.log 2>&1
 ```
 
 Notlar:
@@ -756,10 +755,11 @@ Notlar:
   değişkeniyle değiştirilebilir) ve yalnızca fast-forward mümkünse pull yapar; sunucuda
   elle değişiklik yapılmamalıdır.
 - Aynı anda iki deploy'un çakışmaması için `flock` ile kilitlenir.
-- Script yalnızca yeni commit varsa `docker compose up -d --build` çalıştırır; migration'lar
-  backend container'ı her (yeniden) başladığında otomatik uygulanır.
+- Script yalnızca `git pull` yapar, `docker compose up -d --build` çalıştırmaz — build/deploy
+  elle tetiklenir. Migration'lar ve seed'ler backend container'ı her (yeniden) başladığında
+  (yani build sonrası) otomatik uygulanır.
 - `dev` branch'inde çalışırken sunucu hiçbir şekilde etkilenmez; sadece `master`'a
-  merge/push edildiğinde bir sonraki cron taramasında (en fazla 2 dk içinde) devreye girer.
+  merge/push edildiğinde bir sonraki cron taramasında (en fazla 5 dk içinde) pull edilir.
 
 ### Veritabanı Yedekleme
 
