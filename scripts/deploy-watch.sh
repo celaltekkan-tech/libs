@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Production sunucusunda cron ile periyodik çalıştırılır.
-# origin/$BRANCH'te yeni commit varsa fast-forward pull yapıp container'ları
-# yeniden build eder. Migration'lar backend'in kendi entrypoint'i tarafından
+# origin/$BRANCH'te yeni commit varsa fast-forward pull yapar. Build/deploy
+# (docker compose up -d --build) elle tetiklenir, bu script otomatik build
+# yapmaz. Migration'lar ve seed'ler backend'in kendi entrypoint'i tarafından
 # (docker/backend-entrypoint.sh) container her başladığında otomatik çalışır.
 set -euo pipefail
 
@@ -26,12 +27,8 @@ if [ "$LOCAL" = "$REMOTE" ]; then
   exit 0
 fi
 
-echo "$(date '+%F %T') Yeni commit bulundu ($LOCAL -> $REMOTE), güncelleniyor..."
+echo "$(date '+%F %T') Yeni commit bulundu ($LOCAL -> $REMOTE), pull yapılıyor..."
 
 git merge --ff-only "origin/$BRANCH"
 
-docker compose up -d --build
-
-docker image prune -f >/dev/null 2>&1 || true
-
-echo "$(date '+%F %T') Güncelleme tamamlandı (${REMOTE})."
+echo "$(date '+%F %T') Pull tamamlandı (${REMOTE}). Build/deploy için 'docker compose up -d --build' elle çalıştırılmalı."
