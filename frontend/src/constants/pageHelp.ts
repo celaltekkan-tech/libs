@@ -560,7 +560,7 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
   },
   '/platform/backups': {
     title: 'Veritabanı Yedekleme',
-    summary: 'Yedek klasörünü, saati ve saklama süresini ayarlar; yedek alır veya geri yüklersiniz (platform yöneticisi).',
+    summary: 'Yedek klasörünü, saati ve saklama süresini ayarlar; yedek alır, indirir, yükler veya geri yüklersiniz (platform yöneticisi).',
     topics: [
       {
         title: 'Zamanlanmış yedek',
@@ -570,6 +570,8 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
         title: 'Manuel yedek ve geri yükleme',
         steps: [
           'Şimdi yedek al ile anlık yedek oluşturun.',
+          'Listeden İndir ile .sql.gz dosyasını bilgisayarınıza kaydedin.',
+          'Yedek yükle ile dışarıdan bir .sql.gz dosyasını listeye alın.',
           'Listeden Geri yükle deyip onay kelimesini yazarak seçilen yedeği veritabanına uygulayın.',
         ],
       },

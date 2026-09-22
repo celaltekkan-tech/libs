@@ -85,11 +85,24 @@ client.interceptors.request.use((config) => {
   return config
 })
 
+async function readErrorBody(data: ApiErrorBody | Blob | undefined): Promise<ApiErrorBody | null> {
+  if (!data) return null
+  if (data instanceof Blob) {
+    try {
+      const text = await data.text()
+      return text ? (JSON.parse(text) as ApiErrorBody) : null
+    } catch {
+      return null
+    }
+  }
+  return data
+}
+
 client.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<ApiErrorBody>) => {
+  async (error: AxiosError<ApiErrorBody | Blob>) => {
     const status = error.response?.status ?? 0
-    const body = error.response?.data
+    const body = await readErrorBody(error.response?.data)
     const apiError = new ApiError(status, body, error.message)
 
     const hadToken = Boolean(error.config?.headers?.Authorization)

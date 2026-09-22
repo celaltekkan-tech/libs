@@ -37,6 +37,32 @@ module.exports = {
     }
   },
 
+  async download(req, res, next) {
+    try {
+      const { filePath, filename } = await backupService.resolveBackupFile(req.params.filename);
+      res.download(filePath, filename, (err) => {
+        if (err && !res.headersSent) next(err);
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async importFile(req, res, next) {
+    try {
+      if (!req.file) {
+        const err = new Error('Yedek dosyası seçilmedi');
+        err.status = 400;
+        err.code = 'FILE_REQUIRED';
+        throw err;
+      }
+      const data = await backupService.importBackupFile(req.file.path, req.file.originalname);
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async restore(req, res, next) {
     try {
       const data = await backupService.restoreBackup(req.params.filename);
