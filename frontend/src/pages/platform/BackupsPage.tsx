@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, App, Button, Card, Form, Input, InputNumber, Space, Tag, TimePicker, Typography } from 'antd'
+import { Alert, App, Button, Card, Form, Input, InputNumber, Space, Tag, TimePicker, Typography, Upload } from 'antd'
 import { SortableTable } from '../../components/SortableTable'
-import { DeleteOutlined, PlayCircleOutlined, RollbackOutlined, SaveOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownloadOutlined, PlayCircleOutlined, RollbackOutlined, SaveOutlined, UploadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { AppLayout } from '../../components/AppLayout'
 import {
   deleteBackup,
+  downloadBackup,
   getBackupSettings,
+  importBackup,
   listBackups,
   restoreBackup,
   runBackup,
   updateBackupSettings,
 } from '../../api/backups'
+import { downloadBlob } from '../../utils/download'
 import { getErrorMessage } from '../../api/client'
 import type { BackupFile, BackupSettings } from '../../types/backup'
 import { tablePagination } from '../../utils/tablePagination'
@@ -48,6 +51,8 @@ export function BackupsPage() {
   const [form] = Form.useForm<SettingsFormValues>()
   const [savingSettings, setSavingSettings] = useState(false)
   const [runningBackup, setRunningBackup] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [downloading, setDownloading] = useState<string | null>(null)
   const [restoring, setRestoring] = useState(false)
   const [restoreTarget, setRestoreTarget] = useState<BackupFile | null>(null)
   const [settings, setSettings] = useState<BackupSettings | null>(null)
@@ -143,6 +148,36 @@ export function BackupsPage() {
     }
   }
 
+  const onDownload = async (backup: BackupFile) => {
+    setDownloading(backup.filename)
+    try {
+      const blob = await downloadBackup(backup.filename)
+      downloadBlob(blob, backup.filename)
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setDownloading(null)
+    }
+  }
+
+  const onImport = async (file: File) => {
+    const name = file.name.toLowerCase()
+    if (!name.endsWith('.sql.gz')) {
+      message.error('Yalnızca .sql.gz yedek dosyası yüklenebilir')
+      return
+    }
+    setImporting(true)
+    try {
+      const saved = await importBackup(file)
+      message.success(`Yedek yüklendi: ${saved.filename}`)
+      void load()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setImporting(false)
+    }
+  }
+
   const onDelete = (backup: BackupFile) => {
     modal.confirm({
       title: 'Yedeği sil',
@@ -172,14 +207,23 @@ export function BackupsPage() {
     },
     {
       title: 'İşlemler',
-      width: 220,
+      width: 320,
       render: (_: unknown, record) => (
         <Space>
           <Button
             size="small"
+            icon={<DownloadOutlined />}
+            loading={downloading === record.filename}
+            disabled={Boolean(downloading) && downloading !== record.filename}
+            onClick={() => void onDownload(record)}
+          >
+            İndir
+          </Button>
+          <Button
+            size="small"
             icon={<RollbackOutlined />}
             onClick={() => setRestoreTarget(record)}
-            disabled={runningBackup || restoring}
+            disabled={runningBackup || restoring || importing}
           >
             Geri yükle
           </Button>
@@ -201,7 +245,8 @@ export function BackupsPage() {
         </Typography.Title>
         <Typography.Paragraph type="secondary">
           Yedekler her gün belirlediğiniz saatte, seçtiğiniz klasöre alınır. Saklama süresini aşan
-          dosyalar bir sonraki yedeklemede silinir. Geri yükleme mevcut veritabanının üzerine yazar.
+          dosyalar bir sonraki yedeklemede silinir. Yedek dosyasını indirebilir veya .sql.gz dosyası
+          yükleyebilirsiniz. Geri yükleme mevcut veritabanının üzerine yazar.
         </Typography.Paragraph>
 
         <Card style={{ marginBottom: 24, maxWidth: 640 }}>
@@ -266,10 +311,23 @@ export function BackupsPage() {
             icon={<PlayCircleOutlined />}
             onClick={onRunBackup}
             loading={runningBackup}
-            disabled={restoring}
+            disabled={restoring || importing}
           >
             Şimdi yedek al
           </Button>
+          <Upload
+            accept=".gz,application/gzip"
+            showUploadList={false}
+            disabled={importing || runningBackup || restoring}
+            beforeUpload={(file) => {
+              void onImport(file)
+              return Upload.LIST_IGNORE
+            }}
+          >
+            <Button icon={<UploadOutlined />} loading={importing} disabled={runningBackup || restoring}>
+              Yedek yükle
+            </Button>
+          </Upload>
           {backups.length > 0 && (
             <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
               Toplu sil ({backups.length})

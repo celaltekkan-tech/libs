@@ -12,6 +12,8 @@ const TIMEZONE = 'Europe/Istanbul';
 const DEFAULT_SCHEDULE = '03:30';
 const SAFE_FILENAME = /^[A-Za-z0-9_.-]+\.sql\.gz$/;
 const DUMP_TIMEOUT_MS = Number(process.env.BACKUP_TIMEOUT_MS) || 10 * 60 * 1000;
+const parsedImportMax = Number(process.env.BACKUP_IMPORT_MAX_BYTES);
+const IMPORT_MAX_BYTES = Number.isFinite(parsedImportMax) && parsedImportMax > 0 ? parsedImportMax : 512 * 1024 * 1024;
 
 let scheduledTask = null;
 let running = false;
@@ -408,6 +410,147 @@ async function listBackupFiles() {
   return files;
 }
 
+function formatMegabytes(bytes) {
+  return `${Math.max(1, Math.round(bytes / (1024 * 1024)))} MB`;
+}
+
+function sanitizeImportName(originalName) {
+  let base = path.basename(String(originalName || 'yedek.sql.gz'));
+  if (/[\u0080-\u00ff]/.test(base)) {
+    const decoded = Buffer.from(base, 'latin1').toString('utf8');
+    if (decoded && !decoded.includes('\uFFFD')) base = decoded;
+  }
+  base = base.replace(/[^A-Za-z0-9_.-]/g, '_');
+  if (!base.toLowerCase().endsWith('.sql.gz')) {
+    return `import_${formatStamp()}.sql.gz`;
+  }
+  const stem = base.slice(0, -'.sql.gz'.length).replace(/^[._-]+|[._-]+$/g, '').slice(0, 120);
+  const name = `${stem || 'import'}.sql.gz`;
+  if (!SAFE_FILENAME.test(name)) return `import_${formatStamp()}.sql.gz`;
+  return name;
+}
+
+async function uniqueFilename(dir, filename) {
+  let candidate = filename;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      await fsp.access(path.join(dir, candidate));
+    } catch (err) {
+      if (err.code === 'ENOENT') return candidate;
+      throw err;
+    }
+    const suffix = attempt === 0 ? formatStamp() : `${formatStamp()}_${attempt}`;
+    const next = filename.replace(/\.sql\.gz$/i, `_${suffix}.sql.gz`);
+    candidate = SAFE_FILENAME.test(next) ? next : `import_${suffix}.sql.gz`;
+  }
+  throw httpError(409, 'Aynı adlı yedek dosyası zaten var', 'BACKUP_EXISTS');
+}
+
+function readGunzipPrefix(filePath, limit = 512) {
+  return new Promise((resolve, reject) => {
+    const input = fs.createReadStream(filePath);
+    const gunzip = zlib.createGunzip();
+    const chunks = [];
+    let size = 0;
+    let settled = false;
+    const finish = (err, value) => {
+      if (settled) return;
+      settled = true;
+      input.destroy();
+      gunzip.destroy();
+      if (err) reject(err);
+      else resolve(value);
+    };
+    gunzip.on('data', (buf) => {
+      chunks.push(buf);
+      size += buf.length;
+      if (size >= limit) finish(null, Buffer.concat(chunks).subarray(0, limit));
+    });
+    gunzip.on('end', () => finish(null, Buffer.concat(chunks)));
+    gunzip.on('error', () => finish(httpError(400, 'Yedek dosyası açılamadı (gzip bozuk)', 'INVALID_BACKUP')));
+    input.on('error', (err) => finish(err));
+    input.pipe(gunzip);
+  });
+}
+
+async function assertGzipSqlDump(filePath) {
+  const header = Buffer.alloc(2);
+  const fh = await fsp.open(filePath, 'r');
+  try {
+    const { bytesRead } = await fh.read(header, 0, 2, 0);
+    if (bytesRead < 2 || header[0] !== 0x1f || header[1] !== 0x8b) {
+      throw httpError(400, 'Dosya geçerli bir gzip yedeği değil', 'INVALID_BACKUP');
+    }
+  } finally {
+    await fh.close();
+  }
+  const preview = await readGunzipPrefix(filePath);
+  const text = preview.toString('utf8').replace(/^\uFEFF/, '').trimStart();
+  const looksLikeDump =
+    text.startsWith('--') ||
+    text.startsWith('SET ') ||
+    text.startsWith('SELECT ') ||
+    text.startsWith('CREATE ') ||
+    text.startsWith('DROP ') ||
+    text.includes('PostgreSQL database dump');
+  if (!looksLikeDump) {
+    throw httpError(400, 'Dosya PostgreSQL yedeği gibi görünmüyor', 'INVALID_BACKUP');
+  }
+}
+
+async function moveIntoPlace(src, dest) {
+  try {
+    await fsp.rename(src, dest);
+  } catch (err) {
+    if (err.code !== 'EXDEV') throw err;
+    await fsp.copyFile(src, dest);
+    await fsp.unlink(src);
+  }
+}
+
+async function resolveBackupFile(filename) {
+  const settings = await getOrCreateSettings();
+  const dir = assertBackupDir(settings.backup_dir || defaultBackupDir());
+  const filePath = backupFilePath(dir, filename);
+  try {
+    await fsp.access(filePath);
+  } catch (err) {
+    if (err.code === 'ENOENT') throw httpError(404, 'Yedek dosyası bulunamadı');
+    throw err;
+  }
+  return { filePath, filename };
+}
+
+async function importBackupFile(tempPath, originalName) {
+  try {
+    const settings = await getOrCreateSettings();
+    const dir = assertBackupDir(settings.backup_dir || defaultBackupDir());
+    await fsp.mkdir(dir, { recursive: true });
+    let stat;
+    try {
+      stat = await fsp.stat(tempPath);
+    } catch (err) {
+      if (err.code === 'ENOENT') throw httpError(400, 'Yüklenen dosya bulunamadı');
+      throw err;
+    }
+    if (stat.size < 50) {
+      throw httpError(400, 'Yedek dosyası boş', 'INVALID_BACKUP');
+    }
+    if (stat.size > IMPORT_MAX_BYTES) {
+      throw httpError(400, `Yedek dosyası en fazla ${formatMegabytes(IMPORT_MAX_BYTES)} olabilir`, 'FILE_TOO_LARGE');
+    }
+    await assertGzipSqlDump(tempPath);
+    const filename = await uniqueFilename(dir, sanitizeImportName(originalName));
+    const dest = backupFilePath(dir, filename);
+    await moveIntoPlace(tempPath, dest);
+    const saved = await fsp.stat(dest);
+    return { filename, size_bytes: saved.size, created_at: saved.mtime };
+  } catch (err) {
+    await fsp.unlink(tempPath).catch(() => {});
+    throw err;
+  }
+}
+
 async function deleteBackupFile(filename) {
   const settings = await getOrCreateSettings();
   const dir = path.resolve(settings.backup_dir || defaultBackupDir());
@@ -482,11 +625,14 @@ async function startBackupCron() {
 }
 
 module.exports = {
+  IMPORT_MAX_BYTES,
   getOrCreateSettings,
   serializeSettings,
   updateSettings,
   listBackupFiles,
   deleteBackupFile,
+  resolveBackupFile,
+  importBackupFile,
   runBackup,
   restoreBackup,
   startBackupCron,

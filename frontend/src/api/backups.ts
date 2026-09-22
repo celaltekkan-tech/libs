@@ -40,6 +40,25 @@ export async function restoreBackup(filename: string): Promise<void> {
   })
 }
 
+const FILE_TIMEOUT_MS = 600000
+
+export async function downloadBackup(filename: string): Promise<Blob> {
+  const { data } = await client.get<Blob>(`/api/backups/${encodeURIComponent(filename)}/download`, {
+    responseType: 'blob',
+    timeout: FILE_TIMEOUT_MS,
+  })
+  return data
+}
+
+export async function importBackup(file: File): Promise<BackupFile> {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await client.post<Envelope<BackupFile>>('/api/backups/import', form, {
+    timeout: FILE_TIMEOUT_MS,
+  })
+  return data.data
+}
+
 export async function deleteBackup(filename: string): Promise<void> {
   await client.delete(`/api/backups/${encodeURIComponent(filename)}`)
 }
