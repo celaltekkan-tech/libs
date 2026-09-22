@@ -17,6 +17,7 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { AppLayout } from '../components/AppLayout'
+import { ServerMetricsCard } from '../components/ServerMetricsCard'
 import { SortableDashboard } from '../components/SortableDashboard'
 import { useAuth } from '../auth/AuthContext'
 import { listSchools } from '../api/schools'
@@ -283,14 +284,23 @@ function PlatformAdminDashboard() {
   return (
     <AppLayout title="Ana Sayfa">
       <div style={{ width: '100%' }}>
-        <Space direction="vertical" size={20} style={{ width: '100%' }}>
+        <Space
+          direction="vertical"
+          size={20}
+          style={{ width: '100%', display: 'flex' }}
+          styles={{ item: { width: '100%', minWidth: 0 } }}
+        >
           <div>
             <Typography.Title level={3} style={{ marginBottom: 4 }}>
               Platform özeti
             </Typography.Title>
             <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Tenant, okul ve lisans durumlarının genel görünümü
+              Sunucu yükü, tenant, okul ve lisans durumlarının genel görünümü
             </Typography.Paragraph>
+          </div>
+
+          <div style={{ width: '100%', minWidth: 0 }}>
+            <ServerMetricsCard />
           </div>
 
           {loading ? (

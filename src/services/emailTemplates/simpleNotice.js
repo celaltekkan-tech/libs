@@ -1,17 +1,46 @@
 'use strict';
 
-const {
-  APP_NAME,
-  DEFAULT_LOGO_URL,
-  escapeHtml,
-  buildLogoHtml,
-} = require('./teacherRegisterVerification');
-
+const APP_NAME = process.env.MAIL_APP_NAME || 'Okul İdare Sistemi';
+const DEFAULT_LOGO_URL = process.env.MAIL_LOGO_URL || '';
 const PRIMARY = '#1E3A8A';
 const TEXT = '#1F2937';
 const MUTED = '#6B7280';
 const FAINT = '#9CA3AF';
 const BORDER = '#E5E7EB';
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function makeInitials(name) {
+  const parts = String(name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) return 'Oİ';
+  if (parts.length === 1) return parts[0].slice(0, 2).toLocaleUpperCase('tr-TR');
+  return `${parts[0][0] || ''}${parts[parts.length - 1][0] || ''}`.toLocaleUpperCase('tr-TR');
+}
+
+function isHttpUrl(value) {
+  return /^https?:\/\//i.test(String(value || '').trim());
+}
+
+function buildLogoHtml({ logoUrl, logoCid, schoolName }) {
+  const alt = escapeHtml(schoolName || APP_NAME);
+  if (logoCid) {
+    return `<img src="cid:${escapeHtml(logoCid)}" alt="${alt}" width="72" style="display:block;margin:0 auto;border:0;max-width:72px;height:auto;" />`;
+  }
+  if (isHttpUrl(logoUrl)) {
+    return `<img src="${escapeHtml(logoUrl.trim())}" alt="${alt}" width="72" style="display:block;margin:0 auto;border:0;max-width:72px;height:auto;" />`;
+  }
+  const initials = escapeHtml(makeInitials(schoolName || APP_NAME));
+  return `<div style="width:64px;height:64px;margin:0 auto;border-radius:16px;background:${PRIMARY};color:#ffffff;font-size:20px;font-weight:700;letter-spacing:.04em;line-height:64px;text-align:center;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;">${initials}</div>`;
+}
 
 function buildSimpleNoticeEmail({ title, body, schoolName, logoUrl, logoCid } = {}) {
   const school = String(schoolName || '').trim();

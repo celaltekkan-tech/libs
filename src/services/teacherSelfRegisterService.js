@@ -19,11 +19,9 @@ const {
 const { foldTurkishName, turkishNamesEqual } = require('../utils/trName');
 const jwtUtil = require('../utils/jwt');
 const licenseService = require('./licenseService');
-const { sendEmail, EmailConfigError, EMAIL_STATUS } = require('./emailEngine');
-const { buildSchoolEmailAssets } = require('./schoolEmailAssets');
 const { sendSms, SMS_STATUS, SmsConfigError } = require('./smsEngine');
-const { assertValidMobilePhone } = require('../utils/phone');
-const { buildTeacherRegisterVerificationEmail } = require('./emailTemplates/teacherRegisterVerification');
+const { assertValidMobilePhone, normalizeMobilePhone } = require('../utils/phone');
+const { maskPhone } = require('./smsLoginService');
 
 const BCRYPT_ROUNDS = 10;
 const PENDING_EXPIRES = process.env.TEACHER_REGISTER_TOKEN_TTL || '30m';
@@ -42,18 +40,9 @@ function foldLastName(value) {
   return foldTurkishName(value);
 }
 
-function normalizePersonnelNo(value) {
-  return String(value || '').trim();
-}
-
-function maskEmail(email) {
-  const raw = String(email || '').trim().toLowerCase();
-  const at = raw.indexOf('@');
-  if (at < 1) return '***';
-  const local = raw.slice(0, at);
-  const domain = raw.slice(at + 1);
-  const head = local.slice(0, 1);
-  return `${head}***@${domain}`;
+function normalizeNationalId(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  return /^\d{11}$/.test(digits) ? digits : null;
 }
 
 function istanbulDateString(date = new Date()) {
@@ -134,11 +123,14 @@ async function findTeacherRole(tenantId) {
   return role;
 }
 
-async function matchTeacher(school, personnelNo, lastName) {
-  const sicil = normalizePersonnelNo(personnelNo);
+async function matchTeacher(school, nationalIdRaw, lastName) {
+  const tckn = normalizeNationalId(nationalIdRaw);
   const soyad = foldLastName(lastName);
-  if (!sicil || !soyad) {
-    throw fail(400, 'VALIDATION_ERROR', 'Sicil numarası ve soyad zorunludur');
+  if (!tckn) {
+    throw fail(400, 'VALIDATION_ERROR', 'Geçerli bir T.C. kimlik numarası girin');
+  }
+  if (!soyad) {
+    throw fail(400, 'VALIDATION_ERROR', 'Soyad zorunludur');
   }
 
   const teachers = await Teacher.findAll({
@@ -146,24 +138,40 @@ async function matchTeacher(school, personnelNo, lastName) {
       tenant_id: school.tenant_id,
       personnel_type: 'ogretmen',
       personnel_category_id: null,
-      personnel_no: { [Op.ne]: null },
+      national_id: { [Op.ne]: null },
       [Op.or]: [{ school_id: school.id }, { school_id: null }],
     },
   });
 
   const match = teachers.find(
-    (row) =>
-      normalizePersonnelNo(row.personnel_no).toLocaleLowerCase('tr-TR') === sicil.toLocaleLowerCase('tr-TR') &&
-      turkishNamesEqual(row.last_name, lastName),
+    (row) => normalizeNationalId(row.national_id) === tckn && turkishNamesEqual(row.last_name, lastName),
   );
   if (!match) {
     throw fail(
       404,
       'TEACHER_NOT_FOUND',
-      'Sicil numarası ve soyad bu okuldaki öğretmen kaydıyla eşleşmedi',
+      'T.C. kimlik numarası ve soyad bu okuldaki öğretmen kaydıyla eşleşmedi',
     );
   }
   return match;
+}
+
+function assertPhoneBelongsToTeacher(teacher, phone) {
+  const onFile = normalizeMobilePhone(teacher.phone);
+  if (!onFile) {
+    throw fail(
+      409,
+      'TEACHER_PHONE_MISSING',
+      'Bu öğretmen için sistemde kayıtlı bir telefon numarası yok. Okul yönetimiyle iletişime geçin.',
+    );
+  }
+  if (normalizeMobilePhone(phone) !== onFile) {
+    throw fail(
+      403,
+      'PHONE_MISMATCH',
+      'Girilen telefon numarası bu öğretmenin kayıtlı numarasıyla eşleşmedi',
+    );
+  }
 }
 
 function getCodeState(user) {
@@ -203,40 +211,6 @@ async function storeVerificationCode(user, extra = {}) {
     requests_remaining: Math.max(0, MAX_CODES_PER_DAY - nextCount),
     max_requests: MAX_CODES_PER_DAY,
   };
-}
-
-async function sendRegisterEmail(user, code) {
-  const minutes = Math.round(CODE_TTL_MS / 60000);
-  const branding = await buildSchoolEmailAssets({
-    schoolId: user.school_id,
-    tenantId: user.tenant_id,
-  });
-  const { subject, text, html } = buildTeacherRegisterVerificationEmail({
-    fullName: user.full_name,
-    code,
-    minutes,
-    schoolName: branding.schoolName,
-    logoCid: branding.logoCid,
-  });
-
-  try {
-    const result = await sendEmail({
-      to: user.email,
-      subject,
-      text,
-      html,
-      attachments: branding.attachments,
-    });
-    if (result.status !== EMAIL_STATUS.SUCCESS) {
-      return { sent: false, error: result.error || 'E-posta gönderilemedi' };
-    }
-    return { sent: true, error: null };
-  } catch (err) {
-    if (err instanceof EmailConfigError) {
-      return { sent: false, error: 'E-posta motoru yapılandırılmamış' };
-    }
-    return { sent: false, error: err.message || 'E-posta gönderilemedi' };
-  }
 }
 
 async function sendRegisterSms(phone, code) {
@@ -364,14 +338,16 @@ async function listLicensedSchools(provinceId, districtId) {
     .map((school) => ({ id: school.id, name: school.name }));
 }
 
-async function startRegistration({ school_id, personnel_no, last_name, email }) {
+async function startRegistration({ school_id, national_id, last_name, email, phone }) {
   const school = await School.findByPk(school_id, {
     include: [{ model: Tenant, attributes: ['id', 'is_active', 'name'] }],
   });
   await assertSchoolLicensed(school);
-  const teacher = await matchTeacher(school, personnel_no, last_name);
+  const teacher = await matchTeacher(school, national_id, last_name);
+  const phoneNorm = assertValidMobilePhone(phone, { required: true });
+  assertPhoneBelongsToTeacher(teacher, phoneNorm);
   const emailNorm = String(email).trim().toLowerCase();
-  const sicil = normalizePersonnelNo(personnel_no);
+  const tckn = normalizeNationalId(national_id);
   const fullName = `${teacher.first_name} ${teacher.last_name}`.trim();
 
   const existingByTeacher = await User.unscoped().findOne({ where: { teacher_id: teacher.id } });
@@ -388,7 +364,7 @@ async function startRegistration({ school_id, personnel_no, last_name, email }) 
   }
 
   const role = await findTeacherRole(school.tenant_id);
-  const password_hash = await bcrypt.hash(sicil, BCRYPT_ROUNDS);
+  const password_hash = await bcrypt.hash(tckn, BCRYPT_ROUNDS);
 
   const user = await sequelize.transaction(async (transaction) => {
     let pending = existingByTeacher || existingByEmail || null;
@@ -400,6 +376,7 @@ async function startRegistration({ school_id, personnel_no, last_name, email }) 
           teacher_id: teacher.id,
           full_name: fullName,
           email: emailNorm,
+          phone: phoneNorm,
           password_hash,
           role: 'user',
           is_active: false,
@@ -414,6 +391,7 @@ async function startRegistration({ school_id, personnel_no, last_name, email }) 
           teacher_id: teacher.id,
           full_name: fullName,
           email: emailNorm,
+          phone: phoneNorm,
           password_hash,
           role: 'user',
           is_active: false,
@@ -437,49 +415,24 @@ async function startRegistration({ school_id, personnel_no, last_name, email }) 
   });
 
   const issued = await storeVerificationCode(user);
-  const mail = await sendRegisterEmail(user, issued.code);
+  await sendRegisterSms(phoneNorm, issued.code);
   const pending = createPendingToken(user);
 
   return {
     pending_token: pending.token,
     expires_at: pending.expires_at,
-    email_hint: maskEmail(user.email),
-    email_sent: mail.sent,
-    email_error: mail.sent ? null : mail.error,
+    phone_hint: maskPhone(phoneNorm),
     code_expires_at: issued.expires_at,
     requests_remaining: issued.requests_remaining,
     max_requests: issued.max_requests,
   };
 }
 
-async function resendEmail(tempToken) {
+async function resendSms(tempToken) {
   const user = await loadPendingUser(tempToken);
+  const phone = assertValidMobilePhone(user.phone, { required: true });
   const issued = await storeVerificationCode(user);
-  const mail = await sendRegisterEmail(user, issued.code);
-  if (!mail.sent) {
-    throw fail(502, 'EMAIL_SEND_FAILED', mail.error || 'E-posta gönderilemedi');
-  }
-  return {
-    email_hint: maskEmail(user.email),
-    email_sent: true,
-    code_expires_at: issued.expires_at,
-    requests_remaining: issued.requests_remaining,
-    max_requests: issued.max_requests,
-  };
-}
-
-async function requestSms(tempToken, phoneRaw) {
-  const user = await loadPendingUser(tempToken);
-  const phone = assertValidMobilePhone(phoneRaw, { required: true });
-  const issued = await storeVerificationCode(user, { phone });
   await sendRegisterSms(phone, issued.code);
-
-  if (user.teacher_id) {
-    const teacher = await Teacher.findByPk(user.teacher_id);
-    if (teacher) await teacher.update({ phone });
-  }
-
-  const { maskPhone } = require('./smsLoginService');
   return {
     phone_hint: maskPhone(phone),
     code_expires_at: issued.expires_at,
@@ -491,7 +444,7 @@ async function requestSms(tempToken, phoneRaw) {
 async function verifyCode(tempToken, code) {
   const user = await loadPendingUser(tempToken);
   if (!user.sms_login_code_hash || !user.sms_login_code_expires_at) {
-    throw fail(400, 'CODE_REQUIRED', 'Önce e-posta veya SMS doğrulama kodu isteyin');
+    throw fail(400, 'CODE_REQUIRED', 'Önce SMS doğrulama kodu isteyin');
   }
   if (new Date(user.sms_login_code_expires_at).getTime() < Date.now()) {
     throw fail(400, 'CODE_EXPIRED', 'Doğrulama kodunun süresi doldu');
@@ -525,8 +478,6 @@ module.exports = {
   listDistricts,
   listLicensedSchools,
   startRegistration,
-  resendEmail,
-  requestSms,
+  resendSms,
   verifyCode,
-  maskEmail,
 };

@@ -7,7 +7,6 @@ const validate = require('../middlewares/validate');
 const {
   teacherRegisterStartSchema,
   teacherRegisterPendingSchema,
-  teacherRegisterSmsSchema,
   teacherRegisterVerifySchema,
   registerSchema,
   loginSchema,
@@ -27,14 +26,9 @@ router.get('/teacher-register/districts', teacherRegisterCtrl.listDistricts);
 router.get('/teacher-register/schools', teacherRegisterCtrl.listSchools);
 router.post('/teacher-register', validate(teacherRegisterStartSchema), teacherRegisterCtrl.start);
 router.post(
-  '/teacher-register/resend-email',
+  '/teacher-register/resend-sms',
   validate(teacherRegisterPendingSchema),
-  teacherRegisterCtrl.resendEmail,
-);
-router.post(
-  '/teacher-register/request-sms',
-  validate(teacherRegisterSmsSchema),
-  teacherRegisterCtrl.requestSms,
+  teacherRegisterCtrl.resendSms,
 );
 router.post('/teacher-register/verify', validate(teacherRegisterVerifySchema), teacherRegisterCtrl.verify);
 

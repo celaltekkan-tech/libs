@@ -565,9 +565,9 @@ Adres netleştiğinde ve sabitlendiğinde tekrar build almanıza gerek yok — s
 ### Kullanım (öğretmen için)
 
 0. **Sunucu Adresi** (yalnızca ilk açılışta): Okul yöneticisinin verdiği backend adresini girip **Kaydet ve Devam Et**'e basılır.
-1. **Kayıt** (ilk kez): Giriş ekranında **Hesabım yok, öğretmen kaydı oluştur**. İl / ilçe / okul seçilir (yalnızca sistemde geçerli lisansı olan okullar listelenir). Sicil numarası, soyad ve e-posta girilir. Kayıt, o okuldaki öğretmen kartıyla eşleşirse **Öğretmen** yetkisiyle kullanıcı açılır ve e-postaya 6 haneli doğrulama kodu gider. E-postaya erişilemiyorsa cep telefonu girilip SMS kodu ile doğrulanır. Varsayılan şifre **sicil numarası**dır.
+1. **Kayıt** (ilk kez): Giriş ekranında **Hesabım yok, öğretmen kaydı oluştur**. İl / ilçe / okul seçilir (yalnızca sistemde geçerli lisansı olan okullar listelenir). T.C. kimlik numarası, soyad, e-posta ve cep telefonu girilir. T.C. kimlik no + soyad o okuldaki öğretmen kartıyla eşleşirse ve girilen telefon, öğretmenin kayıtlı telefonuyla aynıysa **Öğretmen** yetkisiyle kullanıcı açılır ve telefona 6 haneli SMS doğrulama kodu gider (e-posta doğrulaması yoktur). Varsayılan şifre **T.C. kimlik numarası**dır.
 2. **Giriş** (kayıtlı öğretmen): E-posta ve şifre ile giriş yapılır. Hesabında iki adımlı doğrulama (2FA) veya SMS girişi açıksa mobil uygulama şu an bunu desteklemez; okul yöneticisinden bu ayarın kapatılmasını isteyin.
-3. **Şifre değiştirme**: "Öğrenci Ara" ekranındaki **Şifre** ile mevcut şifre (ilk girişte sicil) değiştirilir; yeni şifre en az 8 karakter olmalıdır.
+3. **Şifre değiştirme**: "Öğrenci Ara" ekranındaki **Şifre** ile mevcut şifre (ilk girişte T.C. kimlik no) değiştirilir; yeni şifre en az 8 karakter olmalıdır.
 4. **Öğrenci arama**: "Öğrenci Ara" ekranında öğrenci numarası girilip **Ara**'ya basılır. Öğrenci bulunursa fotoğrafı, adı-soyadı ve sınıfı gösterilir.
 5. **Bildirim oluşturma**: Öğrenci kartındaki **Bildirim Oluştur**'a basılır. Açılan ekranda:
    - Hazır sebep etiketlerinden istenildiği kadarı seçilir (çoklu seçim),

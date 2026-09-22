@@ -19,8 +19,7 @@ import {
   listRegisterDistricts,
   listRegisterProvinces,
   listRegisterSchools,
-  requestTeacherRegisterSms,
-  resendTeacherRegisterEmail,
+  resendTeacherRegisterSms,
   startTeacherRegister,
   verifyTeacherRegister,
 } from '../api/auth';
@@ -29,7 +28,7 @@ import type { AuthStackParamList } from '../navigation/types';
 import type { ThemeColors } from '../theme/colors';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Register'>;
-type Step = 'school' | 'identity' | 'email' | 'sms';
+type Step = 'school' | 'identity' | 'sms';
 
 export function RegisterScreen({ navigation }: Props) {
   const { applySession } = useAuth();
@@ -46,17 +45,14 @@ export function RegisterScreen({ navigation }: Props) {
   const [school, setSchool] = useState<SelectOption | null>(null);
   const [loadingGeo, setLoadingGeo] = useState(false);
 
-  const [personnelNo, setPersonnelNo] = useState('');
+  const [nationalId, setNationalId] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
 
   const [pendingToken, setPendingToken] = useState('');
-  const [emailHint, setEmailHint] = useState('');
-  const [emailSent, setEmailSent] = useState(true);
   const [code, setCode] = useState('');
-  const [phone, setPhone] = useState('');
   const [phoneHint, setPhoneHint] = useState('');
-  const [smsRequested, setSmsRequested] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -110,8 +106,8 @@ export function RegisterScreen({ navigation }: Props) {
 
   const onStart = async () => {
     if (!school) return;
-    if (!personnelNo.trim() || !lastName.trim() || !email.trim()) {
-      setError('Sicil numarası, soyad ve e-posta gerekli');
+    if (!nationalId.trim() || !lastName.trim() || !email.trim() || !phone.trim()) {
+      setError('T.C. kimlik numarası, soyad, e-posta ve cep telefonu gerekli');
       return;
     }
     setSubmitting(true);
@@ -119,20 +115,15 @@ export function RegisterScreen({ navigation }: Props) {
     try {
       const result = await startTeacherRegister({
         school_id: school.id,
-        personnel_no: personnelNo.trim(),
+        national_id: nationalId.trim(),
         last_name: lastName.trim(),
         email: email.trim(),
+        phone: phone.trim(),
       });
       setPendingToken(result.pending_token);
-      setEmailHint(result.email_hint);
-      setEmailSent(result.email_sent);
+      setPhoneHint(result.phone_hint);
       setCode('');
-      if (result.email_sent) {
-        setStep('email');
-      } else {
-        setError(result.email_error || 'E-posta gönderilemedi. Telefon ile doğrulayın.');
-        setStep('sms');
-      }
+      setStep('sms');
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -158,31 +149,12 @@ export function RegisterScreen({ navigation }: Props) {
     }
   };
 
-  const onResendEmail = async () => {
+  const onResendSms = async () => {
     setSubmitting(true);
     setError(null);
     try {
-      const result = await resendTeacherRegisterEmail(pendingToken);
-      setEmailHint(result.email_hint);
-      setEmailSent(true);
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const onSendSms = async () => {
-    if (!phone.trim()) {
-      setError('Cep telefonu gerekli');
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    try {
-      const result = await requestTeacherRegisterSms(pendingToken, phone.trim());
+      const result = await resendTeacherRegisterSms(pendingToken);
       setPhoneHint(result.phone_hint);
-      setSmsRequested(true);
       setCode('');
     } catch (err) {
       setError(getErrorMessage(err));
@@ -200,10 +172,10 @@ export function RegisterScreen({ navigation }: Props) {
         <Text style={styles.title}>Öğretmen Kaydı</Text>
         <Text style={styles.subtitle}>
           {step === 'school' && 'Önce il, ilçe ve okulunuzu seçin. Yalnızca geçerli lisansı olan okullar listelenir.'}
-          {step === 'identity' && 'Sicil numarası, soyad ve e-posta ile öğretmen kaydınız eşleştirilir.'}
-          {step === 'email' &&
-            `Doğrulama kodu ${emailHint} adresine gönderildi. Maildeki 6 haneyi girin; boşluklar otomatik silinir. Varsayılan şifreniz sicil numaranızdır.`}
-          {step === 'sms' && 'E-postanıza erişemiyorsanız cep telefonunuza kod gönderilir.'}
+          {step === 'identity' &&
+            'T.C. kimlik numarası, soyad ve e-posta ile öğretmen kaydınız eşleştirilir. Cep telefonunuz, öğretmen kaydınızdaki numarayla aynı olmalıdır.'}
+          {step === 'sms' &&
+            `Doğrulama kodu ${phoneHint} numarasına gönderildi. Kodu girin; boşluklar otomatik silinir. Varsayılan şifreniz T.C. kimlik numaranızdır.`}
         </Text>
 
         {step === 'school' && (
@@ -258,11 +230,12 @@ export function RegisterScreen({ navigation }: Props) {
             <Text style={styles.schoolName}>{school?.name}</Text>
             <TextInput
               style={styles.input}
-              placeholder="Sicil numarası"
+              placeholder="T.C. kimlik numarası"
               placeholderTextColor={colors.textMuted}
-              autoCapitalize="none"
-              value={personnelNo}
-              onChangeText={setPersonnelNo}
+              keyboardType="number-pad"
+              maxLength={11}
+              value={nationalId}
+              onChangeText={(value) => setNationalId(value.replace(/\D/g, '').slice(0, 11))}
             />
             <TextInput
               style={styles.input}
@@ -281,6 +254,14 @@ export function RegisterScreen({ navigation }: Props) {
               value={email}
               onChangeText={setEmail}
             />
+            <TextInput
+              style={styles.input}
+              placeholder="Cep telefonu (05xx xxx xx xx)"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="phone-pad"
+              value={phone}
+              onChangeText={setPhone}
+            />
             {error && <Text style={styles.error}>{error}</Text>}
             <TouchableOpacity style={styles.button} onPress={() => void onStart()} disabled={submitting}>
               {submitting ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.buttonText}>Kaydı Başlat</Text>}
@@ -291,11 +272,12 @@ export function RegisterScreen({ navigation }: Props) {
           </>
         )}
 
-        {step === 'email' && (
+        {step === 'sms' && (
           <>
+            <Text style={styles.hint}>Kod {phoneHint} numarasına gönderildi.</Text>
             <TextInput
               style={styles.input}
-              placeholder="6 haneli e-posta kodu"
+              placeholder="6 haneli SMS kodu"
               placeholderTextColor={colors.textMuted}
               keyboardType="number-pad"
               maxLength={12}
@@ -306,68 +288,9 @@ export function RegisterScreen({ navigation }: Props) {
             <TouchableOpacity style={styles.button} onPress={() => void onVerify()} disabled={submitting}>
               {submitting ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.buttonText}>Doğrula ve Giriş Yap</Text>}
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => void onResendEmail()} disabled={submitting}>
+            <TouchableOpacity onPress={() => void onResendSms()} disabled={submitting}>
               <Text style={styles.link}>Kodu yeniden gönder</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                setError(null);
-                setCode('');
-                setStep('sms');
-              }}
-            >
-              <Text style={styles.link}>E-postama erişemiyorum</Text>
-            </TouchableOpacity>
-          </>
-        )}
-
-        {step === 'sms' && (
-          <>
-            {!smsRequested && (
-              <TextInput
-                style={styles.input}
-                placeholder="Cep telefonu (05xx xxx xx xx)"
-                placeholderTextColor={colors.textMuted}
-                keyboardType="phone-pad"
-                value={phone}
-                onChangeText={setPhone}
-              />
-            )}
-            {smsRequested && (
-              <>
-                <Text style={styles.hint}>Kod {phoneHint} numarasına gönderildi.</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="6 haneli SMS kodu"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="number-pad"
-                  maxLength={12}
-                  value={code}
-                  onChangeText={(value) => setCode(value.replace(/\D/g, '').slice(0, 6))}
-                />
-              </>
-            )}
-            {error && <Text style={styles.error}>{error}</Text>}
-            {!smsRequested ? (
-              <TouchableOpacity style={styles.button} onPress={() => void onSendSms()} disabled={submitting}>
-                {submitting ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.buttonText}>SMS Gönder</Text>}
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={styles.button} onPress={() => void onVerify()} disabled={submitting}>
-                {submitting ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.buttonText}>Doğrula ve Giriş Yap</Text>}
-              </TouchableOpacity>
-            )}
-            {emailSent && (
-              <TouchableOpacity
-                onPress={() => {
-                  setError(null);
-                  setCode('');
-                  setStep('email');
-                }}
-              >
-                <Text style={styles.link}>E-posta koduna dön</Text>
-              </TouchableOpacity>
-            )}
           </>
         )}
 

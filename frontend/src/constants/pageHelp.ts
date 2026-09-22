@@ -46,6 +46,10 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
         title: 'Düzeni değiştirme',
         body: 'Kartları sürükleyerek kendi düzeninizi kaydedebilirsiniz (tarayıcıda saklanır).',
       },
+      {
+        title: 'Sunucu durumu',
+        body: 'Platform yöneticisi ana sayfasında işlemci, bellek, disk ve veritabanı yoğunluğu birkaç saniyede bir yenilenir. Veritabanı çubuğu, eşzamanlı aktif sorgular işlemci çekirdeği sayısına yaklaştıkça dolar.',
+      },
     ],
   },
   '/profile': {

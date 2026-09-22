@@ -20,23 +20,27 @@ const totpCode = Joi.string()
 
 const teacherRegisterStartSchema = Joi.object({
   school_id: Joi.number().integer().required(),
-  personnel_no: Joi.string().trim().min(1).max(50).required(),
+  national_id: Joi.string()
+    .trim()
+    .pattern(/^\d{11}$/)
+    .required()
+    .messages({
+      'string.empty': 'T.C. kimlik numarası zorunludur',
+      'string.pattern.base': 'Geçerli bir T.C. kimlik numarası girin (11 hane)',
+    }),
   last_name: Joi.string().trim().min(1).max(80).required(),
   email: email.required().messages({
     'string.email': 'Geçerli bir e-posta adresi girin',
     'string.empty': 'E-posta zorunludur',
+  }),
+  phone: Joi.string().trim().max(30).required().messages({
+    'string.empty': 'Cep telefonu zorunludur',
   }),
 });
 
 const teacherRegisterPendingSchema = Joi.object({
   pending_token: Joi.string().required().messages({
     'string.empty': 'Doğrulama oturumu zorunludur',
-  }),
-});
-
-const teacherRegisterSmsSchema = teacherRegisterPendingSchema.keys({
-  phone: Joi.string().trim().max(30).required().messages({
-    'string.empty': 'Cep telefonu zorunludur',
   }),
 });
 
@@ -164,7 +168,6 @@ const tenantMenuLayoutSchema = Joi.object({
 module.exports = {
   teacherRegisterStartSchema,
   teacherRegisterPendingSchema,
-  teacherRegisterSmsSchema,
   teacherRegisterVerifySchema,
   registerSchema,
   loginSchema,

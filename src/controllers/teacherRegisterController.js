@@ -85,9 +85,7 @@ module.exports = {
       const data = await teacherRegister.startRegistration(payload);
       res.status(201).json({
         success: true,
-        message: data.email_sent
-          ? `Doğrulama kodu ${data.email_hint} adresine gönderildi`
-          : 'Kayıt alındı ancak e-posta gönderilemedi. Telefon ile doğrulayabilirsiniz.',
+        message: `Doğrulama kodu ${data.phone_hint} numarasına gönderildi`,
         data,
       });
     } catch (err) {
@@ -95,27 +93,13 @@ module.exports = {
     }
   },
 
-  async resendEmail(req, res, next) {
+  async resendSms(req, res, next) {
     try {
       const { pending_token } = req.validatedBody || req.body;
-      const data = await teacherRegister.resendEmail(pending_token);
+      const data = await teacherRegister.resendSms(pending_token);
       res.json({
         success: true,
-        message: `Yeni kod ${data.email_hint} adresine gönderildi`,
-        data,
-      });
-    } catch (err) {
-      next(err);
-    }
-  },
-
-  async requestSms(req, res, next) {
-    try {
-      const { pending_token, phone } = req.validatedBody || req.body;
-      const data = await teacherRegister.requestSms(pending_token, phone);
-      res.json({
-        success: true,
-        message: `Doğrulama kodu ${data.phone_hint} numarasına gönderildi`,
+        message: `Yeni kod ${data.phone_hint} numarasına gönderildi`,
         data,
       });
     } catch (err) {

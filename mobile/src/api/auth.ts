@@ -29,15 +29,6 @@ export interface RegisterOption {
 export interface TeacherRegisterStartResult {
   pending_token: string;
   expires_at: string;
-  email_hint: string;
-  email_sent: boolean;
-  email_error: string | null;
-  code_expires_at: string;
-  requests_remaining: number;
-  max_requests: number;
-}
-
-export interface TeacherRegisterSmsResult {
   phone_hint: string;
   code_expires_at: string;
   requests_remaining: number;
@@ -94,30 +85,20 @@ export async function listRegisterSchools(provinceId: number, districtId: number
 
 export async function startTeacherRegister(payload: {
   school_id: number;
-  personnel_no: string;
+  national_id: string;
   last_name: string;
   email: string;
+  phone: string;
 }): Promise<TeacherRegisterStartResult> {
   const { data } = await client.post<Envelope<TeacherRegisterStartResult>>('/api/auth/teacher-register', payload);
   return data.data;
 }
 
-export async function resendTeacherRegisterEmail(pendingToken: string): Promise<TeacherRegisterStartResult> {
+export async function resendTeacherRegisterSms(pendingToken: string): Promise<TeacherRegisterStartResult> {
   const { data } = await client.post<Envelope<TeacherRegisterStartResult>>(
-    '/api/auth/teacher-register/resend-email',
+    '/api/auth/teacher-register/resend-sms',
     { pending_token: pendingToken },
   );
-  return data.data;
-}
-
-export async function requestTeacherRegisterSms(
-  pendingToken: string,
-  phone: string,
-): Promise<TeacherRegisterSmsResult> {
-  const { data } = await client.post<Envelope<TeacherRegisterSmsResult>>('/api/auth/teacher-register/request-sms', {
-    pending_token: pendingToken,
-    phone,
-  });
   return data.data;
 }
 
