@@ -130,7 +130,10 @@ module.exports = {
       const feedbacks = await Feedback.findAll({
         where,
         include: [{ model: User, attributes: ['id', 'full_name'] }, attachmentInclude, updatesInclude],
-        order: [['created_at', 'DESC']],
+        order: [
+          ['created_at', 'DESC'],
+          ['id', 'DESC'],
+        ],
         limit: 200,
       });
 
@@ -151,7 +154,10 @@ module.exports = {
           attachmentInclude,
           updatesInclude,
         ],
-        order: [['created_at', 'ASC']],
+        order: [
+          ['created_at', 'DESC'],
+          ['id', 'DESC'],
+        ],
         limit: 500,
       });
 
