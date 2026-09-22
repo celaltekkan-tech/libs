@@ -176,6 +176,7 @@ export const STUDENT_COLUMN_OPTIONS = [
   { value: 'first_name', label: 'Ad' },
   { value: 'last_name', label: 'Soyad' },
   { value: 'full_name', label: 'Ad Soyad (birleşik)' },
+  { value: 'school_name', label: 'Okul' },
   { value: 'class_level', label: 'Sınıf' },
   { value: 'section', label: 'Şube' },
   { value: 'gender', label: 'Cinsiyet' },

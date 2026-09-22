@@ -1,7 +1,7 @@
 'use strict';
 
 const { Op } = require('sequelize');
-const { Student, Classroom, Feedback } = require('../models');
+const { Student, Classroom, School, Feedback } = require('../models');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
 const {
@@ -20,6 +20,7 @@ const COLUMN_LABELS = {
   first_name: 'Ad',
   last_name: 'Soyad',
   full_name: 'Ad Soyad',
+  school_name: 'Okul',
   class_level: 'Sınıf',
   section: 'Şube',
   gender: 'Cinsiyet',
@@ -367,6 +368,7 @@ function normalizeExtraContacts(contacts) {
 
 function formatCellValue(student, key) {
   if (key === 'full_name') return `${student.first_name || ''} ${student.last_name || ''}`.trim();
+  if (key === 'school_name') return student.School?.name || '';
   const value = student[key];
   if (key === 'extra_contacts') return formatExtraContacts(value);
   if (value == null || value === '') return '';
@@ -1213,6 +1215,7 @@ module.exports = {
 
       let students = await Student.findAll({
         where: buildWhere(tenantId, queryFilters),
+        include: [{ model: School, attributes: ['id', 'name'], required: false }],
         order: [
           ['class_level', 'ASC'],
           ['section', 'ASC'],

@@ -207,14 +207,7 @@ export function StudentsPage() {
   const [importColumnSuggestions, setImportColumnSuggestions] = useState<Record<string, string>>({})
   const [previewLoading, setPreviewLoading] = useState(false)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx')
-  const [exportColumns, setExportColumns] = useState<string[]>([
-    'student_number',
-    'national_id',
-    'first_name',
-    'last_name',
-    'class_level',
-    'section',
-  ])
+  const [exportColumns, setExportColumns] = useState<string[]>(STUDENT_COLUMN_OPTIONS.map((column) => column.value))
   const [filters, setFilters] = useState<StudentFilters>({})
   const [search, setSearch] = useState('')
   const searchQuery = useDebouncedValue(search)
@@ -850,7 +843,13 @@ export function StudentsPage() {
                 Toplu sil ({filteredStudents.length})
               </Button>
             )}
-            <Button icon={<DownloadOutlined />} onClick={() => setExportOpen(true)}>
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={() => {
+                setExportColumns(STUDENT_COLUMN_OPTIONS.map((column) => column.value))
+                setExportOpen(true)
+              }}
+            >
               Dışa Aktar
             </Button>
             {canCreate && (
@@ -1606,7 +1605,7 @@ export function StudentsPage() {
             </Space.Compact>
           </Form.Item>
           <Typography.Text type="secondary">
-            Arama ve tablo filtreleri dışa aktarmaya da uygulanır.
+            Varsayılan olarak kimlik, sınıf, veli, iletişim ve kayıt alanlarının tümü seçilidir. Arama ve tablo filtreleri dışa aktarmaya da uygulanır.
           </Typography.Text>
         </Form>
       </Modal>

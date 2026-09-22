@@ -871,8 +871,8 @@ export function TeachersPage() {
           </Form.Item>
           <Typography.Text type="secondary">
             {hasActiveFilters
-              ? `Aktif filtre uygulanacak (${filteredTeachers.length} kayıt).`
-              : 'Tüm öğretmenler dışa aktarılır.'}
+              ? `Aktif filtre uygulanacak (${filteredTeachers.length} kayıt). Her kayıtta sicil, kimlik, iletişim, unvan, derece, tarihler ve MEBBİS alanlarının tümü yer alır.`
+              : 'Tüm öğretmenler, kayıtlarındaki bütün alanlarla dışa aktarılır.'}
           </Typography.Text>
         </Form>
       </Modal>

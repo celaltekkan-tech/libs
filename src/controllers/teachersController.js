@@ -22,41 +22,74 @@ const PERSONNEL_DOCUMENT_TITLES = {
 const COLUMN_LABELS = {
   first_name: 'Ad',
   last_name: 'Soyad',
+  school_name: 'Okul',
+  city: 'Şehir',
+  district: 'İlçe',
   personnel_no: 'Sicil No',
   national_id: 'T.C. Kimlik No',
   phone: 'Cep telefonu',
   email: 'E-posta',
-  title_branch: 'Unvan / Branş',
   unvan: 'Unvan',
   brans: 'Branş',
   kariyer: 'Kariyer',
-  school_name: 'Okul',
-  city: 'Şehir',
-  district: 'İlçe',
+  title_branch: 'Unvan / Branş',
   working_institution: 'Görev Yeri',
   degree: 'Derece',
   rank: 'Kademe',
   pension_degree: 'Emekli Sicil No',
+  degree_rank_date: 'Kademe Tarihi',
+  degree_rank_anchor_date: 'Kademe ilerleme esas tarihi',
   last_graduated_school: 'Mezun Olunan Okul',
   birth_date: 'Doğum Tarihi',
   class_level: 'Sınıf / Kademe',
   school_principal: 'Okul Müdürü',
-  service_start_date: 'Kuruma başlama tarihi',
-  first_duty_date: 'İşe ilk başlama tarihi',
   union_name: 'Sendika',
+  first_duty_date: 'İşe ilk başlama tarihi',
+  service_start_date: 'Kuruma başlama tarihi',
+  annual_leave_quota: 'Yıllık izin hakkı (gün)',
+  eight_year_base_date: '8 yıllık terfi esas tarihi',
+  personnel_type: 'Personel türü',
+  contract_start_date: 'Sözleşme başlangıcı',
+  contract_end_date: 'Sözleşme bitişi',
+  kurum_kodu: 'Kurum kodu',
+  ogrenim_durumu: 'Öğrenim durumu',
+  arsiv_no: 'Arşiv no',
+  cinsiyet: 'Cinsiyet',
+  kan_grubu: 'Kan grubu',
+  durum: 'Durum',
+  seviye_unvani: 'Seviye unvanı',
 };
 
-const DEFAULT_COLUMNS = [
-  'first_name',
-  'last_name',
-  'unvan',
-  'brans',
-  'kariyer',
-  'phone',
-  'email',
-  'union_name',
+const DEFAULT_COLUMNS = Object.keys(COLUMN_LABELS);
+
+const DATE_COLUMNS = new Set([
+  'birth_date',
+  'degree_rank_date',
+  'degree_rank_anchor_date',
+  'eight_year_base_date',
   'first_duty_date',
-];
+  'service_start_date',
+  'contract_start_date',
+  'contract_end_date',
+]);
+
+const META_COLUMNS = new Set([
+  'kurum_kodu',
+  'ogrenim_durumu',
+  'arsiv_no',
+  'cinsiyet',
+  'kan_grubu',
+  'durum',
+  'seviye_unvani',
+]);
+
+const PERSONNEL_TYPE_LABELS = {
+  ogretmen: 'Öğretmen',
+  memur: 'Memur',
+  isci: 'İşçi',
+  typ: 'TYP',
+  diger: 'Diğer',
+};
 
 function applyPersonnelScope(where, query = {}) {
   const categoryId = query.category_id != null ? Number(query.category_id) : null;
@@ -153,14 +186,29 @@ function normalizeTeacherContact(payload) {
   return payload;
 }
 
+function formatDateCell(value) {
+  if (typeof value === 'string') {
+    const match = /^(\d{4}-\d{2}-\d{2})/.exec(value.trim());
+    if (match) return match[1];
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 function formatTeacherCell(teacher, key) {
   if (key === 'school_name') return teacher.School?.name || '';
+  if (META_COLUMNS.has(key)) {
+    const meta = teacher.meta && typeof teacher.meta === 'object' ? teacher.meta : null;
+    const metaValue = meta ? meta[key] : null;
+    return metaValue == null || metaValue === '' ? '' : String(metaValue);
+  }
   const value = teacher[key];
   if (value == null || value === '') return '';
-  if (key === 'degree_rank_date' || key === 'first_duty_date' || key === 'service_start_date') {
-    const d = value instanceof Date ? value : new Date(value);
-    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-  }
+  if (key === 'personnel_type') return PERSONNEL_TYPE_LABELS[value] || String(value);
+  if (DATE_COLUMNS.has(key)) return formatDateCell(value);
   return String(value);
 }
 
