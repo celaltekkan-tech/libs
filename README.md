@@ -675,9 +675,9 @@ Tenant (Kiracı)
 
 ## Docker ile Çalıştırma (Production)
 
-Proje; veritabanı (`db`), backend (`backend`), yönetici paneli (`frontend`) ve
-tanıtım/landing sayfası (`landing`) olmak üzere dört ayrı container olarak
-çalışacak şekilde yapılandırılmıştır.
+Proje; veritabanı (`db`), backend (`backend`), yönetici paneli (`frontend`),
+tanıtım/landing sayfası (`landing`) ve mobil Expo geliştirme sunucusu (`mobile`)
+olmak üzere beş ayrı container olarak çalışacak şekilde yapılandırılmıştır.
 
 **Kullanılan kurulum: ayrı subdomain'ler** (`app.oids.com.tr` → frontend, `api.oids.com.tr`
 → backend). Bu yüzden hem `frontend` hem `backend` NPM'in Docker network'üne katılır ve
@@ -731,6 +731,28 @@ ile tutarlıdır. NPM'de eklenecek proxy host:
 
 İçeriği güncellemek için `landing/index.html` düzenlenir, `docker compose up -d --build landing`
 ile yeniden build edilir — ayrı bir build aracı veya bağımlılık gerekmez.
+
+### Mobil (Expo) Sunucusu
+
+`mobile` container'ı, dev ortamında `npm run dev:mobile` ile elde edilen aynı
+şeyi (Expo/Metro geliştirme sunucusu, port `8081`) prod'da kalıcı olarak
+ayakta tutar. `expo-dev-client` paketi kurulu olduğu için `expo start` doğrudan
+"development build" moduna geçer — öğretmenlerin telefonuna EAS ile üretilmiş
+bir dev-client `.apk` kurulu olması, uygulamayı açarken **Sunucu Adresi**
+ekranına bu domaini girmesi gerekir. Bu bir geliştirme sunucusudur, EAS'in
+ürettiği bağımsız production `.apk`'nın yerini almaz — yalnızca JS bundle'ı
+canlı servis eder; kalıcı/store dağıtımı için yine `eas build --profile
+production` kullanılmalıdır.
+
+NPM'de eklenecek proxy host:
+
+- `mobil.oids.com.tr` → Forward Hostname/IP: `mobile`, Port: `8081`
+  **Websockets Support mutlaka açılmalı** (Metro'nun bundle/HMR trafiği
+  WebSocket üzerinden gider; kapalıysa dev-client bağlanamaz).
+
+Kod değişikliği sonrası yeniden build gerekmez (Metro dosya değişikliklerini
+canlı yakalar); container'ın kendisini güncellemek için
+`docker compose up -d --build mobile` yeterlidir.
 
 ### Otomatik Deploy (dev → master)
 
