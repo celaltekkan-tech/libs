@@ -5,6 +5,9 @@ const fsp = require('fs/promises');
 const path = require('path');
 const zlib = require('zlib');
 const { spawn } = require('child_process');
+const { Transform } = require('stream');
+const { pipeline } = require('stream/promises');
+const { StringDecoder } = require('string_decoder');
 const cron = require('node-cron');
 const { BackupSetting, sequelize } = require('../models');
 
@@ -17,12 +20,18 @@ const IMPORT_MAX_BYTES = Number.isFinite(parsedImportMax) && parsedImportMax > 0
 
 let scheduledTask = null;
 let running = false;
+let dbSuspended = false;
 
 function httpError(status, message, code) {
   const err = new Error(message);
   err.status = status;
+  err.expose = true;
   if (code) err.code = code;
   return err;
+}
+
+function isDbSuspended() {
+  return dbSuspended;
 }
 
 function defaultBackupDir() {
@@ -252,6 +261,103 @@ function runMigrations() {
   });
 }
 
+function tailText(text, max = 800) {
+  const value = String(text || '').trim();
+  if (!value) return 'ayrıntı yok';
+  if (value.length <= max) return value;
+  return `…${value.slice(-max)}`;
+}
+
+function shouldSkipDumpLine(line) {
+  const trimmed = line.replace(/^\uFEFF/, '').trim().replace(/;$/, '');
+  if (/^\\(un)?restrict\s+\S+$/.test(trimmed)) return true;
+  if (/^SET\s+transaction_timeout\s*=/i.test(trimmed)) return true;
+  if (/^DROP\s+SCHEMA\s+(IF\s+EXISTS\s+)?public(\s+CASCADE)?$/i.test(trimmed)) return true;
+  if (/^CREATE\s+SCHEMA\s+(IF\s+NOT\s+EXISTS\s+)?public$/i.test(trimmed)) return true;
+  return false;
+}
+
+function dumpSanitizer() {
+  const decoder = new StringDecoder('utf8');
+  let buf = '';
+  let started = false;
+  const prelude = [
+    'SET statement_timeout = 0;',
+    "SET lock_timeout = '30s';",
+    'SET idle_in_transaction_session_timeout = 0;',
+    'SET client_min_messages TO warning;',
+    'DO $$ BEGIN',
+    '  PERFORM pg_terminate_backend(pid) FROM pg_stat_activity',
+    '   WHERE datname = current_database()',
+    '     AND pid <> pg_backend_pid()',
+    "     AND backend_type = 'client backend';",
+    '  PERFORM pg_sleep(0.3);',
+    'EXCEPTION WHEN OTHERS THEN',
+    '  NULL;',
+    'END $$;',
+    'DROP SCHEMA IF EXISTS public CASCADE;',
+    'CREATE SCHEMA public;',
+    'GRANT USAGE, CREATE ON SCHEMA public TO CURRENT_USER;',
+    '',
+  ].join('\n');
+
+  return new Transform({
+    transform(chunk, _enc, cb) {
+      try {
+        buf += decoder.write(chunk);
+        const parts = buf.split('\n');
+        buf = parts.pop() || '';
+        let out = '';
+        if (!started) {
+          started = true;
+          out += prelude;
+        }
+        for (const part of parts) {
+          if (!shouldSkipDumpLine(part)) out += `${part}\n`;
+        }
+        cb(null, out);
+      } catch (err) {
+        cb(err);
+      }
+    },
+    flush(cb) {
+      try {
+        buf += decoder.end();
+        let out = '';
+        if (!started) out += prelude;
+        if (buf && !shouldSkipDumpLine(buf)) out += buf.endsWith('\n') ? buf : `${buf}\n`;
+        cb(null, out);
+      } catch (err) {
+        cb(err);
+      }
+    },
+  });
+}
+
+async function suspendDbPool() {
+  const manager = sequelize.connectionManager;
+  try {
+    await manager.close();
+  } catch (err) {
+    await resumeDbPool().catch(() => {});
+    throw err;
+  }
+  dbSuspended = true;
+}
+
+async function resumeDbPool() {
+  const manager = sequelize.connectionManager;
+  try {
+    manager.initPools();
+    if (Object.prototype.hasOwnProperty.call(manager, 'getConnection')) {
+      delete manager.getConnection;
+    }
+    await sequelize.authenticate();
+  } finally {
+    dbSuspended = false;
+  }
+}
+
 async function restoreDatabase(filePath) {
   const db = dbConfig();
   const psql = spawn(
@@ -269,36 +375,39 @@ async function restoreDatabase(filePath) {
       'ON_ERROR_STOP=1',
       '--no-password',
       '-q',
+      '-X',
     ],
     { env: spawnEnv(db.password), windowsHide: true }
   );
-  const gunzip = zlib.createGunzip();
-  const input = fs.createReadStream(filePath);
   const readStderr = collectStderr(psql);
   const closed = waitForClose(psql, DUMP_TIMEOUT_MS, 'psql');
-
-  const failStream = (err) => {
-    if (err && err.code === 'EPIPE') return;
-    psql.kill('SIGKILL');
-  };
-  input.on('error', failStream);
-  gunzip.on('error', failStream);
-  psql.stdin.on('error', failStream);
-  input.pipe(gunzip).pipe(psql.stdin);
-
+  psql.stdin.on('error', () => {});
+  let pipeError = null;
   try {
-    const closeResult = await closed;
-    if (closeResult.code !== 0) {
-      throw httpError(
-        500,
-        `Geri yükleme başarısız oldu (${closeResult.signal || closeResult.code}): ${readStderr() || 'ayrıntı yok'}`
-      );
+    await pipeline(fs.createReadStream(filePath), zlib.createGunzip(), dumpSanitizer(), psql.stdin);
+  } catch (err) {
+    pipeError = err;
+    if (err.code !== 'EPIPE' && err.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+      psql.kill('SIGKILL');
     }
+  }
+
+  let closeResult;
+  try {
+    closeResult = await closed;
   } catch (err) {
     psql.kill('SIGKILL');
-    gunzip.destroy();
-    input.destroy();
     throw err;
+  }
+  if (closeResult.code !== 0) {
+    throw httpError(
+      500,
+      `Geri yükleme başarısız oldu (${closeResult.signal || closeResult.code}): ${tailText(readStderr())}`,
+      'RESTORE_FAILED'
+    );
+  }
+  if (pipeError && pipeError.code !== 'EPIPE' && pipeError.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+    throw httpError(500, `Yedek aktarılamadı: ${pipeError.message}`, 'RESTORE_FAILED');
   }
 }
 
@@ -378,11 +487,28 @@ async function restoreBackup(filename) {
   }
 
   running = true;
+  let suspended = false;
   try {
-    await restoreDatabase(filePath);
-    await sequelize.authenticate();
+    try {
+      await assertGzipSqlDump(filePath);
+      await suspendDbPool();
+      suspended = true;
+      await restoreDatabase(filePath);
+    } finally {
+      if (suspended) {
+        await resumeDbPool().catch((resumeErr) => {
+          console.error('[backup] pool resume failed:', resumeErr.message);
+        });
+      }
+    }
     await runMigrations();
     return { filename };
+  } catch (err) {
+    if (!err.status) {
+      throw httpError(500, err.message || 'Geri yükleme başarısız oldu', 'RESTORE_FAILED');
+    }
+    if (!err.code) err.code = 'RESTORE_FAILED';
+    throw err;
   } finally {
     running = false;
   }
@@ -626,6 +752,7 @@ async function startBackupCron() {
 
 module.exports = {
   IMPORT_MAX_BYTES,
+  isDbSuspended,
   getOrCreateSettings,
   serializeSettings,
   updateSettings,

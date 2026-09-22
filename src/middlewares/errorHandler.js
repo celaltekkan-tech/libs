@@ -48,11 +48,12 @@ module.exports = (err, req, res, next) => {
   }
 
   const status = err.status || 500;
+  const hideMessage = status === 500 && isProduction() && !err.expose;
 
   return res.status(status).json({
     success: false,
     code: err.code || 'INTERNAL_ERROR',
-    message: status === 500 && isProduction() ? 'Sunucu hatası' : err.message || 'Sunucu hatası',
+    message: hideMessage ? 'Sunucu hatası' : err.message || 'Sunucu hatası',
     ...(isProduction() ? {} : { stack: err.stack }),
   });
 };
