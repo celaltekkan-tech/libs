@@ -11,8 +11,9 @@ import {
   isDualSubject,
   proctorCount,
   roleLabel,
-  suggestMember,
+  suggestMembers,
   suggestProctors,
+  type SchoolLanguages,
 } from '../utils/sorumlulukExam'
 import type { SorumlulukSubjectSlot } from './SorumlulukExamPlanner'
 
@@ -23,6 +24,7 @@ interface SorumlulukExamCommitteeModalProps {
   teachers: ScheduleTeacherOption[]
   principalName: string | null
   principalTeacherId: number | null
+  languages: SchoolLanguages
   slots: SorumlulukSubjectSlot[]
   onCancel: () => void
   onSaved: () => void
@@ -55,12 +57,13 @@ export function SorumlulukExamCommitteeModal({
   teachers,
   principalName,
   principalTeacherId,
+  languages,
   slots,
   onCancel,
   onSaved,
 }: SorumlulukExamCommitteeModalProps) {
   const { message } = App.useApp()
-  const [memberId, setMemberId] = useState<number | null>(null)
+  const [memberIds, setMemberIds] = useState<[number | null, number | null]>([null, null])
   const [proctorIds, setProctorIds] = useState<number[]>([])
   const [writtenDate, setWrittenDate] = useState<Dayjs | null>(null)
   const [writtenTime, setWrittenTime] = useState<Dayjs | null>(null)
@@ -71,26 +74,31 @@ export function SorumlulukExamCommitteeModal({
   const duties = useMemo(() => dutyCounts(slots), [slots])
   const dual = slot ? isDualSubject(slot.subject_name) : false
   const neededProctors = slot ? proctorCount(slot.student_count) : 0
-  const suggestion = slot ? suggestMember(slot, teachers, principalTeacherId ? [principalTeacherId] : []) : null
+  const suggestions = slot
+    ? suggestMembers(slot, teachers, principalTeacherId ? [principalTeacherId] : [], languages, 2)
+    : []
 
   useEffect(() => {
     if (!open || !slot) return
-    const savedMember = slot.committee_members?.find((member) => member.role === 'uye')
+    const savedMembers = (slot.committee_members || []).filter((member) => member.role === 'uye')
     const savedProctors = (slot.committee_members || [])
       .filter((member) => member.role === 'gozetmen')
       .map((member) => member.teacher_id)
-    const suggested = suggestMember(slot, teachers, principalTeacherId ? [principalTeacherId] : [])
+    const suggested = suggestMembers(slot, teachers, principalTeacherId ? [principalTeacherId] : [], languages, 2)
+    const first = savedMembers[0]?.teacher_id ?? suggested[0]?.id ?? null
+    const second =
+      savedMembers[1]?.teacher_id ?? suggested.find((teacher) => teacher.id !== first)?.id ?? null
     const chairId = principalTeacherId
-    const exclude = [chairId, savedMember?.teacher_id || suggested?.id].filter((id): id is number => !!id)
-    const suggestedProctors = suggestProctors(slot, teachers, exclude)
-    setMemberId(savedMember?.teacher_id ?? suggested?.id ?? null)
+    const exclude = [chairId, first, second].filter((id): id is number => !!id)
+    const suggestedProctors = suggestProctors(slot, teachers, exclude, languages)
+    setMemberIds([first, second])
     setProctorIds(savedProctors.length ? savedProctors : suggestedProctors.map((teacher) => teacher.id))
     const clickedWritten = examDate && examDate !== slot.oral_exam_date ? examDate : slot.exam_date
     setWrittenDate(toDay(clickedWritten))
     setWrittenTime(toTime(slot.start_time))
     setOralDate(toDay(slot.oral_exam_date))
     setOralTime(toTime(slot.oral_start_time))
-  }, [open, slot, teachers, principalTeacherId, examDate])
+  }, [open, slot, teachers, principalTeacherId, examDate, languages])
 
   const onOk = async () => {
     if (!slot) return
@@ -98,12 +106,17 @@ export function SorumlulukExamCommitteeModal({
       message.error('Bu okulun müdür hesabı personel listesinde bulunamadı')
       return
     }
-    if (!memberId) {
-      message.warning('Komisyon için bir üye seçin')
+    const [firstMember, secondMember] = memberIds
+    if (!firstMember || !secondMember) {
+      message.warning('Komisyon için iki üye seçin')
       return
     }
-    if (memberId === principalTeacherId) {
-      message.warning('Üye, başkandan farklı olmalıdır')
+    if (firstMember === secondMember) {
+      message.warning('İki üye farklı olmalıdır')
+      return
+    }
+    if (firstMember === principalTeacherId || secondMember === principalTeacherId) {
+      message.warning('Üyeler, başkandan farklı olmalıdır')
       return
     }
     const written = writtenDate ? writtenDate.format('YYYY-MM-DD') : null
@@ -123,10 +136,11 @@ export function SorumlulukExamCommitteeModal({
 
     const committee_members: CommitteeMember[] = [
       { teacher_id: principalTeacherId, role: 'baskan' },
-      { teacher_id: memberId, role: 'uye' },
+      { teacher_id: firstMember, role: 'uye' },
+      { teacher_id: secondMember, role: 'uye' },
     ]
     for (const id of proctorIds) {
-      if (id === principalTeacherId || id === memberId) continue
+      if (id === principalTeacherId || id === firstMember || id === secondMember) continue
       committee_members.push({ teacher_id: id, role: 'gozetmen' })
     }
 
@@ -183,27 +197,42 @@ export function SorumlulukExamCommitteeModal({
             Önerilen öğretmen
           </Typography.Text>
           <Typography.Text>
-            {suggestion
-              ? `${suggestion.first_name} ${suggestion.last_name}${
-                  suggestion.subject_names[0] ? ` — ${suggestion.subject_names[0]}` : ''
-                }`
+            {suggestions.length
+              ? suggestions
+                  .map(
+                    (teacher) =>
+                      `${teacher.first_name} ${teacher.last_name}${
+                        teacher.subject_names[0] ? ` — ${teacher.subject_names[0]}` : ''
+                      }`,
+                  )
+                  .join(', ')
               : 'Bu dersin branşına uyan öğretmen bulunamadı'}
           </Typography.Text>
         </div>
-        <div>
-          <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
-            Üye
-          </Typography.Text>
-          <Select
-            showSearch
-            optionFilterProp="label"
-            placeholder="Komisyon üyesi"
-            style={{ width: '100%' }}
-            value={memberId ?? undefined}
-            onChange={(value) => setMemberId(value)}
-            options={teachers.filter((teacher) => teacher.id !== principalTeacherId).map(optionOf)}
-          />
-        </div>
+        {([0, 1] as const).map((index) => (
+          <div key={index}>
+            <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
+              Üye {index + 1}
+            </Typography.Text>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder={`Komisyon üyesi ${index + 1}`}
+              style={{ width: '100%' }}
+              value={memberIds[index] ?? undefined}
+              onChange={(value) =>
+                setMemberIds((current) => {
+                  const next: [number | null, number | null] = [current[0], current[1]]
+                  next[index] = value
+                  return next
+                })
+              }
+              options={teachers
+                .filter((teacher) => teacher.id !== principalTeacherId && teacher.id !== memberIds[index === 0 ? 1 : 0])
+                .map(optionOf)}
+            />
+          </div>
+        ))}
         <div>
           <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
             Gözetmen
@@ -223,7 +252,12 @@ export function SorumlulukExamCommitteeModal({
             value={proctorIds}
             onChange={setProctorIds}
             options={teachers
-              .filter((teacher) => teacher.id !== principalTeacherId && teacher.id !== memberId)
+              .filter(
+                (teacher) =>
+                  teacher.id !== principalTeacherId &&
+                  teacher.id !== memberIds[0] &&
+                  teacher.id !== memberIds[1],
+              )
               .map(optionOf)}
           />
         </div>

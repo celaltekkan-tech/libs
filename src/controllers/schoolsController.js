@@ -202,6 +202,11 @@ module.exports = {
         }
       }
 
+      if (payload.meta && typeof payload.meta === 'object' && !Array.isArray(payload.meta)) {
+        const current = school.meta && typeof school.meta === 'object' ? school.meta : {};
+        payload.meta = { ...current, ...payload.meta };
+      }
+
       await school.update(payload);
       await audit.log(req, {
         action: 'update',

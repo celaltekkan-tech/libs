@@ -74,6 +74,7 @@ export function ProfilePage() {
 
   const user = session?.user
   const canManageTenant2fa = Boolean(session?.is_global_admin && !session?.is_platform_admin)
+  const personal2faAvailable = tenantTwoFactorEnabled || Boolean(session?.is_platform_admin)
 
   useEffect(() => {
     let cancelled = false
@@ -442,7 +443,7 @@ export function ProfilePage() {
               span: { xs: 24, md: 12 },
               node: (
                 <Card title="İki adımlı doğrulama (2FA)">
-                  {!tenantTwoFactorEnabled ? (
+                  {!personal2faAvailable ? (
                     <Alert
                       type="info"
                       showIcon
@@ -490,7 +491,9 @@ export function ProfilePage() {
                   ) : (
                     <Space direction="vertical" size={12} style={{ width: '100%' }}>
                       <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-                        Google Authenticator veya benzeri bir uygulama ile girişlerde ek kod isteyin.
+                        {session?.is_platform_admin
+                          ? 'Platform yöneticisi hesabında authenticator doğrudan buradan açılır. Sonraki girişlerde şifrenin ardından kod istenir.'
+                          : 'Google Authenticator veya benzeri bir uygulama ile girişlerde ek kod isteyin.'}
                       </Typography.Paragraph>
                       {!setupData ? (
                         <Button type="primary" loading={twoFactorLoading} onClick={() => void onStart2faSetup()}>

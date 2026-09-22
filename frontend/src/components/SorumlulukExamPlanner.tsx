@@ -60,8 +60,9 @@ import {
   foldName,
   isDualSubject,
   roleLabel,
-  suggestMember,
+  suggestMembers,
   type ExamKind,
+  type SchoolLanguages,
 } from '../utils/sorumlulukExam'
 
 dayjs.extend(isoWeek)
@@ -139,7 +140,14 @@ type PlannerExportFormat = ExportFormat | 'jpeg'
 export function SorumlulukExamPlanner({ canCreate, canUpdate, canDelete }: SorumlulukExamPlannerProps) {
   const { message, modal } = App.useApp()
   const { token } = theme.useToken()
-  const { activeSchoolId } = useActiveSchool()
+  const { activeSchoolId, activeSchool } = useActiveSchool()
+  const schoolLanguages = useMemo<SchoolLanguages>(
+    () => ({
+      first: activeSchool?.meta?.first_foreign_language || null,
+      second: activeSchool?.meta?.second_foreign_language || null,
+    }),
+    [activeSchool],
+  )
   const gridRef = useRef<HTMLDivElement>(null)
 
   const [mode, setMode] = useState<'manuel' | 'otomatik'>('manuel')
@@ -568,10 +576,21 @@ export function SorumlulukExamPlanner({ canCreate, canUpdate, canDelete }: Sorum
   }, [committeeTeachers, principalName])
 
   const suggestedName = (slot: SorumlulukSubjectSlot): string => {
-    const member = slot.committee_members?.find((item) => item.role === 'uye')
-    if (member) return teacherNameById.get(member.teacher_id) || ''
-    const suggested = suggestMember(slot, committeeTeachers, principalTeacherId ? [principalTeacherId] : [])
-    return suggested ? `${suggested.first_name} ${suggested.last_name}` : ''
+    const members = (slot.committee_members || []).filter((item) => item.role === 'uye')
+    if (members.length) {
+      return members
+        .map((member) => teacherNameById.get(member.teacher_id) || '')
+        .filter(Boolean)
+        .join(', ')
+    }
+    return suggestMembers(
+      slot,
+      committeeTeachers,
+      principalTeacherId ? [principalTeacherId] : [],
+      schoolLanguages,
+    )
+      .map((teacher) => `${teacher.first_name} ${teacher.last_name}`)
+      .join(', ')
   }
 
   const committeeSummary = (slot: SorumlulukSubjectSlot): string => {
@@ -1482,6 +1501,7 @@ export function SorumlulukExamPlanner({ canCreate, canUpdate, canDelete }: Sorum
         teachers={committeeTeachers}
         principalName={principalName}
         principalTeacherId={principalTeacherId}
+        languages={schoolLanguages}
         slots={subjects}
         onCancel={() => {
           setCommitteeSlot(null)

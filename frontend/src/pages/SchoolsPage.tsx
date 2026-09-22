@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { App, Button, Form, Input, InputNumber, Modal, Space, Typography, Upload } from 'antd'
+import { App, Button, Form, Input, InputNumber, Modal, Select, Space, Typography, Upload } from 'antd'
 import { DeleteOutlined, EditOutlined, PictureOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
@@ -18,10 +18,21 @@ import {
   uploadSchoolLogo,
 } from '../api/schools'
 import { getErrorMessage } from '../api/client'
-import { SCHOOL_TYPE_LABELS, SCHOOL_CODE_RULES, type School, type SchoolPayload } from '../types/school'
+import {
+  FOREIGN_LANGUAGE_OPTIONS,
+  SCHOOL_TYPE_LABELS,
+  SCHOOL_CODE_RULES,
+  type School,
+  type SchoolPayload,
+} from '../types/school'
 import { getLicensePlan, canAssignSchoolCode } from '../constants/licensePlans'
 import { tablePagination } from '../utils/tablePagination'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
+
+type SchoolFormValues = SchoolPayload & {
+  first_foreign_language?: string | null
+  second_foreign_language?: string | null
+}
 
 function SchoolLogoThumb({ school }: { school: School }) {
   const [url, setUrl] = useState<string | null>(null)
@@ -66,7 +77,7 @@ export function SchoolsPage() {
   const [submitting, setSubmitting] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkLoading, setBulkLoading] = useState(false)
-  const [form] = Form.useForm<SchoolPayload>()
+  const [form] = Form.useForm<SchoolFormValues>()
   const [pendingLogoFile, setPendingLogoFile] = useState<File | null>(null)
   const [pendingRemoveLogo, setPendingRemoveLogo] = useState(false)
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null)
@@ -143,7 +154,12 @@ export function SchoolsPage() {
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
-    form.setFieldsValue({ school_type: 'lise', daily_period_count: 8 })
+    form.setFieldsValue({
+      school_type: 'lise',
+      daily_period_count: 8,
+      first_foreign_language: undefined,
+      second_foreign_language: undefined,
+    })
     clearLogoState()
     setModalOpen(true)
   }
@@ -158,13 +174,15 @@ export function SchoolsPage() {
       province_id: school.province_id ?? undefined,
       district_id: school.district_id ?? undefined,
       directory_school_id: school.directory_school_id ?? undefined,
+      first_foreign_language: school.meta?.first_foreign_language || undefined,
+      second_foreign_language: school.meta?.second_foreign_language || undefined,
     })
     clearLogoState()
     if (school.logo_url) void loadSchoolLogo(school.id)
     setModalOpen(true)
   }
 
-  const onFinish = async (values: SchoolPayload) => {
+  const onFinish = async (values: SchoolFormValues) => {
     if (!session) return
     setSubmitting(true)
     try {
@@ -175,6 +193,11 @@ export function SchoolsPage() {
         province_id: values.province_id || null,
         district_id: values.district_id || null,
         directory_school_id: values.directory_school_id || null,
+        meta: {
+          ...(editing?.meta || {}),
+          first_foreign_language: values.first_foreign_language || null,
+          second_foreign_language: values.second_foreign_language || null,
+        },
       }
       if (canAssignCode || values.code) payload.code = values.code
       let savedId: number
@@ -487,6 +510,39 @@ export function SchoolsPage() {
             rules={[{ required: true, message: 'Günlük ders saati sayısı zorunludur' }]}
           >
             <InputNumber min={1} max={12} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item
+            name="first_foreign_language"
+            label="Birinci yabancı dil"
+            tooltip="Yabancı Dil ve Seçmeli Yabancı Dil derslerinde bu dilin öğretmenleri önerilir. Branş adı Yabancı Dil kabul edilir."
+          >
+            <Select
+              allowClear
+              placeholder="Birinci yabancı dil"
+              options={FOREIGN_LANGUAGE_OPTIONS.map((language) => ({ value: language, label: language }))}
+            />
+          </Form.Item>
+          <Form.Item
+            name="second_foreign_language"
+            label="İkinci yabancı dil"
+            dependencies={['first_foreign_language']}
+            tooltip="İkinci Yabancı Dil derslerinde bu dilin öğretmenleri önerilir."
+            rules={[
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (value && value === getFieldValue('first_foreign_language')) {
+                    return Promise.reject(new Error('İkinci yabancı dil, birinciden farklı olmalıdır'))
+                  }
+                  return Promise.resolve()
+                },
+              }),
+            ]}
+          >
+            <Select
+              allowClear
+              placeholder="İkinci yabancı dil"
+              options={FOREIGN_LANGUAGE_OPTIONS.map((language) => ({ value: language, label: language }))}
+            />
           </Form.Item>
         </Form>
       </Modal>

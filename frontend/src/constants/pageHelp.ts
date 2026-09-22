@@ -64,6 +64,10 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
         title: 'Şifre değiştirme',
         steps: ['Mevcut şifrenizi girin.', 'Yeni şifreyi iki kez yazıp kaydedin.'],
       },
+      {
+        title: 'İki adımlı doğrulama',
+        body: 'Okul yöneticisi Hesap güvenliği kartından authenticator’ı açar; ardından her kullanıcı kendi kurulumunu başlatır. Platform yöneticisi kendi 2FA kurulumunu Profilim’den doğrudan başlatır.',
+      },
     ],
   },
   '/schools': {
@@ -82,7 +86,7 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       },
       {
         title: 'Düzenleme / silme',
-        body: 'Satırdaki düzenle veya sil işlemleriyle mevcut kaydı güncelleyebilirsiniz (yetkiye bağlı). Hesapta en az bir okul kalmalıdır; listede tek okul varken silme kapalıdır. Düzenle formundan okul logosu yükleyebilirsiniz; logosu olan okulların e-postalarında bu logo kullanılır.',
+        body: 'Satırdaki düzenle veya sil işlemleriyle mevcut kaydı güncelleyebilirsiniz (yetkiye bağlı). Hesapta en az bir okul kalmalıdır; listede tek okul varken silme kapalıdır. Düzenle formundan okul logosu yükleyebilirsiniz; logosu olan okulların e-postalarında bu logo kullanılır. Birinci ve ikinci yabancı dil, sorumluluk sınavında Yabancı Dil ile İkinci Yabancı Dil derslerinin öğretmenini belirler.',
       },
     ],
   },
@@ -301,7 +305,8 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
           'MEBBİS «Öğrencilerin Sorumlu Olduğu Dersler» Excel’ini (.xls / .xlsx) içe aktarın.',
           'Önizlemede öğrenci ve ders eşleşmelerini kontrol edin. Katalogda olmayan dersler önce eklenir, sonra kayıtlar içe aktarılır.',
           'Sorumlu olunan dersi seçip takvimde güne tıklayarak tüm öğrenciler için sınavı tarihlendirin. Yerleşen dersi basılı tutup başka güne sürükleyebilir, «Saat ekle» ile saat girebilirsiniz.',
-          'Komisyon başkanı seçili okulun müdürüdür. Üye, ders branşına göre önerilir. Her 30 öğrenci için bir gözetmen önerilir.',
+          'Komisyon başkanı seçili okulun müdürüdür. İki üye, ders branşına göre önerilir. Her 30 öğrenci için bir gözetmen önerilir.',
+          'Yabancı Dil ve Seçmeli Yabancı Dil, okulun birinci yabancı diline; İkinci Yabancı Dil, ikinci yabancı diline bağlanır.',
           'İngilizce, ikinci yabancı dil, Türk Dili ve Edebiyatı ve Türkçe derslerinde yazılı ve sözlü ayrı günlere konur. Sözlüde gözetmen yoktur.',
           'Aynı öğrencinin iki sınavı aynı güne gelirse sistem uyarır.',
         ],

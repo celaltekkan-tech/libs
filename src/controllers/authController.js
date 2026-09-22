@@ -534,7 +534,7 @@ module.exports = {
       }
 
       const tenant = await Tenant.findByPk(user.tenant_id);
-      if (!tenant?.two_factor_enabled) {
+      if (!user.is_platform_admin && !tenant?.two_factor_enabled) {
         return res.status(403).json({
           success: false,
           code: '2FA_NOT_ENABLED_FOR_TENANT',
@@ -578,7 +578,7 @@ module.exports = {
       }
 
       const tenant = await Tenant.findByPk(user.tenant_id);
-      if (!tenant?.two_factor_enabled) {
+      if (!user.is_platform_admin && !tenant?.two_factor_enabled) {
         return res.status(403).json({
           success: false,
           code: '2FA_NOT_ENABLED_FOR_TENANT',
