@@ -1,6 +1,7 @@
 'use strict';
 
 const XLSX = require('xlsx');
+const { normalizeKariyer } = require('../utils/teacherTitle');
 
 // MEBBİS "Personel Listesi Özet Bilgiler" dökümü, her personel için birden
 // fazla satıra yayılmış, birleştirilmiş (merge) hücrelerden oluşan bir form
@@ -59,6 +60,7 @@ function parseHeaderRow(row) {
 
   const [unvan, gorev] = String(unvanGorev).split('/').map((s) => s.trim());
   const [brans, seviyeUnvani] = String(bransSeviye).split('/').map((s) => s.trim());
+  const personnelType = guessPersonnelType(gorev);
 
   return {
     il_ilce: String(ilIlce).trim(),
@@ -72,7 +74,8 @@ function parseHeaderRow(row) {
     gorev: gorev || null,
     brans: brans || null,
     seviye_unvani: seviyeUnvani || null,
-    personnel_type: guessPersonnelType(gorev),
+    kariyer: personnelType === 'ogretmen' ? normalizeKariyer(seviyeUnvani) : null,
+    personnel_type: personnelType,
   };
 }
 
@@ -120,7 +123,8 @@ function parseDurumRow(row) {
   for (const v of vals) {
     const m = DURUM_RE.exec(String(v).trim());
     if (m) {
-      return { durum: m[1], kademe: Number(m[2]), derece: Number(m[3]) };
+      // MEBBİS: "Görevde 9-1" = derece 9, kademe 1 (ilk sayı derece, ikinci kademe).
+      return { durum: m[1], derece: Number(m[2]), kademe: Number(m[3]) };
     }
   }
   return null;

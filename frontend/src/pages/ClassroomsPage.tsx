@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Button, Form, Input, Modal, Select, Space, Switch, Table, Typography } from 'antd'
+import { App, Button, Form, Input, Modal, Select, Space, Switch, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import { DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
+import { useActiveSchool } from '../auth/ActiveSchoolContext'
 import {
   createClassroom,
   deleteClassroom,
@@ -19,10 +22,15 @@ import { classroomLabel } from '../types/classroom'
 import type { Teacher } from '../types/teacher'
 import type { School } from '../types/school'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+import { tablePagination } from '../utils/tablePagination'
+import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
+import { nestedPersonNameSorter, sorterBy, SORT_AZ } from '../utils/tableSort'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 export function ClassroomsPage() {
   const { message, modal } = App.useApp()
   const { session, hasPermission, hasModule } = useAuth()
+  const { activeSchoolId } = useActiveSchool()
   const [rows, setRows] = useState<Classroom[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [schools, setSchools] = useState<School[]>([])
@@ -32,7 +40,10 @@ export function ClassroomsPage() {
   const [editing, setEditing] = useState<Classroom | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [search, setSearch] = useState('')
+  const searchQuery = useDebouncedValue(search)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx')
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
   const [form] = Form.useForm<ClassroomPayload>()
 
   const canSchools = hasModule('schools')
@@ -42,7 +53,7 @@ export function ClassroomsPage() {
     try {
       const [classroomData, teacherData, schoolData] = await Promise.all([
         listClassrooms(),
-        listTeachers().catch(() => []),
+        listTeachers({ scope: 'teachers' }).catch(() => []),
         canSchools ? listSchools().catch(() => []) : Promise.resolve([]),
       ])
       setRows(classroomData)
@@ -60,7 +71,7 @@ export function ClassroomsPage() {
   }, [load])
 
   const filteredRows = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase('tr-TR')
+    const q = searchQuery.trim().toLocaleLowerCase('tr-TR')
     if (!q) return rows
     return rows.filter((row) => {
       const label = classroomLabel(row).toLocaleLowerCase('tr-TR')
@@ -77,12 +88,12 @@ export function ClassroomsPage() {
         schoolName.includes(q)
       )
     })
-  }, [rows, search])
+  }, [rows, searchQuery])
 
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
-    form.setFieldsValue({ is_active: true })
+    form.setFieldsValue({ is_active: true, school_id: activeSchoolId ?? undefined })
     setModalOpen(true)
   }
 
@@ -144,12 +155,29 @@ export function ClassroomsPage() {
     })
   }
 
+  const onBulkDelete = async () => {
+    setBulkLoading(true)
+    try {
+      const result = await bulkDeleteByIds(
+        filteredRows.map((r) => r.id),
+        (id) => deleteClassroom(Number(id)),
+      )
+      const text = bulkDeleteResultMessage(result, 'sınıf')
+      if (result.failed === 0) message.success(text)
+      else message.warning(text)
+      setBulkOpen(false)
+      void load()
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   const onExport = async () => {
     setSubmitting(true)
     try {
       const blob = await exportClassrooms({
         format: exportFormat,
-        filters: search.trim() ? { q: search.trim() } : undefined,
+        filters: searchQuery.trim() ? { q: searchQuery.trim() } : undefined,
       })
       downloadBlob(blob, exportFilename('siniflar', exportFormat))
       message.success('Dışa aktarma indirildi')
@@ -168,10 +196,14 @@ export function ClassroomsPage() {
   const columns: ColumnsType<Classroom> = [
     {
       title: 'Sınıf / Şube',
+      sorter: sorterBy((r: Classroom) => classroomLabel(r)),
+      sortDirections: [...SORT_AZ],
       render: (_: unknown, record) => classroomLabel(record),
     },
     {
       title: 'Sınıf öğretmeni',
+      sorter: nestedPersonNameSorter((r: Classroom) => r.Teacher),
+      sortDirections: [...SORT_AZ],
       render: (_: unknown, record) =>
         record.Teacher ? `${record.Teacher.first_name} ${record.Teacher.last_name}` : '—',
     },
@@ -179,6 +211,8 @@ export function ClassroomsPage() {
       ? [
           {
             title: 'Okul',
+            sorter: sorterBy((record: Classroom) => record.School?.name || ''),
+            sortDirections: [...SORT_AZ],
             render: (_: unknown, record: Classroom) => record.School?.name || '—',
           },
         ]
@@ -216,12 +250,17 @@ export function ClassroomsPage() {
 
   return (
     <AppLayout title="Sınıflar / Şubeler">
-      <div style={{ maxWidth: 1000 }}>
+      <div>
         <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }} wrap>
           <Typography.Title level={3} style={{ margin: 0 }}>
             Sınıflar / Şubeler
           </Typography.Title>
           <Space wrap>
+            {canDelete && filteredRows.length > 0 && (
+              <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+                Toplu sil ({filteredRows.length})
+              </Button>
+            )}
             <Button icon={<DownloadOutlined />} onClick={() => setExportOpen(true)}>
               Dışa Aktar
             </Button>
@@ -242,12 +281,12 @@ export function ClassroomsPage() {
           style={{ maxWidth: 420, marginBottom: 16 }}
         />
 
-        <Table
+        <SortableTable
           rowKey="id"
           loading={loading}
           columns={columns}
           dataSource={filteredRows}
-          pagination={{ pageSize: 20 }}
+          pagination={tablePagination(20)}
           scroll={{ x: 'max-content' }}
         />
       </div>
@@ -322,12 +361,20 @@ export function ClassroomsPage() {
             />
           </Form.Item>
           <Typography.Text type="secondary">
-            {search.trim()
+            {searchQuery.trim()
               ? `Arama filtresi uygulanacak (${filteredRows.length} kayıt).`
               : 'Tüm sınıflar dışa aktarılır.'}
           </Typography.Text>
         </Form>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Sınıfları toplu sil"
+        description={`Filtreye uyan ${filteredRows.length} sınıf/şube kaydı silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

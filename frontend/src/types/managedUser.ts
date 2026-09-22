@@ -14,6 +14,7 @@ export interface ManagedUser {
   school_id: number | null
   full_name: string
   email: string
+  phone: string | null
   role: string
   is_active: boolean
   last_login_at: string | null
@@ -33,6 +34,7 @@ export interface ManagedUserPayload {
   full_name: string
   email: string
   password?: string
+  phone?: string | null
   is_active?: boolean
 }
 
@@ -46,7 +48,9 @@ export interface UserFormOptions {
   schools: Array<{ id: number; name: string; code: string }>
   user_limit: number | null
   user_count: number
+  user_exempt_count?: number
   user_remaining: number | null
+  quota_exempt_roles?: string[]
 }
 
 export const SCHOOL_ROLE_OPTIONS: Array<{ value: string; label: string; description: string }> = [

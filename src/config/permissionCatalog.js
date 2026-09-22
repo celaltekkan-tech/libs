@@ -42,6 +42,13 @@ const MENU_PERMISSION_GROUPS = [
     permissions: ['teachers.read', 'teachers.create', 'teachers.update', 'teachers.delete'],
   },
   {
+    id: 'other_personnel',
+    label: 'Diğer Personeller',
+    group: 'Temel Tanımlar',
+    module: 'teachers',
+    permissions: ['teachers.read', 'teachers.create', 'teachers.update', 'teachers.delete'],
+  },
+  {
     id: 'subjects',
     label: 'Dersler',
     group: 'Temel Tanımlar',
@@ -57,17 +64,10 @@ const MENU_PERMISSION_GROUPS = [
   },
   {
     id: 'norm_positions',
-    label: 'Norm Kadro',
+    label: 'Terfi Takibi',
     group: 'Personel İşleri',
     module: 'teachers',
     permissions: ['norm_positions.read', 'norm_positions.create', 'norm_positions.update', 'norm_positions.delete'],
-  },
-  {
-    id: 'trainings',
-    label: 'Hizmet İçi Eğitim',
-    group: 'Personel İşleri',
-    module: 'teachers',
-    permissions: ['trainings.read', 'trainings.create', 'trainings.update', 'trainings.delete'],
   },
   {
     id: 'teacher_documents',
@@ -157,6 +157,13 @@ const MENU_PERMISSION_GROUPS = [
     permissions: ['discipline.read', 'discipline.create', 'discipline.update', 'discipline.delete'],
   },
   {
+    id: 'teacher_notes',
+    label: 'Öğretmen Bildirimleri (Mobil)',
+    group: 'Öğrenci İşleri',
+    module: 'discipline',
+    permissions: ['teacher_notes.create'],
+  },
+  {
     id: 'guidance',
     label: 'Rehberlik',
     group: 'Rehberlik',
@@ -178,6 +185,20 @@ const MENU_PERMISSION_GROUPS = [
     permissions: ['audit.read'],
   },
   {
+    id: 'work_tasks',
+    label: 'İş Takibi',
+    group: 'Sistem',
+    module: null,
+    permissions: ['work_tasks.read', 'work_tasks.create', 'work_tasks.update', 'work_tasks.delete'],
+  },
+  {
+    id: 'message_logs',
+    label: 'SMS / E-posta Kayıtları',
+    group: 'Sistem',
+    module: null,
+    permissions: ['message_logs.read'],
+  },
+  {
     id: 'feedback',
     label: 'Geri Bildirim',
     group: 'Sistem',
@@ -192,10 +213,10 @@ const MENU_PATH_PERMISSION = {
   '/classrooms': 'classrooms.read',
   '/students': 'students.read',
   '/teachers': 'teachers.read',
+  '/other-personnel': 'teachers.read',
   '/subjects': 'schedule.read',
   '/academic-years': 'academic_years.read',
   '/norm-positions': 'norm_positions.read',
-  '/trainings': 'trainings.read',
   '/teacher-documents': 'teacher_documents.read',
   '/leaves': 'leaves.read',
   '/duty': 'duty.read',
@@ -212,6 +233,9 @@ const MENU_PATH_PERMISSION = {
   '/users': 'users.read',
   '/audit-logs': 'audit.read',
   '/feedback': 'feedback.read',
+  '/work-tasks': 'work_tasks.read',
+  // /calendar görünürlüğü kaynak izinlerinin OR birleşimi (frontend CALENDAR_MENU_SOURCE_PERMISSIONS)
+  '/message-logs': 'message_logs.read',
 };
 
 module.exports = {

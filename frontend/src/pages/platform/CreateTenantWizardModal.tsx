@@ -3,10 +3,10 @@ import { App, Divider, Form, Input, Modal, Select } from 'antd'
 import { ApiError, getErrorMessage } from '../../api/client'
 import { createTenant } from '../../api/tenants'
 import { LICENSE_PLANS } from '../../constants/licensePlans'
-import { SCHOOL_TYPE_LABELS } from '../../types/school'
+import { SCHOOL_CODE_RULES } from '../../types/school'
+import { SchoolCatalogFields } from '../../components/SchoolCatalogFields'
 import type { CreateTenantWizardPayload } from '../../types/tenant'
-
-const SCHOOL_TYPE_OPTIONS = Object.entries(SCHOOL_TYPE_LABELS).map(([value, label]) => ({ value, label }))
+import { MOBILE_PHONE_RULE, requiredMobilePhoneRule } from '../../utils/phone'
 
 interface CreateTenantWizardModalProps {
   open: boolean
@@ -55,7 +55,7 @@ export function CreateTenantWizardModal({ open, onClose, onCreated }: CreateTena
       okText="Oluştur"
       cancelText="Vazgeç"
       destroyOnHidden
-      width={560}
+      width={640}
     >
       <Form
         form={form}
@@ -73,6 +73,14 @@ export function CreateTenantWizardModal({ open, onClose, onCreated }: CreateTena
         >
           <Input placeholder="Örn. Atatürk Anadolu Lisesi" />
         </Form.Item>
+        <Form.Item
+          label="Kurum telefonu"
+          name={['tenant', 'phone']}
+          extra="Telefonu olmayan kullanıcılara kopyalanabilir (05xxxxxxxxx)."
+          rules={[MOBILE_PHONE_RULE]}
+        >
+          <Input placeholder="05xx xxx xx xx" maxLength={30} />
+        </Form.Item>
         <Form.Item label="Plan" name={['tenant', 'plan']}>
           <Select
             allowClear
@@ -82,32 +90,21 @@ export function CreateTenantWizardModal({ open, onClose, onCreated }: CreateTena
         </Form.Item>
 
         <Divider titlePlacement="left" plain>
-          İlk Okul
+          1. Okul
         </Divider>
-        <Form.Item
-          label="Okul adı"
-          name={['school', 'name']}
-          rules={[{ required: true, message: 'Okul adı zorunludur' }]}
-        >
-          <Input placeholder="Örn. Atatürk Ortaokulu" />
-        </Form.Item>
+        <SchoolCatalogFields form={form} namePrefix={['school']} onError={(text) => message.error(text)} />
         <Form.Item
           label="Okul kodu"
           name={['school', 'code']}
-          rules={[{ required: true, message: 'Okul kodu zorunludur' }]}
+          tooltip="6 haneli MEB kurum kodu. Katalogdan seçilen okulda varsa otomatik dolar."
+          normalize={(value) => String(value || '').replace(/\D/g, '').slice(0, 6)}
+          rules={SCHOOL_CODE_RULES}
         >
-          <Input placeholder="Örn. ATA-001" />
-        </Form.Item>
-        <Form.Item
-          label="Okul kademesi"
-          name={['school', 'school_type']}
-          rules={[{ required: true, message: 'Okul kademesi zorunludur' }]}
-        >
-          <Select options={SCHOOL_TYPE_OPTIONS} placeholder="Kademe seçin" />
+          <Input placeholder="Örn. 765978" maxLength={6} inputMode="numeric" />
         </Form.Item>
 
         <Divider titlePlacement="left" plain>
-          İlk Yönetici
+          1. Yönetici
         </Divider>
         <Form.Item
           label="Ad soyad"
@@ -125,6 +122,17 @@ export function CreateTenantWizardModal({ open, onClose, onCreated }: CreateTena
           ]}
         >
           <Input placeholder="mudur@okul.local" />
+        </Form.Item>
+        <Form.Item
+          label="Yönetici telefonu (SMS)"
+          name={['admin', 'phone']}
+          extra="Yönetici SMS giriş/bildirimleri için geçerli cep telefonu (05xxxxxxxxx)."
+          rules={[
+            { required: true, message: 'Yönetici telefonu zorunludur' },
+            requiredMobilePhoneRule(true),
+          ]}
+        >
+          <Input placeholder="05xx xxx xx xx" maxLength={30} />
         </Form.Item>
         <Form.Item
           label="Şifre"

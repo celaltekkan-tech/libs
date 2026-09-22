@@ -1,25 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  App,
-  Button,
-  Card,
-  Checkbox,
-  Collapse,
-  DatePicker,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Typography,
-} from 'antd'
-import { DownloadOutlined, SaveOutlined } from '@ant-design/icons'
+import { App, Button, Card, Checkbox, Collapse, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
+import { DownloadOutlined, DeleteOutlined, SaveOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { AppLayout } from '../components/AppLayout'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import {
   bulkUpsertAttendance,
@@ -41,6 +27,9 @@ import type { AttendanceMonthlySummaryRow, AttendanceRecord } from '../types/att
 import type { Holiday } from '../types/holiday'
 import type { Teacher } from '../types/teacher'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+import { tablePagination } from '../utils/tablePagination'
+import { nestedPersonNameSorter, personNameSorter, SORT_AZ } from '../utils/tableSort'
+import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 const now = new Date()
 const MONTH_LABELS = [
@@ -81,7 +70,7 @@ function holidayDaysForMonth(holidays: Holiday[], year: number, month: number): 
 }
 
 export function AttendancePage() {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const { session, hasPermission } = useAuth()
 
   const [teachers, setTeachers] = useState<Teacher[]>([])
@@ -169,6 +158,14 @@ export function AttendancePage() {
     void load()
   }, [load])
 
+  const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
+    getIds: () => records.map((r) => r.id),
+    deleteOne: (id) => deleteAttendance(Number(id)),
+    noun: 'puantaj kaydı',
+    reload: () => void load(),
+    message,
+  })
+
   useEffect(() => {
     if (!exportOpen) return
     setClosedDays(autoClosedDays)
@@ -233,14 +230,23 @@ export function AttendancePage() {
     }
   }
 
-  const onDeleteRecord = async (row: AttendanceRecord) => {
-    try {
-      await deleteAttendance(row.id)
-      message.success('Kayıt silindi')
-      void load()
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    }
+  const onDeleteRecord = (row: AttendanceRecord) => {
+    modal.confirm({
+      title: 'Puantaj kaydını sil',
+      content: 'Bu puantaj kaydını silmek istediğinize emin misiniz?',
+      okText: 'Sil',
+      okButtonProps: { danger: true },
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        try {
+          await deleteAttendance(row.id)
+          message.success('Kayıt silindi')
+          void load()
+        } catch (err) {
+          message.error(getErrorMessage(err))
+        }
+      },
+    })
   }
 
   const onExport = async () => {
@@ -281,7 +287,12 @@ export function AttendancePage() {
   }, [workerTeachers, draft])
 
   const columns: ColumnsType<Teacher> = [
-    { title: 'Personel', render: (_: unknown, t: Teacher) => `${t.first_name} ${t.last_name}` },
+    {
+      title: 'Personel',
+      sorter: personNameSorter<Teacher>(),
+      sortDirections: [...SORT_AZ],
+      render: (_: unknown, t: Teacher) => `${t.first_name} ${t.last_name}`,
+    },
     {
       title: 'Durum',
       width: 180,
@@ -341,6 +352,8 @@ export function AttendancePage() {
   const existingColumns: ColumnsType<AttendanceRecord> = [
     {
       title: 'Personel',
+      sorter: nestedPersonNameSorter((r: AttendanceRecord) => r.Teacher),
+      sortDirections: [...SORT_AZ],
       render: (_: unknown, r: AttendanceRecord) =>
         r.Teacher ? `${r.Teacher.first_name} ${r.Teacher.last_name}` : '—',
     },
@@ -362,7 +375,7 @@ export function AttendancePage() {
             title: 'İşlemler',
             width: 80,
             render: (_: unknown, record: AttendanceRecord) => (
-              <Button size="small" danger onClick={() => void onDeleteRecord(record)}>
+              <Button size="small" danger onClick={() => onDeleteRecord(record)}>
                 Sil
               </Button>
             ),
@@ -380,6 +393,8 @@ export function AttendancePage() {
     },
     {
       title: 'Personel',
+      sorter: nestedPersonNameSorter((r: AttendanceRecord) => r.Teacher),
+      sortDirections: [...SORT_AZ],
       render: (_: unknown, r: AttendanceRecord) =>
         r.Teacher ? `${r.Teacher.first_name} ${r.Teacher.last_name}` : '—',
     },
@@ -418,11 +433,11 @@ export function AttendancePage() {
 
       {workerTeachers.length === 0 ? (
         <Typography.Text type="secondary">
-          Henüz "İşçi" veya "TYP" personel tipi tanımlı personel yok. Öğretmenler sayfasından personel tipini
-          güncelleyin.
+          Henüz "İşçi" veya "TYP" personel tipi tanımlı personel yok. Diğer Personeller sayfasından bu
+          kategoride personel ekleyin.
         </Typography.Text>
       ) : (
-        <Table
+        <SortableTable
           rowKey="id"
           loading={loading}
           columns={columns}
@@ -457,10 +472,17 @@ export function AttendancePage() {
 
       {records.length > 0 && (
         <>
-          <Typography.Title level={5} style={{ marginTop: 24 }}>
-            {date.format('DD.MM.YYYY')} tarihli kayıtlar
-          </Typography.Title>
-          <Table
+          <Space style={{ width: '100%', justifyContent: 'space-between', marginTop: 24 }} wrap>
+            <Typography.Title level={5} style={{ margin: 0 }}>
+              {date.format('DD.MM.YYYY')} tarihli kayıtlar
+            </Typography.Title>
+            {canDelete && (
+              <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+                Toplu sil ({records.length})
+              </Button>
+            )}
+          </Space>
+          <SortableTable
             rowKey="id"
             size="small"
             columns={existingColumns}
@@ -492,13 +514,13 @@ export function AttendancePage() {
           style={{ width: 100 }}
         />
       </Space>
-      <Table
+      <SortableTable
         rowKey="id"
         size="small"
         loading={loading}
         columns={monthAbsenceColumns}
         dataSource={monthAbsences}
-        pagination={{ pageSize: 15 }}
+        pagination={tablePagination(15)}
         locale={{ emptyText: 'Bu ayda devamsızlık kaydı yok' }}
         scroll={{ x: 'max-content' }}
       />
@@ -516,7 +538,7 @@ export function AttendancePage() {
             </Space>
           ),
           children: (
-            <Table
+            <SortableTable
               size="small"
               rowKey="status"
               pagination={false}
@@ -635,6 +657,14 @@ export function AttendancePage() {
           </>
         )}
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Puantaj kayıtlarını toplu sil"
+        description={`${date.format('DD.MM.YYYY')} tarihine ait ${records.length} puantaj kaydı silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

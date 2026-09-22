@@ -4,19 +4,12 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { AutoComplete, Button, Input, Layout, Menu, Select, Space } from 'antd'
 import type { MenuProps } from 'antd'
 import {
-  AlertOutlined,
   ApartmentOutlined,
-  AuditOutlined,
   BankOutlined,
-  ClockCircleOutlined,
-  CommentOutlined,
   BellOutlined,
-  CalendarOutlined,
-  DollarOutlined,
-  ExclamationCircleOutlined,
-  FieldTimeOutlined,
-  FileDoneOutlined,
-  FileProtectOutlined,
+  CommentOutlined,
+  DatabaseOutlined,
+  GlobalOutlined,
   HomeOutlined,
   IdcardOutlined,
   LogoutOutlined,
@@ -24,206 +17,115 @@ import {
   MenuUnfoldOutlined,
   MoonOutlined,
   SunOutlined,
-  NotificationOutlined,
-  ReadOutlined,
-  SafetyOutlined,
-  ScheduleOutlined,
-  SearchOutlined,
-  TableOutlined,
-  TeamOutlined,
   UserOutlined,
-  ClusterOutlined,
-  SettingOutlined,
-  DatabaseOutlined,
-  SolutionOutlined,
-  AppstoreOutlined,
+  QuestionCircleOutlined,
+  SafetyCertificateOutlined,
+  SearchOutlined,
+  UnorderedListOutlined,
 } from '@ant-design/icons'
 import { useAuth } from '../auth/AuthContext'
 import { useActiveSchool } from '../auth/ActiveSchoolContext'
 import { useThemeMode } from '../theme/ThemeContext'
 import { FeedbackFabModal } from './FeedbackFabModal'
 import { NotificationBell } from './NotificationBell'
+import { MandatoryWorkReminder } from './MandatoryWorkReminder'
+import { MenuLayoutEditorModal } from './MenuLayoutEditorModal'
+import { PageHelpModal } from './PageHelpModal'
 import { MENU_PATH_PERMISSION } from '../constants/menuPermissions'
+import { CALENDAR_MENU_SOURCE_PERMISSIONS } from '../types/calendarEvent'
+import { getPageHelp } from '../constants/pageHelp'
+import {
+  buildTenantMenu,
+  flattenNavLeaves,
+  isNavGroup,
+  type NavLeaf,
+  type NavNode,
+} from '../nav/tenantMenu'
+import { applyMenuLayout } from '../utils/menuLayout'
+import { SchoolLogoImage } from './SchoolLogoImage'
 
 interface AppLayoutProps {
   title?: string
   children: ReactNode
 }
 
-interface NavLeaf {
-  key: string
-  icon?: ReactNode
-  label: string
-}
-
-interface NavGroup {
-  key: string
-  icon: ReactNode
-  label: string
-  children: NavLeaf[]
-}
-
-type NavNode = NavLeaf | NavGroup
-
-function isGroup(item: NavNode): item is NavGroup {
-  return 'children' in item && Array.isArray(item.children)
-}
-
-function flattenLeaves(nodes: NavNode[]): NavLeaf[] {
-  const out: NavLeaf[] = []
-  for (const node of nodes) {
-    if (isGroup(node)) out.push(...node.children)
-    else out.push(node)
-  }
-  return out
-}
-
 const PLATFORM_ADMIN_ITEMS: NavNode[] = [
   { key: '/', icon: <HomeOutlined />, label: 'Ana Sayfa' },
   { key: '/platform/tenants', icon: <ApartmentOutlined />, label: 'Hesap Yönetimi' },
+  { key: '/platform/roles', icon: <SafetyCertificateOutlined />, label: 'Global Yetkiler' },
   { key: '/platform/licenses', icon: <IdcardOutlined />, label: 'Lisans Yönetimi' },
+  { key: '/platform/directory-schools', icon: <GlobalOutlined />, label: 'MEB Okul Kataloğu' },
   { key: '/platform/feedback', icon: <CommentOutlined />, label: 'Geri Bildirimler' },
   { key: '/platform/notifications', icon: <BellOutlined />, label: 'Bildirimler' },
   { key: '/platform/backups', icon: <DatabaseOutlined />, label: 'Yedekleme' },
   { key: '/profile', icon: <UserOutlined />, label: 'Profilim' },
 ]
 
-function buildTenantMenu(opts: {
-  hasModule: (m: string) => boolean
-  modules: string[]
-}): NavNode[] {
-  const { hasModule } = opts
-  const nodes: NavNode[] = [{ key: '/', icon: <HomeOutlined />, label: 'Ana Sayfa' }]
-
-  const definitions: NavLeaf[] = []
-  if (hasModule('schools')) definitions.push({ key: '/schools', icon: <BankOutlined />, label: 'Okullar' })
-  if (hasModule('classrooms')) definitions.push({ key: '/classrooms', icon: <ClusterOutlined />, label: 'Sınıflar' })
-  if (hasModule('students')) definitions.push({ key: '/students', icon: <ReadOutlined />, label: 'Öğrenciler' })
-  if (hasModule('teachers')) definitions.push({ key: '/teachers', icon: <TeamOutlined />, label: 'Öğretmenler' })
-  if (hasModule('schedule')) definitions.push({ key: '/subjects', icon: <IdcardOutlined />, label: 'Dersler' })
-  definitions.push({ key: '/academic-years', icon: <CalendarOutlined />, label: 'Eğitim Öğretim Yılları' })
-  if (definitions.length > 0) {
-    nodes.push({
-      key: 'grp-definitions',
-      icon: <AppstoreOutlined />,
-      label: 'Temel Tanımlar',
-      children: definitions,
-    })
-  }
-
-  const personnel: NavLeaf[] = []
-  if (hasModule('teachers')) {
-    personnel.push(
-      { key: '/norm-positions', icon: <ApartmentOutlined />, label: 'Norm Kadro' },
-      { key: '/trainings', icon: <ReadOutlined />, label: 'Hizmet İçi Eğitim' },
-      { key: '/teacher-documents', icon: <FileProtectOutlined />, label: 'Öğretmen Evrak Arşivi' },
-    )
-  }
-  if (hasModule('leaves')) personnel.push({ key: '/leaves', icon: <CalendarOutlined />, label: 'İzin Takibi' })
-  if (hasModule('duty')) personnel.push({ key: '/duty', icon: <FieldTimeOutlined />, label: 'Nöbet Programı' })
-  if (hasModule('payroll')) {
-    personnel.push(
-      { key: '/extra-lessons', icon: <DollarOutlined />, label: 'Ek Ders Puantajı' },
-      { key: '/attendance', icon: <ClockCircleOutlined />, label: 'İşçi / TYP Puantaj' },
-    )
-  }
-  if (personnel.length > 0) {
-    nodes.push({
-      key: 'grp-personnel',
-      icon: <SolutionOutlined />,
-      label: 'Personel İşleri',
-      children: personnel,
-    })
-  }
-
-  const programs: NavLeaf[] = []
-  if (hasModule('schedule')) programs.push({ key: '/schedule', icon: <ScheduleOutlined />, label: 'Ders Programı' })
-  if (hasModule('exams')) {
-    programs.push(
-      { key: '/exams', icon: <FileDoneOutlined />, label: 'Sınav Programı Hazırlama' },
-      { key: '/kelebek', icon: <TableOutlined />, label: 'Kelebek Sistemi' },
-    )
-  }
-  if (programs.length > 0) {
-    nodes.push({
-      key: 'grp-programs',
-      icon: <ScheduleOutlined />,
-      label: 'Programlar',
-      children: programs,
-    })
-  }
-
-  const studentOps: NavLeaf[] = []
-  if (hasModule('attendance')) {
-    studentOps.push({
-      key: '/absences',
-      icon: <AlertOutlined />,
-      label: 'DYK Devamsızlık Takibi',
-    })
-  }
-  if (hasModule('communications')) {
-    studentOps.push({ key: '/communications', icon: <NotificationOutlined />, label: 'Veli İletişim' })
-  }
-  if (hasModule('discipline')) {
-    studentOps.push({ key: '/discipline', icon: <ExclamationCircleOutlined />, label: 'Disiplin' })
-  }
-  if (studentOps.length > 0) {
-    nodes.push({
-      key: 'grp-students',
-      icon: <ReadOutlined />,
-      label: 'Öğrenci İşleri',
-      children: studentOps,
-    })
-  }
-
-  if (hasModule('guidance')) {
-    nodes.push({ key: '/guidance', icon: <SafetyOutlined />, label: 'Rehberlik' })
-  }
-
-  const system: NavLeaf[] = []
-  if (hasModule('users')) system.push({ key: '/users', icon: <UserOutlined />, label: 'Yetkilendirme' })
-  if (hasModule('audit')) {
-    system.push({ key: '/audit-logs', icon: <AuditOutlined />, label: 'Denetim Kayıtları' })
-  }
-  system.push({ key: '/feedback', icon: <CommentOutlined />, label: 'Geri Bildirim' })
-  nodes.push({
-    key: 'grp-system',
-    icon: <SettingOutlined />,
-    label: 'Sistem',
-    children: system,
-  })
-
-  return nodes
-}
-
 function toMenuItems(nodes: NavNode[]): MenuProps['items'] {
-  return nodes.map((node) => {
-    if (isGroup(node)) {
-      return {
+  const items: MenuProps['items'] = []
+  nodes.forEach((node, idx) => {
+    if (idx > 0) {
+      items!.push({ type: 'divider', key: `divider-${idx}` })
+    }
+    if (isNavGroup(node)) {
+      items!.push({
         key: node.key,
         icon: node.icon,
         label: node.label,
         children: node.children.map((c) => ({ key: c.key, icon: c.icon, label: c.label })),
-      }
+      })
+    } else {
+      items!.push({ key: node.key, icon: node.icon, label: node.label })
     }
-    return { key: node.key, icon: node.icon, label: node.label }
   })
+  return items
 }
 
 const MOBILE_BREAKPOINT = 767
+const SIDER_COLLAPSED_KEY = 'okul-idare-sider-collapsed'
+
+function readStoredCollapsed(): boolean | null {
+  try {
+    const stored = localStorage.getItem(SIDER_COLLAPSED_KEY)
+    if (stored === '1') return true
+    if (stored === '0') return false
+  } catch {
+    /* ignore */
+  }
+  return null
+}
+
+function writeStoredCollapsed(value: boolean) {
+  try {
+    localStorage.setItem(SIDER_COLLAPSED_KEY, value ? '1' : '0')
+  } catch {
+    /* ignore */
+  }
+}
 
 export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayoutProps) {
   const { session, logout, hasModule, hasPermission } = useAuth()
-  const { schools, activeSchoolId, setActiveSchoolId } = useActiveSchool()
+  const { schools, activeSchoolId, activeSchool, setActiveSchoolId } = useActiveSchool()
   const { mode, toggleMode } = useThemeMode()
   const location = useLocation()
   const navigate = useNavigate()
   const user = session?.user
 
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= MOBILE_BREAKPOINT)
-  const [collapsed, setCollapsed] = useState(() => window.innerWidth <= MOBILE_BREAKPOINT)
+  const [collapsed, setCollapsed] = useState(() => {
+    if (window.innerWidth <= MOBILE_BREAKPOINT) return true
+    return readStoredCollapsed() ?? false
+  })
   const [search, setSearch] = useState('')
   const [openKeys, setOpenKeys] = useState<string[]>([])
+  const [helpOpen, setHelpOpen] = useState(false)
+  const [menuEditorOpen, setMenuEditorOpen] = useState(false)
+
+  const pageHelp = useMemo(() => getPageHelp(location.pathname), [location.pathname])
+
+  useEffect(() => {
+    setHelpOpen(false)
+  }, [location.pathname])
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT)
@@ -233,20 +135,20 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
 
   const canSeePath = (path: string) => {
     if (session?.is_global_admin || session?.is_platform_admin) return true
+    if (path === '/calendar') {
+      return CALENDAR_MENU_SOURCE_PERMISSIONS.some((perm) => hasPermission(perm))
+    }
     const need = MENU_PATH_PERMISSION[path]
     if (!need) return true
     return hasPermission(need)
   }
 
-  const navNodes: NavNode[] = useMemo(() => {
+  const catalogNodes = useMemo(() => {
     if (session?.is_platform_admin) return PLATFORM_ADMIN_ITEMS
-    const built = buildTenantMenu({
-      hasModule,
-      modules: session?.modules || [],
-    })
+    const built = buildTenantMenu({ hasModule })
     return built
       .map((node) => {
-        if (!isGroup(node)) {
+        if (!isNavGroup(node)) {
           if (node.key === '/') return node
           return canSeePath(node.key) ? node : null
         }
@@ -258,7 +160,12 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, hasModule, hasPermission])
 
-  const leaves = useMemo(() => flattenLeaves(navNodes), [navNodes])
+  const navNodes: NavNode[] = useMemo(() => {
+    if (session?.is_platform_admin) return PLATFORM_ADMIN_ITEMS
+    return applyMenuLayout(catalogNodes, session?.menu_layout)
+  }, [session?.is_platform_admin, session?.menu_layout, catalogNodes])
+
+  const leaves = useMemo(() => flattenNavLeaves(navNodes), [navNodes])
 
   const selected = leaves
     .filter((item) => location.pathname === item.key || location.pathname.startsWith(`${item.key}/`))
@@ -267,7 +174,7 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
   const activeGroupKey = useMemo(() => {
     if (!selected) return null
     for (const node of navNodes) {
-      if (isGroup(node) && node.children.some((c) => c.key === selected.key)) return node.key
+      if (isNavGroup(node) && node.children.some((c) => c.key === selected.key)) return node.key
     }
     return null
   }, [navNodes, selected])
@@ -283,7 +190,7 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
     const query = search.trim().toLocaleLowerCase('tr-TR')
     if (!query) return []
     return leaves
-      .filter((item) => item.label.toLocaleLowerCase('tr-TR').includes(query))
+      .filter((item: NavLeaf) => item.label.toLocaleLowerCase('tr-TR').includes(query))
       .map((item) => ({
         value: item.key,
         label: (
@@ -302,6 +209,16 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
     if (isMobile) setCollapsed(true)
   }
 
+  const toggleCollapsed = () => {
+    setCollapsed((value) => {
+      const next = !value
+      if (!isMobile) writeStoredCollapsed(next)
+      return next
+    })
+  }
+
+  const canEditMenu = Boolean(session?.is_global_admin && !session?.is_platform_admin)
+
   return (
     <Layout className="app-shell">
       {isMobile && !collapsed && (
@@ -313,11 +230,16 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
         className="app-sider"
         collapsible
         collapsed={collapsed}
-        onCollapse={setCollapsed}
         trigger={null}
-        breakpoint="lg"
       >
-        <div className="app-sider-brand">{collapsed ? 'Lİ' : 'Okul İdare'}</div>
+        <div className="app-sider-brand">
+          <SchoolLogoImage school={session?.is_platform_admin ? null : activeSchool} className="app-brand-logo" />
+          {collapsed
+            ? activeSchool?.logo_url
+              ? null
+              : 'Lİ'
+            : 'Okul İdare'}
+        </div>
 
         {!collapsed && (
           <div className="app-sider-search">
@@ -346,6 +268,20 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
           items={toMenuItems(navNodes)}
           onClick={({ key }) => goTo(key)}
         />
+
+        {canEditMenu && (
+          <div className="app-sider-menu-edit">
+            <Button
+              type="text"
+              block
+              icon={<UnorderedListOutlined />}
+              onClick={() => setMenuEditorOpen(true)}
+              title="Menüyü düzenle"
+            >
+              {!collapsed && 'Menüyü düzenle'}
+            </Button>
+          </div>
+        )}
       </Layout.Sider>
       <Layout>
         <Layout.Header className="app-header">
@@ -353,9 +289,16 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
             <Button
               type="text"
               icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-              onClick={() => setCollapsed((value) => !value)}
+              onClick={toggleCollapsed}
             />
             <span className="app-header-title">{title}</span>
+            <Button
+              type="text"
+              icon={<QuestionCircleOutlined />}
+              onClick={() => setHelpOpen(true)}
+              title="Bu sayfa için yardım"
+              aria-label="Bu sayfa için yardım"
+            />
           </Space>
           <Space wrap className="app-header-actions">
             {!session?.is_platform_admin && schools.length > 0 && (
@@ -395,6 +338,16 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
         <Layout.Content className="app-content">{children}</Layout.Content>
       </Layout>
       {!session?.is_platform_admin && <FeedbackFabModal />}
+      {!session?.is_platform_admin && <MandatoryWorkReminder />}
+      <PageHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} content={pageHelp} />
+      {canEditMenu && (
+        <MenuLayoutEditorModal
+          open={menuEditorOpen}
+          onClose={() => setMenuEditorOpen(false)}
+          catalogNodes={catalogNodes}
+          initialLayout={session?.menu_layout}
+        />
+      )}
     </Layout>
   )
 }

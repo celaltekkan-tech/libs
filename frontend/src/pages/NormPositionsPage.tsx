@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Form, Input, InputNumber, Modal, Progress, Select, Space, Table, Typography } from 'antd'
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
+import { App, Button, Form, Input, InputNumber, Modal, Progress, Select, Space, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
+import { DeleteOutlined, EditOutlined, PlusOutlined, RiseOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { SalaryFormDraftModal } from '../components/SalaryFormDraftModal'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
+import { useActiveSchool } from '../auth/ActiveSchoolContext'
 import {
   createNormPosition,
   deleteNormPosition,
@@ -14,10 +18,13 @@ import { listSchools } from '../api/schools'
 import { getErrorMessage } from '../api/client'
 import type { NormPosition, NormPositionPayload } from '../types/normPosition'
 import type { School } from '../types/school'
+import { tablePagination } from '../utils/tablePagination'
+import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 export function NormPositionsPage() {
   const { message, modal } = App.useApp()
   const { session, hasPermission, hasModule } = useAuth()
+  const { activeSchoolId } = useActiveSchool()
   const [rows, setRows] = useState<NormPosition[]>([])
   const [schools, setSchools] = useState<School[]>([])
   const [loading, setLoading] = useState(true)
@@ -25,11 +32,13 @@ export function NormPositionsPage() {
   const [editing, setEditing] = useState<NormPosition | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [form] = Form.useForm<NormPositionPayload>()
+  const [salaryFormOpen, setSalaryFormOpen] = useState(false)
 
   const canSchools = hasModule('schools')
   const canCreate = hasPermission('norm_positions.create')
   const canUpdate = hasPermission('norm_positions.update')
   const canDelete = hasPermission('norm_positions.delete')
+  const canExportSalaryForm = hasPermission('norm_positions.read')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -51,9 +60,18 @@ export function NormPositionsPage() {
     void load()
   }, [load])
 
+  const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
+    getIds: () => rows.map((r) => r.id),
+    deleteOne: (id) => deleteNormPosition(Number(id)),
+    noun: 'norm kadro',
+    reload: () => void load(),
+    message,
+  })
+
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
+    form.setFieldsValue({ school_id: activeSchoolId ?? undefined })
     setModalOpen(true)
   }
 
@@ -150,24 +168,36 @@ export function NormPositionsPage() {
   ]
 
   return (
-    <AppLayout title="Norm Kadro Takibi">
+    <AppLayout title="Terfi Takibi">
       <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }} wrap>
         <Typography.Title level={3} style={{ margin: 0 }}>
-          Norm Kadro Takibi
+          Terfi Takibi
         </Typography.Title>
-        {canCreate && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            Yeni Norm Kadro
-          </Button>
-        )}
+        <Space wrap>
+          {canDelete && rows.length > 0 && (
+            <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+              Toplu sil ({rows.length})
+            </Button>
+          )}
+          {canExportSalaryForm && (
+            <Button icon={<RiseOutlined />} onClick={() => setSalaryFormOpen(true)}>
+              Maaş Değişikliği Formu
+            </Button>
+          )}
+          {canCreate && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              Yeni Norm Kadro
+            </Button>
+          )}
+        </Space>
       </Space>
 
-      <Table
+      <SortableTable
         rowKey="id"
         loading={loading}
         columns={columns}
         dataSource={rows}
-        pagination={{ pageSize: 20 }}
+        pagination={tablePagination(20)}
         scroll={{ x: 'max-content' }}
       />
 
@@ -210,6 +240,20 @@ export function NormPositionsPage() {
           </Form.Item>
         </Form>
       </Modal>
+
+      <SalaryFormDraftModal
+        open={salaryFormOpen}
+        onClose={() => setSalaryFormOpen(false)}
+        canSave={canUpdate}
+      />
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Norm kadroları toplu sil"
+        description={`Listedeki ${rows.length} norm kadro kaydı silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

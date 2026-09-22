@@ -7,11 +7,17 @@ const createTeacherSchema = Joi.object({
   district: Joi.string().allow('', null),
   personnel_no: Joi.string().allow('', null),
   national_id: Joi.string().allow('', null),
+  phone: Joi.string().trim().max(30).allow('', null),
+  email: Joi.string().trim().lowercase().max(150).email({ tlds: { allow: false } }).allow('', null),
   first_name: Joi.string().required(),
   last_name: Joi.string().required(),
   last_graduated_school: Joi.string().allow('', null),
+  birth_date: Joi.date().iso().allow(null),
   class_level: Joi.string().allow('', null),
   title_branch: Joi.string().allow('', null),
+  unvan: Joi.string().allow('', null),
+  brans: Joi.string().allow('', null),
+  kariyer: Joi.string().allow('', null),
   working_institution: Joi.string().allow('', null),
   degree: Joi.string().allow('', null),
   pension_degree: Joi.string().allow('', null),
@@ -20,7 +26,9 @@ const createTeacherSchema = Joi.object({
   school_principal: Joi.string().allow('', null),
   annual_leave_quota: Joi.number().integer().min(0).max(365).allow(null),
   service_start_date: Joi.date().iso().allow(null),
-  personnel_type: Joi.string().valid('ogretmen', 'memur', 'isci', 'typ').allow(null),
+  first_duty_date: Joi.date().iso().allow(null),
+  personnel_type: Joi.string().valid('ogretmen', 'memur', 'isci', 'typ', 'diger').allow(null),
+  personnel_category_id: Joi.number().integer().allow(null),
   contract_start_date: Joi.date().iso().allow(null),
   contract_end_date: Joi.date().iso().allow(null),
   union_name: Joi.string().trim().allow('', null).max(150),
@@ -33,6 +41,8 @@ const exportTeacherSchema = Joi.object({
   filters: Joi.object({
     q: Joi.string().allow('').optional(),
     school_id: Joi.number().integer().optional(),
+    scope: Joi.string().valid('teachers', 'staff', 'all').optional(),
+    category_id: Joi.number().integer().optional(),
   }).optional(),
 });
 
@@ -49,7 +59,8 @@ const mebbisImportRowSchema = Joi.object({
   gorev: Joi.string().allow('', null),
   brans: Joi.string().allow('', null),
   seviye_unvani: Joi.string().allow('', null),
-  personnel_type: Joi.string().valid('ogretmen', 'memur', 'isci', 'typ').allow('', null),
+  kariyer: Joi.string().allow('', null),
+  personnel_type: Joi.string().valid('ogretmen', 'memur', 'isci', 'typ', 'diger').allow('', null),
   ogrenim_durumu: Joi.string().allow('', null),
   kurum_sicil_no: Joi.string().allow('', null),
   emekli_sicil_no: Joi.string().allow('', null),
@@ -71,4 +82,8 @@ const importMebbisCommitSchema = Joi.object({
   rows: Joi.array().items(mebbisImportRowSchema).min(1).required(),
 });
 
-module.exports = { createTeacherSchema, exportTeacherSchema, importMebbisCommitSchema };
+const updateTeacherSchema = createTeacherSchema.fork(['tenant_id', 'first_name', 'last_name'], (schema) =>
+  schema.optional()
+);
+
+module.exports = { createTeacherSchema, updateTeacherSchema, exportTeacherSchema, importMebbisCommitSchema };

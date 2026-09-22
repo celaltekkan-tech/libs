@@ -32,6 +32,8 @@ import { ApiError, getErrorMessage } from '../api/client'
 import type { Exam } from '../types/exam'
 import { classroomLabel } from '../types/classroom'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+import { TypedPhraseConfirmModal } from './TypedPhraseConfirmModal'
+import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 dayjs.extend(isoWeek)
 
@@ -165,6 +167,14 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
   useEffect(() => {
     void load()
   }, [load])
+
+  const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
+    getIds: () => exams.map((e) => e.id),
+    deleteOne: (id) => deleteExam(Number(id)),
+    noun: 'ortak sınav kaydı',
+    reload: () => void load(),
+    message,
+  })
 
   const examsByDate = useMemo(() => {
     const map = new Map<string, Exam[]>()
@@ -573,6 +583,11 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
           <Button icon={<DownloadOutlined />} loading={submitting} onClick={() => void onExport()}>
             Dışa Aktar
           </Button>
+          {canDelete && exams.length > 0 && (
+            <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+              Toplu sil ({exams.length})
+            </Button>
+          )}
         </Space>
       </Space>
 
@@ -922,6 +937,14 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
           />
         )}
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Ortak sınavları toplu sil"
+        description={`Görünen ${exams.length} ortak sınav kaydı silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </div>
   )
 }

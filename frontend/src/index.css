@@ -98,6 +98,21 @@ body {
   color: #fff;
   font-weight: 700;
   letter-spacing: 0.5px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.login-mark-image {
+  background: #fff;
+  padding: 4px;
+  box-sizing: border-box;
+}
+
+.login-mark-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 
 .login-title {
@@ -132,10 +147,30 @@ body {
   font-weight: 700;
   font-size: 16px;
   letter-spacing: 0.3px;
-  padding: 20px 24px;
+  padding: 14px 20px;
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.app-brand-logo {
+  flex-shrink: 0;
+  width: 40px !important;
+  height: 40px !important;
+  object-fit: contain;
+  background: #fff;
+  border-radius: 8px;
+  padding: 3px;
+  box-sizing: border-box;
+}
+
+.app-sider.ant-layout-sider-collapsed .app-sider-brand {
+  padding: 12px;
+  justify-content: center;
 }
 
 .app-sider-search {
@@ -147,16 +182,69 @@ body {
   border-inline-end: none;
   overflow-y: auto;
   overflow-x: visible;
-  max-height: calc(100vh - 140px);
+  max-height: calc(100vh - 190px);
+  flex: 1;
+}
+
+.app-sider-menu-edit {
+  margin-top: auto;
+  padding: 8px 12px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.app-sider-menu-edit .ant-btn {
+  color: rgba(255, 255, 255, 0.75);
+  text-align: left;
+}
+
+.app-sider-menu-edit .ant-btn:hover {
+  color: #fff;
+}
+
+.app-sider .ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: visible;
+}
+
+.menu-layout-home {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: rgba(29, 78, 137, 0.08);
+}
+
+.menu-layout-item {
+  padding: 6px 8px;
+  margin-bottom: 4px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+[data-theme='dark'] .menu-layout-item {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.menu-layout-item.is-drag-over,
+.menu-layout-group.is-drag-over {
+  border-color: #1677ff;
+  background: rgba(22, 119, 255, 0.08);
+}
+
+.menu-layout-divider {
+  height: 1px;
+  margin: 0 0 8px;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] .menu-layout-divider {
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .app-sider-menu .ant-menu-submenu-title {
   font-weight: 600;
-}
-
-/* Daraltılmış menüde grup popup'ının sider içinde kesilmesini önle */
-.app-sider .ant-layout-sider-children {
-  overflow: visible;
 }
 
 .rich-text-editor-surface:focus {
@@ -198,8 +286,15 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  row-gap: 8px;
+  height: auto !important;
+  min-height: 64px;
+  line-height: normal !important;
+  overflow: visible;
   background: var(--app-header-bg);
   padding-inline: 24px;
+  padding-block: 8px;
   border-bottom: 1px solid var(--app-header-border);
 }
 
@@ -216,7 +311,55 @@ body {
 .app-content {
   padding: 32px;
   width: 100%;
-  overflow-x: hidden;
+  max-width: 100%;
+  min-width: 0;
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+.app-content > div {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.app-content .ant-space {
+  max-width: 100%;
+}
+
+.app-content .ant-table-wrapper {
+  position: relative;
+  z-index: 0;
+  max-width: 100%;
+}
+
+.app-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  margin-bottom: 16px;
+  position: relative;
+  z-index: 5;
+}
+
+.app-page-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 16px;
+  width: 100%;
+  margin-bottom: 16px;
+  position: relative;
+  z-index: 1;
+}
+
+.app-content > .ant-space:first-child,
+.app-content > div > .ant-space:first-child {
+  align-items: flex-start;
 }
 
 .app-sider-backdrop {
@@ -283,10 +426,24 @@ body {
   background: var(--app-bg);
 }
 
-.feedback-fab {
+.feedback-fab-host {
   position: fixed;
   right: 0;
   bottom: 28px;
+  z-index: 1000;
+  width: 48px;
+  height: 48px;
+  pointer-events: none;
+}
+
+.feedback-fab-host > * {
+  pointer-events: auto;
+}
+
+.feedback-fab {
+  position: absolute;
+  right: 0;
+  bottom: 0;
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -535,29 +692,30 @@ body {
 }
 
 /* —— Bildirim zili —— */
+/* Okunmamış varken her 20 sn kısa sallanma */
 .notification-bell.has-unread {
-  animation: notification-bell-shake 60s ease-in-out infinite;
+  animation: notification-bell-shake 20s ease-in-out infinite;
 }
 
 @keyframes notification-bell-shake {
   0%,
-  1.2%,
+  3.5%,
   100% {
     transform: rotate(0deg);
   }
-  0.2% {
+  0.5% {
     transform: rotate(16deg);
   }
-  0.4% {
+  1% {
     transform: rotate(-14deg);
   }
-  0.6% {
+  1.5% {
     transform: rotate(12deg);
   }
-  0.8% {
+  2.5% {
     transform: rotate(-10deg);
   }
-  1% {
+  3% {
     transform: rotate(6deg);
   }
 }
@@ -579,4 +737,181 @@ body {
 
 [data-theme='dark'] .notification-item.is-unread {
   background: rgba(96, 165, 250, 0.1);
+}
+
+.dashboard-layout-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.dashboard-widget {
+  position: relative;
+  height: 100%;
+}
+
+.dashboard-widget > .ant-card {
+  width: 100%;
+  height: 100%;
+}
+
+.dashboard-widget.is-dragging {
+  opacity: 0.5;
+}
+
+.dashboard-widget.is-drop-left::after,
+.dashboard-widget.is-drop-right::after,
+.dashboard-widget.is-drop-top::after,
+.dashboard-widget.is-drop-bottom::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  z-index: 2;
+  border-radius: 10px;
+  border: 2px dashed #1d4e89;
+  background: rgba(29, 78, 137, 0.12);
+}
+
+.dashboard-widget.is-drop-left::after {
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: 48%;
+}
+
+.dashboard-widget.is-drop-right::after {
+  top: 4px;
+  bottom: 4px;
+  right: 4px;
+  width: 48%;
+}
+
+.dashboard-widget.is-drop-top::after {
+  top: 4px;
+  left: 4px;
+  right: 4px;
+  height: 28%;
+}
+
+.dashboard-widget.is-drop-bottom::after {
+  bottom: 4px;
+  left: 4px;
+  right: 4px;
+  height: 28%;
+}
+
+.dashboard-widget.is-drop-left::before,
+.dashboard-widget.is-drop-right::before {
+  content: 'Yanına';
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #1d4e89;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.dashboard-widget.is-drop-left::before {
+  left: 26%;
+}
+
+.dashboard-widget.is-drop-right::before {
+  left: 74%;
+}
+
+.dashboard-widget .ant-card-head-wrapper {
+  padding-left: 18px;
+  padding-right: 28px;
+}
+
+.dashboard-widget .ant-card:not(:has(.ant-card-head)) .ant-card-body {
+  padding-left: 36px;
+  padding-right: 36px;
+}
+
+.dashboard-drag-handle {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: grab;
+  line-height: 1;
+}
+
+.dashboard-hide-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.dashboard-drag-handle:hover,
+.dashboard-drag-handle:focus-visible {
+  color: #1d4e89;
+  background: rgba(29, 78, 137, 0.08);
+}
+
+.dashboard-hide-btn:hover,
+.dashboard-hide-btn:focus-visible {
+  color: #cf1322;
+  background: rgba(207, 19, 34, 0.08);
+}
+
+.dashboard-drag-handle:active {
+  cursor: grabbing;
+}
+
+[data-theme='dark'] .dashboard-widget.is-drop-left::after,
+[data-theme='dark'] .dashboard-widget.is-drop-right::after,
+[data-theme='dark'] .dashboard-widget.is-drop-top::after,
+[data-theme='dark'] .dashboard-widget.is-drop-bottom::after {
+  border-color: #60a5fa;
+  background: rgba(96, 165, 250, 0.16);
+}
+
+[data-theme='dark'] .dashboard-widget.is-drop-left::before,
+[data-theme='dark'] .dashboard-widget.is-drop-right::before {
+  background: #2563eb;
+}
+
+[data-theme='dark'] .dashboard-drag-handle:hover,
+[data-theme='dark'] .dashboard-drag-handle:focus-visible {
+  color: #93c5fd;
+  background: rgba(147, 197, 253, 0.12);
+}
+
+[data-theme='dark'] .dashboard-hide-btn:hover,
+[data-theme='dark'] .dashboard-hide-btn:focus-visible {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
 }

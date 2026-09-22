@@ -4,10 +4,11 @@ export const MENU_PATH_PERMISSION: Record<string, string> = {
   '/classrooms': 'classrooms.read',
   '/students': 'students.read',
   '/teachers': 'teachers.read',
+  '/other-personnel': 'teachers.read',
   '/subjects': 'schedule.read',
   '/academic-years': 'academic_years.read',
   '/norm-positions': 'norm_positions.read',
-  '/trainings': 'trainings.read',
+  '/promotions': 'teachers.read',
   '/teacher-documents': 'teacher_documents.read',
   '/leaves': 'leaves.read',
   '/duty': 'duty.read',
@@ -23,6 +24,9 @@ export const MENU_PATH_PERMISSION: Record<string, string> = {
   '/guidance': 'guidance.read',
   '/users': 'users.read',
   '/audit-logs': 'audit.read',
+  '/work-tasks': 'work_tasks.read',
+  // /calendar: kaynak OR kontrolü AppLayout + CALENDAR_MENU_SOURCE_PERMISSIONS
+  '/message-logs': 'message_logs.read',
   '/feedback': 'feedback.read',
 }
 

@@ -6,6 +6,7 @@ const createLicenseSchema = Joi.object({
   starts_at: Joi.date().optional(),
   ends_at: Joi.date().allow(null).optional(),
   notes: Joi.string().allow('', null).max(1000).optional(),
+  sms_quota: Joi.number().integer().min(1).max(10000000).allow(null).optional(),
 });
 
 module.exports = { createLicenseSchema };

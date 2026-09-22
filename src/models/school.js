@@ -21,6 +21,27 @@ module.exports = (sequelize, DataTypes) => {
           allowNull: false,
           defaultValue: 'lise',
         },
+        daily_period_count: {
+          type: DataTypes.INTEGER,
+          allowNull: false,
+          defaultValue: 8,
+        },
+        province_id: {
+          type: DataTypes.INTEGER,
+          allowNull: true,
+        },
+        district_id: {
+          type: DataTypes.INTEGER,
+          allowNull: true,
+        },
+        directory_school_id: {
+          type: DataTypes.INTEGER,
+          allowNull: true,
+        },
+        logo_path: {
+          type: DataTypes.STRING(255),
+          allowNull: true,
+        },
         meta: {
           type: DataTypes.JSONB,
           allowNull: true,
@@ -37,6 +58,9 @@ module.exports = (sequelize, DataTypes) => {
   
     School.associate = (models) => {
       School.belongsTo(models.Tenant, { foreignKey: "tenant_id" });
+      School.belongsTo(models.Province, { foreignKey: "province_id" });
+      School.belongsTo(models.District, { foreignKey: "district_id" });
+      School.belongsTo(models.DirectorySchool, { foreignKey: "directory_school_id" });
       School.hasMany(models.UserSchool, { foreignKey: "school_id" });
       School.hasMany(models.Teacher, { foreignKey: "school_id" });
       School.hasMany(models.Classroom, { foreignKey: "school_id" });
@@ -45,6 +69,7 @@ module.exports = (sequelize, DataTypes) => {
       School.hasMany(models.DykCourse, { foreignKey: "school_id" });
       School.hasMany(models.ExamRoom, { foreignKey: "school_id" });
       School.hasMany(models.ExamSession, { foreignKey: "school_id" });
+      School.hasMany(models.DisciplineIncident, { foreignKey: "school_id" });
     };
   
     return School;

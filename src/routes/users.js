@@ -14,6 +14,7 @@ router.get('/', auth, moduleGuard, permission('users.read'), ctrl.list);
 router.get('/:id', auth, moduleGuard, permission('users.read'), ctrl.get);
 router.post('/', auth, moduleGuard, permission('users.create'), validate(createUserSchema), ctrl.create);
 router.put('/:id', auth, moduleGuard, permission('users.update'), validate(updateUserSchema), ctrl.update);
+router.post('/:id/reset-sms-login', auth, moduleGuard, permission('users.update'), ctrl.resetSmsLogin);
 router.delete('/:id', auth, moduleGuard, permission('users.delete'), ctrl.remove);
 
 module.exports = router;

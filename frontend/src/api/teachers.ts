@@ -1,5 +1,11 @@
 import client from './client'
-import type { ApplyPromotionPayload, PromotionHistory, Teacher, TeacherPayload } from '../types/teacher'
+import type {
+  ApplyPromotionPayload,
+  PromotionHistory,
+  ReportEightYearCheckPayload,
+  Teacher,
+  TeacherPayload,
+} from '../types/teacher'
 import type { ExportFormat } from '../utils/download'
 
 interface Envelope<T> {
@@ -10,10 +16,22 @@ interface Envelope<T> {
 export interface TeacherFilters {
   q?: string
   school_id?: number
+  scope?: 'teachers' | 'staff' | 'all'
 }
 
-export async function listTeachers(): Promise<Teacher[]> {
-  const { data } = await client.get<Envelope<Teacher[]>>('/api/teachers')
+export async function fetchSchoolPrincipal(schoolId: number): Promise<string | null> {
+  const { data } = await client.get<Envelope<{ full_name: string | null }>>('/api/teachers/school-principal', {
+    params: { school_id: schoolId },
+  })
+  return data.data.full_name
+}
+
+export async function listTeachers(params?: {
+  scope?: 'teachers' | 'staff' | 'all'
+  category_id?: number
+  school_id?: number
+}): Promise<Teacher[]> {
+  const { data } = await client.get<Envelope<Teacher[]>>('/api/teachers', { params })
   return data.data
 }
 
@@ -50,16 +68,30 @@ export interface UpcomingPromotion {
   teacher_id: number
   teacher_name: string
   personnel_no: string | null
+  personnel_type: string
   degree: string | null
   rank: string | null
-  degree_rank_date: string
-  next_promotion_date: string
-  days_remaining: number
+  at_ceiling: boolean
+  suggested_degree: string | null
+  suggested_rank: string | null
+  degree_rank_date: string | null
+  next_promotion_date: string | null
+  days_remaining: number | null
+  in_current_period: boolean
+  eight_year_base_date: string | null
+  eight_year_next_checkpoint: string | null
+  eight_year_due: boolean
+  kariyer: string | null
+  kariyer_eligible: boolean
+  kariyer_suggested_degree: string | null
+  kariyer_suggested_title: string | null
 }
 
-export async function fetchUpcomingPromotions(days = 90): Promise<UpcomingPromotion[]> {
+export async function fetchUpcomingPromotions(
+  params: { days?: number; all?: boolean } = { days: 90 },
+): Promise<UpcomingPromotion[]> {
   const { data } = await client.get<Envelope<UpcomingPromotion[]>>('/api/teachers/promotions/upcoming', {
-    params: { days },
+    params,
   })
   return data.data
 }
@@ -70,6 +102,17 @@ export async function applyPromotion(
 ): Promise<{ teacher: Teacher; history: PromotionHistory }> {
   const { data } = await client.post<Envelope<{ teacher: Teacher; history: PromotionHistory }>>(
     `/api/teachers/${teacherId}/promotions`,
+    payload,
+  )
+  return data.data
+}
+
+export async function reportEightYearCheck(
+  teacherId: number,
+  payload: ReportEightYearCheckPayload,
+): Promise<{ teacher: Teacher; history?: PromotionHistory; bonusApplied: boolean }> {
+  const { data } = await client.post<Envelope<{ teacher: Teacher; history?: PromotionHistory; bonusApplied: boolean }>>(
+    `/api/teachers/${teacherId}/promotions/eight-year-check`,
     payload,
   )
   return data.data
@@ -98,10 +141,15 @@ export async function downloadSalaryChangeForm(month: number, year: number): Pro
 }
 
 export type TeacherDocumentType = 'gorevlendirme' | 'baslama' | 'ayrilis'
+export type TeacherDocumentFormat = 'docx' | 'pdf'
 
-export async function downloadTeacherDocument(id: number, type: TeacherDocumentType): Promise<Blob> {
+export async function downloadTeacherDocument(
+  id: number,
+  type: TeacherDocumentType,
+  format: TeacherDocumentFormat = 'docx',
+): Promise<Blob> {
   const { data } = await client.get(`/api/teachers/${id}/document`, {
-    params: { type },
+    params: { type, format },
     responseType: 'blob',
     timeout: 30000,
   })
@@ -121,6 +169,7 @@ export interface MebbisImportRow {
   gorev: string | null
   brans: string | null
   seviye_unvani: string | null
+  kariyer: string | null
   personnel_type: string
   ogrenim_durumu: string | null
   kurum_sicil_no: string | null

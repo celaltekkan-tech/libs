@@ -24,3 +24,25 @@ export async function updateSchool(id: number, payload: Partial<SchoolPayload>):
 export async function deleteSchool(id: number): Promise<void> {
   await client.delete(`/api/schools/${id}`)
 }
+
+export async function uploadSchoolLogo(id: number, file: File): Promise<{ logo_url: string | null }> {
+  const form = new FormData()
+  form.append('logo', file)
+  const { data } = await client.post<Envelope<{ logo_url: string | null }>>(`/api/schools/${id}/logo`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60000,
+  })
+  return data.data
+}
+
+export async function fetchSchoolLogoBlob(id: number): Promise<Blob> {
+  const { data } = await client.get(`/api/schools/${id}/logo`, {
+    responseType: 'blob',
+    timeout: 30000,
+  })
+  return data as Blob
+}
+
+export async function deleteSchoolLogo(id: number): Promise<void> {
+  await client.delete(`/api/schools/${id}/logo`)
+}

@@ -1,5 +1,6 @@
 import client from './client'
 import type {
+  RegistrationStatus,
   Student,
   StudentFilters,
   StudentImportResult,
@@ -21,6 +22,7 @@ function toParams(filters?: StudentFilters): Record<string, string | number> | u
   if (filters.class_level) params.class_level = filters.class_level
   if (filters.section) params.section = filters.section
   if (filters.gender) params.gender = filters.gender
+  if (filters.yasi != null) params.yasi = filters.yasi
   if (filters.registration_status) params.registration_status = filters.registration_status
   return Object.keys(params).length ? params : undefined
 }
@@ -42,6 +44,15 @@ export async function createStudent(tenantId: number, payload: StudentPayload): 
 
 export async function updateStudent(id: number, payload: Partial<StudentPayload>): Promise<Student> {
   const { data } = await client.put<Envelope<Student>>(`/api/students/${id}`, payload)
+  return data.data
+}
+
+export async function bulkRegistrationStatus(
+  updates: Array<{ id: number; registration_status: Exclude<RegistrationStatus, 'aktif'> }>,
+): Promise<{ updated: number }> {
+  const { data } = await client.post<Envelope<{ updated: number }>>('/api/students/registration-statuses', {
+    updates,
+  })
   return data.data
 }
 
@@ -74,6 +85,7 @@ export async function importStudents(
     classroomId?: number | null
     headerRow?: number | null
     columnMapping?: Record<string, string>
+    columnSuggestions?: Record<string, string>
     classLevel?: string | null
     section?: string | null
   },
@@ -87,6 +99,9 @@ export async function importStudents(
   if (options?.section) form.append('section', options.section)
   if (options?.columnMapping) {
     form.append('column_mapping', JSON.stringify(options.columnMapping))
+  }
+  if (options?.columnSuggestions && Object.keys(options.columnSuggestions).length > 0) {
+    form.append('column_suggestions', JSON.stringify(options.columnSuggestions))
   }
   const { data } = await client.post<Envelope<StudentImportResult>>('/api/students/import', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -107,14 +122,18 @@ export async function exportStudents(payload: {
   return data as Blob
 }
 
-export type StudentCertificateType = 'ogrenci_belgesi' | 'ogrenim_durumu'
+export async function uploadStudentPhoto(id: number, file: File): Promise<{ photo_url: string | null }> {
+  const form = new FormData()
+  form.append('photo', file)
+  const { data } = await client.post<Envelope<{ photo_url: string | null }>>(`/api/students/${id}/photo`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60000,
+  })
+  return data.data
+}
 
-export async function downloadStudentCertificate(
-  id: number,
-  type: StudentCertificateType,
-): Promise<Blob> {
-  const { data } = await client.get(`/api/students/${id}/certificate`, {
-    params: { type },
+export async function fetchStudentPhotoBlob(id: number): Promise<Blob> {
+  const { data } = await client.get(`/api/students/${id}/photo`, {
     responseType: 'blob',
     timeout: 30000,
   })

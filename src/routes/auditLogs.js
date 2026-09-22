@@ -11,3 +11,4 @@ const moduleGuard = requireModule('audit');
 router.get('/', auth, moduleGuard, permission('audit.read'), ctrl.list);
 
 module.exports = router;
+

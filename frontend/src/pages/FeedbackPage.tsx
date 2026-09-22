@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   App,
   Button,
@@ -21,13 +22,18 @@ import {
   EyeOutlined,
   InboxOutlined,
   PaperClipOutlined,
+  PlusOutlined,
   SendOutlined,
 } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
 import type { RcFile, UploadFile } from 'antd/es/upload/interface'
 import { AppLayout } from '../components/AppLayout'
+import { getPageHelp } from '../constants/pageHelp'
+import { FilterBar } from '../components/FilterBar'
+import { FeedbackUpdatesBlock, FeedbackThreadBody } from '../components/FeedbackUpdatesBlock'
 import { FeedbackMessageHtml, RichTextEditor, sanitizeFeedbackHtml, stripHtml } from '../components/RichTextEditor'
 import {
+  addFeedbackUpdate,
   cancelFeedback,
   downloadFeedbackAttachment,
   listMyFeedback,
@@ -39,6 +45,8 @@ import {
   FEEDBACK_ACCEPT,
   FEEDBACK_FILTER_OPTIONS,
   FEEDBACK_STATUS_LABEL,
+  OPEN_FEEDBACK_STATUSES,
+  REVIEW_FEEDBACK_STATUSES,
   formatFileSize,
   isImageAttachment,
   isPdfAttachment,
@@ -55,6 +63,7 @@ const MAX_FILES = 5
 
 export function FeedbackPage() {
   const { message } = App.useApp()
+  const { pathname } = useLocation()
   const [form] = Form.useForm<{ message: string }>()
   const [cancelForm] = Form.useForm<{ reason: string }>()
   const [submitting, setSubmitting] = useState(false)
@@ -65,6 +74,9 @@ export function FeedbackPage() {
   const [fileList, setFileList] = useState<UploadFile[]>([])
   const [cancelTarget, setCancelTarget] = useState<Feedback | null>(null)
   const [cancelSubmitting, setCancelSubmitting] = useState(false)
+  const [updateTarget, setUpdateTarget] = useState<Feedback | null>(null)
+  const [updateForm] = Form.useForm<{ body: string }>()
+  const [updateSubmitting, setUpdateSubmitting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -98,7 +110,8 @@ export function FeedbackPage() {
       const files = fileList
         .map((f) => f.originFileObj)
         .filter((f): f is RcFile => Boolean(f))
-      await submitFeedback(html, files)
+      const page = getPageHelp(pathname)
+      await submitFeedback(html, files, { path: pathname, title: page.title })
       message.success('Geri bildiriminiz gönderildi, teşekkürler')
       form.resetFields()
       setFileList([])
@@ -143,6 +156,32 @@ export function FeedbackPage() {
     }
   }
 
+  const openAddUpdate = (item: Feedback) => {
+    updateForm.resetFields()
+    setUpdateTarget(item)
+  }
+
+  const submitAddUpdate = async (values: { body: string }) => {
+    if (!updateTarget) return
+    const html = sanitizeFeedbackHtml(values.body || '')
+    if (stripHtml(html).length < 3) {
+      message.error('Gelişme metni en az 3 karakter olmalı')
+      return
+    }
+    setUpdateSubmitting(true)
+    try {
+      await addFeedbackUpdate(updateTarget.id, html)
+      message.success('Gelişme eklendi; kayıt beklemede')
+      setUpdateTarget(null)
+      updateForm.resetFields()
+      void load()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setUpdateSubmitting(false)
+    }
+  }
+
   const addImageFile = (blob: File) => {
     if (blob.size > MAX_FILE_SIZE) {
       message.error('Ekran görüntüsü en fazla 5 MB olabilir')
@@ -174,7 +213,7 @@ export function FeedbackPage() {
 
   return (
     <AppLayout title="Geri Bildirim">
-      <div style={{ maxWidth: 720 }}>
+      <div style={{ width: '100%' }}>
         <Typography.Title level={3}>Geri Bildirim Gönder</Typography.Title>
         <Typography.Paragraph type="secondary">
           Madde imi, kalın/italik yazı kullanabilirsiniz. İsterseniz PDF veya ekran görüntüsü ekleyin
@@ -242,7 +281,7 @@ export function FeedbackPage() {
           Gönderdiklerim
         </Typography.Title>
 
-        <Space wrap style={{ marginBottom: 16 }}>
+        <FilterBar>
           <Segmented
             value={statusFilter}
             onChange={(value) => setStatusFilter(value as FeedbackStatusFilter)}
@@ -255,14 +294,14 @@ export function FeedbackPage() {
             onChange={(values) => setDateRange(values as [Dayjs, Dayjs] | null)}
             placeholder={['Başlangıç', 'Bitiş']}
           />
-        </Space>
+        </FilterBar>
 
         <List
           loading={loading}
           dataSource={feedbacks}
           locale={{ emptyText: <Empty description="Bu filtrelere uygun geri bildirim yok" /> }}
           pagination={{
-            pageSize: 10,
+            defaultPageSize: 10,
             showSizeChanger: true,
             pageSizeOptions: [5, 10, 20, 50],
             showTotal: (total) => `Toplam ${total} kayıt`,
@@ -274,14 +313,29 @@ export function FeedbackPage() {
                 <Space direction="vertical" style={{ width: '100%' }} size="small">
                   <Space style={{ justifyContent: 'space-between', width: '100%' }}>
                     <Typography.Text type="secondary">
+                      <Typography.Text type="secondary" copyable={{ text: String(item.id) }}>
+                        #{item.id}
+                      </Typography.Text>
+                      {' · '}
                       {item.User?.full_name ? `${item.User.full_name} — ` : ''}
                       {new Date(item.created_at).toLocaleString('tr-TR')}
+                      {item.page_title || item.page_path ? ` · ${item.page_title || item.page_path}` : ''}
                     </Typography.Text>
                     <Space>
                       <Tag color={FEEDBACK_STATUS_LABEL[item.status].color}>
                         {FEEDBACK_STATUS_LABEL[item.status].text}
                       </Tag>
-                      {(item.status === 'new' || item.status === 'read') && (
+                      {REVIEW_FEEDBACK_STATUSES.includes(item.status) && (
+                        <Button
+                          size="small"
+                          type="link"
+                          icon={<PlusOutlined />}
+                          onClick={() => openAddUpdate(item)}
+                        >
+                          Gelişme ekle
+                        </Button>
+                      )}
+                      {OPEN_FEEDBACK_STATUSES.includes(item.status) && (
                         <Button
                           size="small"
                           danger
@@ -325,27 +379,52 @@ export function FeedbackPage() {
                       ))}
                     </Space>
                   )}
-                  {item.reply && (
-                    <Card size="small" type="inner" title="Yönetici cevabı">
-                      <FeedbackMessageHtml html={item.reply} />
-                      {item.replied_at && (
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          {new Date(item.replied_at).toLocaleString('tr-TR')}
-                        </Typography.Text>
-                      )}
-                    </Card>
-                  )}
-                  {item.status === 'cancelled' && item.cancel_reason && (
-                    <Card size="small" type="inner" title="İptal nedeni">
-                      <Typography.Paragraph style={{ marginBottom: 0 }}>{item.cancel_reason}</Typography.Paragraph>
-                    </Card>
-                  )}
+                  <FeedbackUpdatesBlock item={item} />
                 </Space>
               </Card>
             </List.Item>
           )}
         />
       </div>
+
+      <Modal
+        title="Gelişme ekle"
+        open={!!updateTarget}
+        onCancel={() => setUpdateTarget(null)}
+        onOk={() => updateForm.submit()}
+        confirmLoading={updateSubmitting}
+        okText="Gönder"
+        cancelText="Vazgeç"
+        destroyOnHidden
+        width={560}
+      >
+        {updateTarget && (
+          <div style={{ marginBottom: 12, maxHeight: 220, overflow: 'auto' }}>
+            <FeedbackThreadBody item={updateTarget} />
+          </div>
+        )}
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
+          Ek bilgi veya gelişme ekleyebilirsiniz. Gönderim sonrası kayıt beklemede olur; süreç sonuçlanana kadar böyle devam eder.
+        </Typography.Paragraph>
+        <Form form={updateForm} layout="vertical" onFinish={submitAddUpdate}>
+          <Form.Item
+            name="body"
+            label="Gelişme"
+            rules={[
+              {
+                validator: async (_, value) => {
+                  if (stripHtml(value || '').length < 3) {
+                    throw new Error('Gelişme metni en az 3 karakter olmalı')
+                  }
+                  if ((value || '').length > 10000) throw new Error('Metin çok uzun')
+                },
+              },
+            ]}
+          >
+            <RichTextEditor minHeight={120} placeholder="Ek bilgi veya gelişme…" />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal
         title="Geri bildirimi iptal et"

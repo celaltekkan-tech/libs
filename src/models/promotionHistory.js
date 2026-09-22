@@ -9,6 +9,17 @@ module.exports = (sequelize, DataTypes) => {
     new_rank: DataTypes.STRING,
     new_degree_rank_date: DataTypes.DATE,
     note: DataTypes.STRING,
+    type: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: 'manuel',
+    },
+    override_reason: DataTypes.STRING,
+    is_permanent: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+    },
     created_by: DataTypes.INTEGER,
   }, {
     tableName: 'PromotionHistories',

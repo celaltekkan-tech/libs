@@ -163,6 +163,18 @@ Ayrıca tenant'ın planında `schools` modülü açık olmalıdır (bkz. Lisans 
 - `PUT /api/schools/:id` - Okul güncelle
 - `DELETE /api/schools/:id` - Okul sil
 
+### Coğrafi referans ve MEB okul kataloğu
+
+Giriş yapmış kullanıcılar okuyabilir; özel izin gerekmez. `Schools` tablosundaki kurum okullarından ayrıdır.
+Katalog tarama sayfası yalnızca platform yöneticisi menüsündedir (`/platform/directory-schools`); kiracılar okul eklerken aynı API üzerinden seçer.
+
+- `GET /api/geo/provinces` - 81 il
+- `GET /api/geo/districts?province_id=` - İlçeler
+- `GET /api/geo/provinces/:provinceId/districts` - İlçeler (alternatif yol)
+- `GET /api/geo/directory-schools` - Ortaokul/lise kataloğu (`province_id`, `district_id`, `school_type=ortaokul|lise`, `q`, `limit`, `offset`). Yanıtta varsa 6 haneli MEB `code` alanı da döner.
+
+Kaynak: iller/ilçeler TurkiyeAPI 2025 veri seti; okullar MEB kurum listesinden derlenmiş açık veri (kurum kodları YOL alanından). Seed: `npm run seed`.
+
 ### Teachers
 
 Gerekli izinler: `teachers.read`, `teachers.create`, `teachers.update`, `teachers.delete`.
@@ -277,15 +289,63 @@ JSON şablonu vb.) `smsEngine.SmsConfigError` fırlatılır; `announcementsContr
 yakalayıp `500` ile "SMS motoru yapılandırma hatası" mesajı döner — bu, tek bir alıcının
 gönderim başarısızlığından ayrıdır, motor hiç çalıştırılamadığı anlamına gelir.
 
+### İş Takibi (Work Tasks)
+
+Tenant bazlı periyodik görevler: tek sefer / günlük / haftalık / aylık / yıllık tekrar,
+zorunlu iş bayrağı, atama yalnızca aynı tenant’ın sistem kullanıcılarına (`Users`).
+Frontend: `/work-tasks` (Sistem → İş Takibi). İzinler: `work_tasks.read|create|update|delete`.
+
+- `GET /api/work-tasks` — `?mine=true`, `?overdue=true`, `?mandatory=true`, `?status=`
+- `GET /api/work-tasks/:id`
+- `POST /api/work-tasks` — gövde: başlık, `assignee_user_id`, `frequency`, `next_due_at`, `notify_channels` (`in_app`, `sms`, `email`), `is_mandatory`, `remind_before_minutes`
+- `PUT /api/work-tasks/:id`
+- `POST /api/work-tasks/:id/complete` — atanan veya `work_tasks.update` yetkisi
+- `POST /api/work-tasks/:id/pause` / `resume`, `DELETE /api/work-tasks/:id`
+
+**Hatırlatma zamanlayıcısı:** `src/server.js` içinde `node-cron` ile
+`processWorkTaskReminders()` çalışır. Ortam değişkenleri:
+
+| Değişken | Açıklama |
+|---|---|
+| `WORK_TASK_CRON` | Cron ifadesi (varsayılan `*/15 * * * *`) |
+| `WORK_TASK_REMINDERS_ENABLED` | `false` ise cron kaydı yapılmaz |
+
+**Öğrenci yaşı:** `src/server.js` içinde `refreshStudentAges()` her gün `Europe/Istanbul` saatine göre çalışır; doğum tarihi olan kayıtlarda `yasi` alanı güncellenir.
+
+| Değişken | Açıklama |
+|---|---|
+| `STUDENT_AGE_CRON` | Cron ifadesi (varsayılan `5 0 * * *`, 00:05) |
+| `STUDENT_AGE_CRON_ENABLED` | `false` ise cron kaydı yapılmaz |
+
+Vade yaklaşınca ve zorunlu görev gecikince seçilen kanallarla bildirim gider. SMS için atanan
+kullanıcının `Users.phone` alanı dolu olmalı; yoksa SMS log’da başarısız sayılır, diğer kanallar
+denenmeye devam eder.
+
+#### E-posta motoru (`src/services/emailEngine.js`)
+
+İş takibi e-posta uyarıları için nodemailer + SMTP. Duyuru modülündeki e-posta stub’ından bağımsızdır.
+
+| Değişken | Açıklama |
+|---|---|
+| `SMTP_HOST` | SMTP sunucusu (zorunlu) |
+| `SMTP_FROM` | Gönderen adresi (zorunlu) |
+| `SMTP_PORT` | Varsayılan `587` |
+| `SMTP_SECURE` | `true` veya port `465` ise TLS |
+| `SMTP_USER` / `SMTP_PASS` | Kimlik doğrulama (opsiyonel) |
+
+`notify_channels` içinde `email` seçiliyken SMTP yapılandırması eksikse gönderim hata log’una yazılır.
+
 ### Licenses (Lisans Yönetimi)
 
 Tenant'lara lisans tanımlama/iptal etme sadece platform admin yetkisindedir. Bir tenant'a
-yeni lisans tanımlandığında, o tenant'ın varsa mevcut aktif lisansı otomatik olarak iptal edilir
-(bir tenant'ın aynı anda tek aktif lisansı olur, geçmiş kayıtları korunur).
+yeni **ana** lisans tanımlandığında, o tenant'ın varsa mevcut aktif ana lisansı otomatik olarak
+iptal edilir (geçmiş kayıtları korunur). **SMS** eklenti lisansı ana lisansı iptal etmez; yanına
+eklenir. Yeni SMS lisansı yalnızca önceki SMS eklentisini değiştirir. SMS vermek için hesabın
+aktif bir ana lisansı olmalıdır.
 
 - `GET /api/licenses` - Tüm lisansları listele (Platform admin), `?tenant_id=` ve `?status=` ile filtrelenebilir
 - `GET /api/licenses/:id` - Lisans detayı (Platform admin)
-- `POST /api/licenses` - Tenant'a lisans tanımla (Platform admin) — gövde: `{ "tenant_id", "plan", "starts_at"?, "ends_at"?, "notes"? }`
+- `POST /api/licenses` - Tenant'a lisans tanımla (Platform admin) — gövde: `{ "tenant_id", "plan", "starts_at"?, "ends_at"?, "notes"? }` (SMS paketlerinde kota plandan gelir: SMS 3000 / SMS 10000)
 - `PUT /api/licenses/:id/cancel` - Lisansı iptal et (Platform admin)
 
 Frontend: `/platform/licenses` sayfasından platform admin lisansları görüntüleyip
@@ -312,12 +372,15 @@ alma/yenileme" arayüzüne yönlendirilmesi ve sadece o arayüze erişebilmesi.
 Her planın hangi tenant modüllerini (menü + API) açtığı `src/config/licensePlans.js`
 içinde tanımlıdır (frontend karşılığı: `frontend/src/constants/licensePlans.ts`):
 
-| Plan | Modüller | Kullanıcı kotası |
-|---|---|---|
-| Free | Öğretmenler, Öğrenciler, Sınıflar | Yok |
-| Standart | Okullar, Öğretmenler, Öğrenciler, Sınıflar, Yetkilendirme | En fazla 2 kullanıcı |
-| Premium | Okullar, Öğretmenler, Kullanıcılar, Öğrenciler, Sınıflar | Sınırsız |
-| Kurumsal | Okullar, Öğretmenler, Kullanıcılar, Öğrenciler, Sınıflar | Sınırsız |
+| Plan | Tür | Modüller | Kota |
+|---|---|---|---|
+| Basic | Ana | Öğretmenler, Öğrenciler, Sınıflar | 1 okul; kullanıcı yok |
+| Standart | Ana | Okullar, Öğretmenler, Öğrenciler, Sınıflar, Yetkilendirme, Mobil ve diğer idari modüller | 1 okul; öğretmen/rehber hariç 2 kullanıcı |
+| Premium | Ana | Standart ile aynı | En fazla 3 okul; sınırsız kullanıcı |
+| SMS 3000 | Eklenti | Modül açmaz | 3.000 başarılı SMS (lisans süresince) |
+| SMS 10000 | Eklenti | Modül açmaz | 10.000 başarılı SMS (lisans süresince) |
+
+SMS eklentisi olmayan hesaplar öğretmen kayıt doğrulaması dışında SMS kullanamaz (veli duyurusu, görev hatırlatması, SMS ile giriş). Kota dolunca gönderim `402 SMS_QUOTA_EXCEEDED`, lisans yoksa `403 SMS_LICENSE_REQUIRED` döner. Lisans bitiminde veya yenilemede kullanılmayan SMS kredileri sıfırlanır; yeni lisans paket kotasıyla (0 kullanılmış) başlar. `login`/`me` yanıtındaki `sms_license` alanı kalan kotayı taşır.
 
 `moduleGuard` middleware'i (`src/middlewares/moduleGuard.js`) `teachers`/`students`/`schools`/`users`
 uçlarını korur: aktif lisans yoksa `402 LICENSE_EXPIRED`, lisans var ama modül plana
@@ -360,7 +423,7 @@ Response:
     },
     "roles": ["Müdür"],
     "permissions": ["schools.create", "teachers.read", "users.read", "..."],
-    "schools": [{ "id": 1, "name": "Demo Anadolu Lisesi", "code": "DEMO-001", "role": "Müdür" }],
+    "schools": [{ "id": 1, "name": "Demo Anadolu Lisesi", "code": "100001", "role": "Müdür" }],
     "is_global_admin": true,
     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
     "expires_at": "2026-09-01T21:40:00.000Z"
@@ -450,6 +513,77 @@ npm run smoke:cors   # frontend origin'inin CORS ayarlarıyla uyumunu test eder
 npm run build:frontend
 ```
 
+## Mobil Uygulama (Expo)
+
+Öğretmenlerin sınıfta hızlıca öğrenci arayıp disiplin bildirimi (öğretmen notu) oluşturması için `mobile/` klasöründe ayrı bir React Native (Expo) uygulaması bulunur: sunucu adresi girme, öğretmen kaydı (lisanslı okul + sicil/soyad/e-posta, e-posta veya SMS doğrulama), giriş, şifre değiştirme, öğrenci numarasıyla arama, hazır/serbest sebep etiketleriyle not oluşturma, kendi gönderdiği bildirimleri listeleme. Aynı backend uçlarını kullanır (`POST /api/auth/teacher-register`, `POST /api/auth/login`, `POST /api/auth/change-password`, `GET /api/auth/me`, `GET /api/students/lookup/:number`, `GET /api/teacher-notes/tag-options`, `POST /api/teacher-notes`, `GET /api/teacher-notes/mine`). **Bu, web yönetim panelinden tamamen farklı, ayrı bir uygulamadır** — panelin URL'sini telefon tarayıcısında açmak bu deneyimi vermez, aşağıdaki gibi kurulmuş/başlatılmış olması gerekir.
+
+Backend adresi APK'ya gömülü değildir: uygulama ilk açılışta "Sunucu Adresi" ekranını gösterir, girilen adres yalnızca o cihazda saklanır. Adres değiştiğinde (örn. LAN IP'den `https://api.oids.com.tr`'ye geçince) uygulamayı yeniden kurmaya gerek yoktur — giriş ekranındaki **Sunucu: ... (değiştir)** bağlantısına dokunup yeni adresi girmek yeterlidir.
+
+### Geliştirme sırasında test etme (Expo Go)
+
+En hızlı yol — kurulum/build gerektirmez, günlük geliştirme için kullanılır:
+
+```bash
+# 1) Backend'in telefonun erişebileceği bir adreste çalışıyor olması lazım
+npm run dev              # kök dizinde — http://<bilgisayarın-LAN-IP'si>:4000
+
+# 2) Mobil geliştirme sunucusu (Expo Go ile test için --go zorunlu)
+cd mobile
+npm install
+npm run start:go
+```
+
+1. Telefona **Expo Go** uygulamasını kurun (App Store / Play Store).
+2. Bilgisayar ve telefon **aynı Wi-Fi ağında** olmalı.
+3. `npm start` çıktısındaki QR kodu Expo Go ile (Android) veya kamerayla (iOS) okutun.
+4. Uygulama açılınca "Sunucu Adresi" ekranına bilgisayarın LAN IP'sini girin (örn. `http://192.168.1.10:4000`) — `ipconfig` (Windows) ile bulabilirsiniz.
+
+Bu yöntemle telefona kalıcı bir uygulama simgesi kurulmaz; Expo Go içinde çalışır, geliştirme bittiğinde kapatılır.
+
+> **Not:** `mobile/package.json`'da `expo-dev-client` paketi bulunduğu için düz `npm start`/`expo start` komutu artık varsayılan olarak "development build" moduna geçer ve düz Expo Go ile bağlanınca "Something went wrong" hatası verir. Expo Go ile test ederken mutlaka `npm run start:go` kullanın.
+
+### Gerçek cihaza kurulum — APK üretme ve indirme (EAS Build)
+
+Kalıcı olarak öğretmenlerin telefonuna kurulacak bir `.apk` üretmek için `mobile/eas.json` hazır. Bu adımlar **sizin** kendi bilgisayarınızdan, kendi Expo hesabınızla çalıştırmanız gerekir (bende bu hesaba erişim yok):
+
+```bash
+cd mobile
+npx eas login              # Expo hesabınızla giriş (yoksa expo.dev'den ücretsiz oluşturulur)
+npx eas build:configure    # Projeyi EAS hesabınıza bağlar (app.json'a projectId ekler)
+npm run build:preview      # APK üretir (profil: preview, platform: android)
+```
+
+Build birkaç dakika sürer ve Expo'nun bulut sunucularında çalışır (bilgisayarınızda Android Studio/SDK gerekmez). Bittiğinde:
+
+- Terminalde build'in bittiğine dair bir **indirme linki (.apk)** yazdırılır; o linki telefonda açıp dosyayı indirip kurabilirsiniz, veya
+- **expo.dev** üzerinde hesabınıza giriş yapıp projenizin **Builds** sekmesinden aynı APK'yı indirebilirsiniz.
+
+Android'de "bilinmeyen kaynaklardan yükleme" (Play Store dışı APK) izni açık olmalı; ilk kurulumda telefon bunu otomatik sorar.
+
+Adres netleştiğinde ve sabitlendiğinde tekrar build almanıza gerek yok — sadece uygulama içindeki "Sunucu Adresi" ekranından yeni adresi girmeniz yeterli. `npm run build:production` ise mağaza (Play Store/App Store) dağıtımı için `.aab`/ipa üretir; şimdilik gerekli değil.
+
+### Kullanım (öğretmen için)
+
+0. **Sunucu Adresi** (yalnızca ilk açılışta): Okul yöneticisinin verdiği backend adresini girip **Kaydet ve Devam Et**'e basılır.
+1. **Kayıt** (ilk kez): Giriş ekranında **Hesabım yok, öğretmen kaydı oluştur**. İl / ilçe / okul seçilir (yalnızca sistemde geçerli lisansı olan okullar listelenir). T.C. kimlik numarası, soyad, e-posta ve cep telefonu girilir. T.C. kimlik no + soyad o okuldaki öğretmen kartıyla eşleşirse ve girilen telefon, öğretmenin kayıtlı telefonuyla aynıysa **Öğretmen** yetkisiyle kullanıcı açılır ve telefona 6 haneli SMS doğrulama kodu gider (e-posta doğrulaması yoktur). Varsayılan şifre **T.C. kimlik numarası**dır.
+2. **Giriş** (kayıtlı öğretmen): E-posta ve şifre ile giriş yapılır. Hesabında iki adımlı doğrulama (2FA) veya SMS girişi açıksa mobil uygulama şu an bunu desteklemez; okul yöneticisinden bu ayarın kapatılmasını isteyin.
+3. **Şifre değiştirme**: "Öğrenci Ara" ekranındaki **Şifre** ile mevcut şifre (ilk girişte T.C. kimlik no) değiştirilir; yeni şifre en az 8 karakter olmalıdır.
+4. **Öğrenci arama**: "Öğrenci Ara" ekranında öğrenci numarası girilip **Ara**'ya basılır. Öğrenci bulunursa fotoğrafı, adı-soyadı ve sınıfı gösterilir.
+5. **Bildirim oluşturma**: Öğrenci kartındaki **Bildirim Oluştur**'a basılır. Açılan ekranda:
+   - Hazır sebep etiketlerinden istenildiği kadarı seçilir (çoklu seçim),
+   - gerekirse kendi sebebiniz yazılıp **Ekle**'ye basılır,
+   - isteğe bağlı bir not eklenebilir,
+   - en az bir etiket/sebep veya not girildikten sonra **Gönder**'e basılır.
+   Bildirim kaydedilince okul yönetiminin disiplin ekranına düşer.
+6. **Geçmiş bildirimler**: "Öğrenci Ara" ekranının sağ üstündeki **Geçmiş** bağlantısıyla, o öğretmenin daha önce gönderdiği tüm bildirimler (öğrenci, etiketler, not, tarih) listelenir; aşağı çekerek yenilenebilir.
+7. **Çıkış**: "Öğrenci Ara" ekranının sağ üstündeki **Çıkış** ile oturum kapatılır ve cihazdaki token silinir (sunucu adresi silinmez).
+
+Uygulamayı kapatıp yeniden açtığınızda oturum açık kalır (token cihazda saklanır); şifre değiştirildiyse veya hesap pasifleştirildiyse bir sonraki açılışta otomatik çıkış yapılır.
+
+- `discipline` modülü kapalıysa veya kullanıcının `teacher_notes.create` izni yoksa not oluşturma/listeleme uçları 403 döner. `GET /api/teacher-notes/mine` yalnızca isteği yapan öğretmenin kendi bildirimlerini döner (`discipline.read` gerektirmez); tüm okulun bildirimlerini görmek yönetici panelindeki disiplin ekranı üzerinden yapılır.
+- Fiziksel cihazdan bağlanırken `localhost` çalışmaz; backend'in çalıştığı makinenin LAN IP'sini (veya prod domain'ini) girin ve backend `CORS_ORIGIN`'de bu adrese izin verildiğinden emin olun (not: native uygulama istekleri tarayıcı CORS kısıtına tabi değildir, bu ayar yalnızca web paneli için gereklidir).
+- Uygulama ikonu/splash görseli hâlâ Expo'nun varsayılanı; gerçek kurum logosu geldiğinde `mobile/assets/` altındaki dosyalar değiştirilmeli.
+
 ## Rol ve İzin Sistemi
 
 Sistemde iki katmanlı rol yapısı vardır:
@@ -529,6 +663,7 @@ Tenant (Kiracı)
 - `npm start` - Production modunda backend
 - `npm run dev` - Backend geliştirme (nodemon, port 4000)
 - `npm run dev:frontend` - Yönetici paneli (Vite, port 5173)
+- `npm run dev:mobile` - Öğretmen mobil uygulaması (Expo)
 - `npm run dev:all` - Backend ve frontend birlikte
 - `npm run migrate` - Migration'ları çalıştır
 - `npm run migrate:undo` - Tüm migration'ları geri al
@@ -628,30 +763,21 @@ Notlar:
 
 ### Veritabanı Yedekleme
 
-`scripts/db-backup.sh`, `db` container'ının kendi `pg_dump`'ı ile (sunucuyla birebir aynı
-sürüm) sıkıştırılmış (`.sql.gz`) bir yedek alır ve saklama süresini aşan eski yedekleri siler.
-Saklama süresi (gün) **Platform Yönetimi → Yedekleme** ekranından değiştirilebilir; script her
-çalıştığında bu değeri `BackupSettings` tablosundan okur (varsayılan 30 gün).
+Uygulama `pg_dump` ile sıkıştırılmış (`.sql.gz`) yedek alır. **Platform Yönetimi → Yedekleme** ekranından:
 
-Sunucuda tek seferlik kurulum:
+- yedek klasörü
+- her gün başlama saati (Europe/Istanbul)
+- saklama süresi (gün)
 
-```bash
-chmod +x scripts/db-backup.sh
+ayarlanır. Aynı ekrandan **Şimdi yedek al** ve **Geri yükle** çalışır. Saklama süresini aşan dosyalar bir sonraki yedeklemede silinir.
 
-crontab -e
-# her gece 03:30'da yedek al:
-30 3 * * * /opt/libs/scripts/db-backup.sh >> /opt/libs/logs/backup.log 2>&1
-```
+Docker'da yedekler host'taki `BACKUP_HOST_DIR` (varsayılan `./backups`) klasörüne yazılır; paneldeki yol container içinde `/app/backups` olur. Geliştirmede Windows için `PG_DUMP_PATH` / `PSQL_PATH` gerekebilir.
 
 Notlar:
-- Yedekler `./backups` klasöründe tutulur (host'ta, `data/postgres` ve `uploads` ile
-  aynı mantıkla); admin panelindeki "Yedekleme" ekranı bu klasörü salt-okunur olarak
-  (`backend` container'ına `ro` mount ile) listeler, silme işlemi de aynı ekrandan yapılabilir.
-  Yeni yedek alma işlemi panelden değil, yalnızca `scripts/db-backup.sh` (cron) üzerinden
-  yapılır — panel/backend container'ının Docker'ı tetikleme yetkisi (docker.sock erişimi)
-  bilinçli olarak yoktur.
-- Aynı anda iki yedekleme çakışmasın diye `flock` ile kilitlenir.
-- Geri yükleme (restore) örneği: `gunzip -c backups/<dosya>.sql.gz | docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME"`
+- Zamanlama uygulama içindedir; ayrı bir host crontab satırı gerekmez. Eski `scripts/db-backup.sh` cron'u varsa çift yedek alınmaması için kaldırın.
+- Aynı anda iki yedekleme/geri yükleme çakışmasın diye kilitlenir.
+- Geri yükleme mevcut veritabanının üzerine yazar; onay kelimesi ister.
+- Elle geri yükleme örneği: `gunzip -c backups/<dosya>.sql.gz | docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME"`
 
 ## Güvenlik
 

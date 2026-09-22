@@ -1,35 +1,51 @@
 module.exports = (sequelize, DataTypes) => {
-    const Tenant = sequelize.define('Tenant', {
-    name: DataTypes.STRING,
-    stripe_customer_id: DataTypes.STRING,
-    plan: DataTypes.STRING,
-    data: DataTypes.JSONB,
-    is_active: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: true
+  const Tenant = sequelize.define(
+    'Tenant',
+    {
+      name: DataTypes.STRING,
+      phone: {
+        type: DataTypes.STRING(30),
+        allowNull: true,
+      },
+      stripe_customer_id: DataTypes.STRING,
+      plan: DataTypes.STRING,
+      data: DataTypes.JSONB,
+      is_active: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
+      },
+      two_factor_enabled: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
+      sms_login_enabled: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
+      menu_layout: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+        defaultValue: null,
+      },
     },
-    two_factor_enabled: {
-      type: DataTypes.BOOLEAN,
-      allowNull: false,
-      defaultValue: false
+    {
+      tableName: 'Tenants',
+      underscored: true,
+      createdAt: 'created_at',
+      updatedAt: 'updated_at',
     }
-    }, {
-    tableName: 'Tenants',
-    underscored: true,
-    createdAt: 'created_at',
-    updatedAt: 'updated_at'
-    });
-    
-    
-    Tenant.associate = function(models) {
+  );
+
+  Tenant.associate = function (models) {
     Tenant.hasMany(models.School, { foreignKey: 'tenant_id' });
     Tenant.hasMany(models.User, { foreignKey: 'tenant_id' });
     Tenant.hasMany(models.Teacher, { foreignKey: 'tenant_id' });
     Tenant.hasMany(models.Feedback, { foreignKey: 'tenant_id' });
     Tenant.hasMany(models.License, { foreignKey: 'tenant_id' });
-    };
-    
-    
-    return Tenant;
-    };
+  };
+
+  return Tenant;
+};

@@ -3,6 +3,12 @@
 const { Announcement, AnnouncementRecipient, Student } = require('../models');
 const audit = require('../services/auditService');
 const smsEngine = require('../services/smsEngine');
+const messageLogService = require('../services/messageLogService');
+const licenseService = require('../services/licenseService');
+
+function studentFullName(student) {
+  return [student.first_name, student.last_name].filter(Boolean).join(' ') || null;
+}
 
 function assertTenantAccess(req, row) {
   if (req.user && req.user.tenant_id && row.tenant_id !== req.user.tenant_id) return false;
@@ -53,6 +59,22 @@ module.exports = {
       if (tenantId) payload.tenant_id = tenantId;
       if (req.user && req.user.user_id) payload.created_by = req.user.user_id;
 
+      if ((payload.channel === 'sms' || payload.channel === 'both') && tenantId) {
+        try {
+          await licenseService.assertCanSendSms(tenantId, 1);
+        } catch (err) {
+          if (err instanceof licenseService.SmsLicenseError) {
+            return res.status(err.status).json({
+              success: false,
+              code: err.code,
+              message: err.message,
+              ...(err.details || {}),
+            });
+          }
+          throw err;
+        }
+      }
+
       const recipientCount = await resolveRecipientCount(tenantId, payload.target_type, payload.target_ids);
       payload.recipient_count = recipientCount;
 
@@ -88,6 +110,20 @@ module.exports = {
         const where = buildRecipientWhere(row.tenant_id, row.target_type, row.target_ids);
         const students = where ? await Student.findAll({ where }) : [];
         summary.total = students.length;
+        const billedCount = students.filter((student) => student.parent_phone && student.parent_phone.trim()).length;
+        try {
+          await licenseService.assertCanSendSms(row.tenant_id, billedCount);
+        } catch (err) {
+          if (err instanceof licenseService.SmsLicenseError) {
+            return res.status(err.status).json({
+              success: false,
+              code: err.code,
+              message: err.message,
+              ...(err.details || {}),
+            });
+          }
+          throw err;
+        }
 
         for (const student of students) {
           const phone = student.parent_phone && student.parent_phone.trim();
@@ -99,6 +135,19 @@ module.exports = {
               phone_number: '',
               status: smsEngine.SMS_STATUS.CANCELLED,
               error_message: 'Telefon numarası yok',
+            });
+            await messageLogService.record({
+              tenantId: row.tenant_id,
+              channel: 'sms',
+              sourceModule: 'announcement',
+              sourceId: row.id,
+              recipientLabel: studentFullName(student),
+              recipientContact: null,
+              subject: row.title,
+              body: row.body,
+              status: smsEngine.SMS_STATUS.CANCELLED,
+              error: 'Telefon numarası yok',
+              sentAt: null,
             });
             summary.iptal += 1;
             continue;
@@ -116,9 +165,25 @@ module.exports = {
             error_message: result.error,
             sent_at: result.status === smsEngine.SMS_STATUS.SUCCESS ? new Date() : null,
           });
+          await messageLogService.record({
+            tenantId: row.tenant_id,
+            channel: 'sms',
+            sourceModule: 'announcement',
+            sourceId: row.id,
+            recipientLabel: studentFullName(student),
+            recipientContact: phone,
+            subject: row.title,
+            body: row.body,
+            status: result.status,
+            error: result.error,
+            sentAt: result.status === smsEngine.SMS_STATUS.SUCCESS ? new Date() : null,
+          });
           if (result.status === smsEngine.SMS_STATUS.SUCCESS) summary.basarili += 1;
           else if (result.status === smsEngine.SMS_STATUS.CANCELLED) summary.iptal += 1;
           else summary.basarisiz += 1;
+        }
+        if (summary.basarili > 0) {
+          await licenseService.consumeSmsCredits(row.tenant_id, summary.basarili);
         }
       }
 
@@ -132,6 +197,14 @@ module.exports = {
       });
       res.json({ success: true, data: row, summary });
     } catch (err) {
+      if (err instanceof licenseService.SmsLicenseError) {
+        return res.status(err.status).json({
+          success: false,
+          code: err.code,
+          message: err.message,
+          ...(err.details || {}),
+        });
+      }
       if (err instanceof smsEngine.SmsConfigError) {
         return res.status(500).json({ success: false, message: `SMS motoru yapılandırma hatası: ${err.message}` });
       }

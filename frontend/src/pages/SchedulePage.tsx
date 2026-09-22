@@ -1,26 +1,12 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  App,
-  Button,
-  Checkbox,
-  Collapse,
-  Empty,
-  Form,
-  Input,
-  InputNumber,
-  Modal,
-  Select,
-  Space,
-  Steps,
-  Table,
-  Tag,
-  Typography,
-  Upload,
-} from 'antd'
+import { App, Button, Checkbox, Collapse, Empty, Form, Input, InputNumber, Modal, Select, Space, Steps, Tag, Typography, Upload } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import type { UploadFile } from 'antd/es/upload/interface'
 import { DeleteOutlined, DownloadOutlined, InboxOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons'
 import { AppLayout } from '../components/AppLayout'
+import { FilterBar } from '../components/FilterBar'
 import { useAuth } from '../auth/AuthContext'
+import { useActiveSchool } from '../auth/ActiveSchoolContext'
 import {
   createScheduleEntry,
   deleteScheduleEntry,
@@ -44,13 +30,14 @@ import type { Teacher } from '../types/teacher'
 import type { Classroom } from '../types/classroom'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
 
-const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8]
+const DEFAULT_PERIOD_COUNT = 8
 
 type ViewMode = 'classroom' | 'teacher'
 
 export function SchedulePage() {
   const { message, modal } = App.useApp()
   const { session, hasPermission } = useAuth()
+  const { schools, activeSchool } = useActiveSchool()
 
   const [classrooms, setClassrooms] = useState<Classroom[]>([])
   const [teachers, setTeachers] = useState<Teacher[]>([])
@@ -97,7 +84,7 @@ export function SchedulePage() {
     try {
       const [classroomData, teacherData, subjectData, loadData] = await Promise.all([
         listClassrooms(),
-        listTeachers(),
+        listTeachers({ scope: 'teachers' }),
         listSubjects({ is_active: true }),
         fetchTeacherLoad().catch(() => []),
       ])
@@ -164,6 +151,20 @@ export function SchedulePage() {
     entries.forEach((entry) => map.set(`${entry.day_of_week}-${entry.period_no}`, entry))
     return map
   }, [entries])
+
+  const periodCount = useMemo(() => {
+    const selectedClassroom = classrooms.find((c) => c.id === selectedClassroomId)
+    const schoolForCount =
+      viewMode === 'classroom' && selectedClassroom
+        ? schools.find((s) => s.id === selectedClassroom.school_id)
+        : activeSchool
+    return schoolForCount?.daily_period_count || DEFAULT_PERIOD_COUNT
+  }, [classrooms, selectedClassroomId, viewMode, schools, activeSchool])
+
+  const PERIODS = useMemo(
+    () => Array.from({ length: periodCount }, (_, i) => i + 1),
+    [periodCount],
+  )
 
   const usedImportFields = useMemo(
     () => new Set(Object.values(importMapping).filter(Boolean)),
@@ -268,43 +269,61 @@ export function SchedulePage() {
   const onImport = async () => {
     const file = importFile?.originFileObj
     if (!file) return
-    setSubmitting(true)
-    try {
-      const result = await importSchedule(file, {
-        headerRow: importHeaderRow,
-        columnMapping: importMapping,
-        replaceExisting: importReplace,
-        academicYear: importAcademicYear || null,
-      })
-      message.success(
-        `İçe aktarma tamamlandı: ${result.created} yeni, ${result.updated} güncellendi` +
-          (result.error_count ? `, ${result.error_count} uyarı/hata` : ''),
-      )
-      if (result.errors.length > 0) {
-        modal.warning({
-          title: 'İçe aktarma uyarıları',
-          width: 640,
-          content: (
-            <div style={{ maxHeight: 320, overflow: 'auto' }}>
-              {result.errors.slice(0, 40).map((e) => (
-                <div key={`${e.row}-${e.message}`}>
-                  Satır {e.row}: {e.message}
-                </div>
-              ))}
-            </div>
-          ),
+
+    const runImport = async () => {
+      setSubmitting(true)
+      try {
+        const result = await importSchedule(file, {
+          headerRow: importHeaderRow,
+          columnMapping: importMapping,
+          replaceExisting: importReplace,
+          academicYear: importAcademicYear || null,
         })
+        message.success(
+          `İçe aktarma tamamlandı: ${result.created} yeni, ${result.updated} güncellendi` +
+            (result.error_count ? `, ${result.error_count} uyarı/hata` : ''),
+        )
+        if (result.errors.length > 0) {
+          modal.warning({
+            title: 'İçe aktarma uyarıları',
+            width: 640,
+            content: (
+              <div style={{ maxHeight: 320, overflow: 'auto' }}>
+                {result.errors.slice(0, 40).map((e) => (
+                  <div key={`${e.row}-${e.message}`}>
+                    Satır {e.row}: {e.message}
+                  </div>
+                ))}
+              </div>
+            ),
+          })
+        }
+        setImportOpen(false)
+        resetImportState()
+        void loadLookups()
+        void loadEntries()
+        void loadHoursCheck()
+      } catch (err) {
+        message.error(getErrorMessage(err))
+      } finally {
+        setSubmitting(false)
       }
-      setImportOpen(false)
-      resetImportState()
-      void loadLookups()
-      void loadEntries()
-      void loadHoursCheck()
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    } finally {
-      setSubmitting(false)
     }
+
+    if (importReplace) {
+      modal.confirm({
+        title: 'Mevcut program silinsin mi?',
+        content:
+          'İçe aktarma mevcut ders programını silip yeniden yükleyecek. Bu işlem geri alınamaz. Devam etmek istiyor musunuz?',
+        okText: 'Sil ve içe aktar',
+        okButtonProps: { danger: true },
+        cancelText: 'Vazgeç',
+        onOk: () => runImport(),
+      })
+      return
+    }
+
+    await runImport()
   }
 
   const renderCell = (day: number, period: number) => {
@@ -366,7 +385,7 @@ export function SchedulePage() {
       </Typography.Paragraph>
 
       <Space wrap style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Space wrap>
+        <FilterBar style={{ marginBottom: 0, width: 'auto' }}>
           <Select
             value={viewMode}
             onChange={(v) => setViewMode(v)}
@@ -399,7 +418,7 @@ export function SchedulePage() {
               style={{ width: 220 }}
             />
           )}
-        </Space>
+        </FilterBar>
         <Space wrap>
           {canCreate && (
             <Button
@@ -450,7 +469,7 @@ export function SchedulePage() {
           <Typography.Title level={4} style={{ marginTop: 32 }}>
             Ders Yükü Kontrolü
           </Typography.Title>
-          <Table
+          <SortableTable
             size="small"
             rowKey="subject_id"
             pagination={false}
@@ -487,7 +506,7 @@ export function SchedulePage() {
             </Space>
           ),
           children: (
-            <Table
+            <SortableTable
               size="small"
               rowKey="name"
               pagination={false}
@@ -694,7 +713,7 @@ export function SchedulePage() {
             {importPreview.sample_rows.length > 0 && (
               <>
                 <Typography.Text strong>Örnek satırlar</Typography.Text>
-                <Table
+                <SortableTable
                   size="small"
                   pagination={false}
                   rowKey="row"

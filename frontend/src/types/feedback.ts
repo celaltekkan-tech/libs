@@ -1,7 +1,13 @@
-export type FeedbackStatus = 'new' | 'read' | 'resolved' | 'cancelled'
+export type FeedbackStatus = 'new' | 'read' | 'waiting' | 'resolved' | 'cancelled'
 
 /** Liste filtrelerinde kullanılan gruplar */
-export type FeedbackStatusFilter = FeedbackStatus | 'pending' | 'all'
+export type FeedbackStatusFilter = FeedbackStatus | 'all'
+
+/** Kullanıcının gelişme ekleyebileceği aşamalar */
+export const REVIEW_FEEDBACK_STATUSES: FeedbackStatus[] = ['read', 'waiting']
+
+/** İptal edilebilir açık kayıtlar */
+export const OPEN_FEEDBACK_STATUSES: FeedbackStatus[] = ['new', 'read', 'waiting']
 
 export interface FeedbackAttachment {
   id: number
@@ -11,11 +17,22 @@ export interface FeedbackAttachment {
   created_at?: string
 }
 
+export interface FeedbackUpdate {
+  id: number
+  body: string
+  is_from_platform: boolean
+  user_id: number | null
+  created_at: string
+  User?: { id: number; full_name: string } | null
+}
+
 export interface Feedback {
   id: number
   tenant_id: number
   user_id: number | null
   message: string
+  page_path: string | null
+  page_title: string | null
   status: FeedbackStatus
   reply: string | null
   replied_at: string | null
@@ -25,6 +42,7 @@ export interface Feedback {
   Tenant?: { id: number; name: string } | null
   User?: { id: number; full_name: string; email?: string } | null
   Attachments?: FeedbackAttachment[]
+  Updates?: FeedbackUpdate[]
 }
 
 export interface FeedbackListParams {
@@ -37,13 +55,15 @@ export interface FeedbackListParams {
 export const FEEDBACK_STATUS_LABEL: Record<FeedbackStatus, { text: string; color: string }> = {
   new: { text: 'Yeni', color: 'blue' },
   read: { text: 'İnceleniyor', color: 'gold' },
+  waiting: { text: 'Beklemede', color: 'orange' },
   resolved: { text: 'Sonuçlandı', color: 'green' },
   cancelled: { text: 'İptal edildi', color: 'default' },
 }
 
 export const FEEDBACK_FILTER_OPTIONS: Array<{ value: FeedbackStatusFilter; label: string }> = [
-  { value: 'pending', label: 'Bekleyenler' },
+  { value: 'new', label: 'Yeni' },
   { value: 'read', label: 'İnceleniyor' },
+  { value: 'waiting', label: 'Beklemede' },
   { value: 'resolved', label: 'Sonuçlananlar' },
   { value: 'cancelled', label: 'İptal edilenler' },
   { value: 'all', label: 'Tümü' },

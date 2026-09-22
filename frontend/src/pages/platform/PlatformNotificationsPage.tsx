@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Form, Input, Modal, Radio, Select, Space, Table, Typography } from 'antd'
+import { App, Button, Form, Input, Modal, Radio, Select, Space, Typography } from 'antd'
+import { SortableTable } from '../../components/SortableTable'
 import { PlusOutlined, SendOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../../components/AppLayout'
@@ -8,6 +9,7 @@ import { listTenants } from '../../api/tenants'
 import { getErrorMessage } from '../../api/client'
 import type { AppNotification, CreateNotificationPayload, NotificationTargetType } from '../../types/notification'
 import type { TenantListItem } from '../../types/tenant'
+import { tablePagination } from '../../utils/tablePagination'
 
 interface ManagedUserOption {
   id: number
@@ -120,12 +122,12 @@ export function PlatformNotificationsPage() {
         </Button>
       </Space>
 
-      <Table
+      <SortableTable
         rowKey="id"
         loading={loading}
         columns={columns}
         dataSource={sent}
-        pagination={{ pageSize: 20 }}
+        pagination={tablePagination(20)}
         scroll={{ x: 'max-content' }}
       />
 

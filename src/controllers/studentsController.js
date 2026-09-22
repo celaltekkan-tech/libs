@@ -1,36 +1,48 @@
 'use strict';
 
-const PDFDocument = require('pdfkit');
-const { Student, Classroom, School } = require('../models');
+const { Op } = require('sequelize');
+const { Student, Classroom, School, Feedback } = require('../models');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
 const {
   IMPORTABLE_FIELDS,
   previewWorkbook,
   getMappedRows,
+  parseClassSection,
+  fillMissingMappedFields,
 } = require('../services/excelImportService');
-
-const CERTIFICATE_TITLES = {
-  ogrenci_belgesi: 'ÖĞRENCİ BELGESİ',
-  ogrenim_durumu: 'ÖĞRENİM DURUM BELGESİ',
-};
+const { isPhotoRosterWorkbook, parsePhotoRoster } = require('../services/photoRosterImportService');
+const { applyAgeFromBirthDate } = require('../services/studentAgeService');
 
 const COLUMN_LABELS = {
   student_number: 'Öğrenci No',
   national_id: 'T.C. Kimlik No',
   first_name: 'Ad',
   last_name: 'Soyad',
+  full_name: 'Ad Soyad',
+  school_name: 'Okul',
   class_level: 'Sınıf',
   section: 'Şube',
   gender: 'Cinsiyet',
   birth_date: 'Doğum Tarihi',
+  yasi: 'Yaşı',
   registration_status: 'Kayıt Durumu',
   parent_name: 'Veli Adı',
+  mother_name: 'Anne Adı',
+  father_name: 'Baba Adı',
   parent_phone: 'Veli Telefon',
+  student_phone: 'Öğrenci Telefon',
   extra_contacts: 'Ek İletişim',
   is_inclusion: 'Kaynaştırma',
   is_foreign: 'Yabancı Uyruklu',
+  boarding_status: 'Yurt Durumu',
   school_id: 'Okul ID',
+};
+
+const REGISTRATION_STATUS_LABELS = {
+  aktif: 'Aktif',
+  nakil_giden: 'Nakil giden',
+  orgun_egitim_disi: 'Örgün eğitim dışı',
 };
 
 const IMPORTABLE_FIELD_KEYS = new Set(IMPORTABLE_FIELDS.map((f) => f.key));
@@ -65,6 +77,26 @@ function parseColumnMapping(raw) {
   return mapping;
 }
 
+/** Kullanıcının eşleştirme ekranında sistemin tanımadığı bir sütun için yazdığı serbest not. */
+function parseColumnSuggestions(raw) {
+  if (raw == null || raw === '') return {};
+  let parsed = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+  const notes = {};
+  Object.entries(parsed).forEach(([col, note]) => {
+    const text = typeof note === 'string' ? note.trim() : '';
+    if (text) notes[String(col)] = text.slice(0, 300);
+  });
+  return notes;
+}
+
 function buildWhere(tenantId, filters = {}) {
   const where = {};
   if (tenantId) where.tenant_id = tenantId;
@@ -73,7 +105,12 @@ function buildWhere(tenantId, filters = {}) {
   if (filters.class_level) where.class_level = filters.class_level;
   if (filters.section) where.section = filters.section;
   if (filters.gender) where.gender = filters.gender;
+  if (filters.yasi != null && filters.yasi !== '') {
+    const age = Number(filters.yasi);
+    if (Number.isFinite(age)) where.yasi = age;
+  }
   if (filters.registration_status) where.registration_status = filters.registration_status;
+  if (filters.boarding_status) where.boarding_status = filters.boarding_status;
   return where;
 }
 
@@ -100,36 +137,56 @@ async function applyClassroomToPayload(payload, tenantId) {
 }
 
 async function findClassroomForImport(tenantId, classLevel, section, schoolId) {
-  if (!classLevel || !section) return null;
-  const normalizedSection = String(section).trim().toLocaleUpperCase('tr-TR');
+  const parsed = parseClassSection(classLevel, section);
+  const normalizedLevel = parsed
+    ? parsed.class_level
+    : classLevel
+      ? String(classLevel).trim()
+      : null;
+  const normalizedSection = parsed
+    ? parsed.section
+    : section
+      ? String(section).trim().toLocaleUpperCase('tr-TR')
+      : null;
+  if (!normalizedLevel || !normalizedSection) return null;
+
   const where = {
     tenant_id: tenantId,
-    class_level: String(classLevel).trim(),
-    section: normalizedSection,
+    class_level: normalizedLevel,
     is_active: true,
   };
   if (schoolId) where.school_id = schoolId;
-  let classroom = await Classroom.findOne({ where });
+  const candidates = await Classroom.findAll({ where });
+  let classroom = candidates.find(
+    (c) => String(c.section || '').toLocaleUpperCase('tr-TR') === normalizedSection
+  );
   if (classroom) return classroom;
 
-  // Şube büyük/küçük harf farkı için ikinci deneme
-  const looseWhere = {
-    tenant_id: tenantId,
-    class_level: String(classLevel).trim(),
-    is_active: true,
-  };
+  const looseWhere = { tenant_id: tenantId, is_active: true };
   if (schoolId) looseWhere.school_id = schoolId;
-  const candidates = await Classroom.findAll({ where: looseWhere });
-  classroom = candidates.find(
-    (c) => String(c.section || '').toLocaleUpperCase('tr-TR') === normalizedSection
+  const all = await Classroom.findAll({ where: looseWhere });
+  classroom = all.find(
+    (c) =>
+      String(Number(c.class_level)) === String(Number(normalizedLevel)) &&
+      !Number.isNaN(Number(normalizedLevel)) &&
+      String(c.section || '').toLocaleUpperCase('tr-TR') === normalizedSection
   );
   return classroom || null;
 }
 
 async function resolveOrCreateClassroomForImport(tenantId, classLevel, section, schoolId) {
-  if (!classLevel || !section) return null;
-  const normalizedLevel = String(classLevel).trim();
-  const normalizedSection = String(section).trim().toLocaleUpperCase('tr-TR');
+  const parsed = parseClassSection(classLevel, section);
+  const normalizedLevel = parsed
+    ? parsed.class_level
+    : classLevel
+      ? String(classLevel).trim()
+      : null;
+  const normalizedSection = parsed
+    ? parsed.section
+    : section
+      ? String(section).trim().toLocaleUpperCase('tr-TR')
+      : null;
+  if (!normalizedLevel || !normalizedSection) return null;
   const existing = await findClassroomForImport(
     tenantId,
     normalizedLevel,
@@ -177,6 +234,46 @@ function normalizeBool(value) {
   return ['1', 'true', 'evet', 'e', 'x', 'var'].includes(raw);
 }
 
+/** Excel/e-Okul pansiyon metnini kanonik değere çevirir. Yatılı değilse Gündüzlü. */
+function normalizeBoardingStatus(value) {
+  const raw = String(value == null ? '' : value)
+    .trim()
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i');
+  if (raw.includes('yatili')) return 'Yatılı';
+  return 'Gündüzlü';
+}
+
+function foldTr(value) {
+  return String(value)
+    .trim()
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i')
+    .replace(/ö/g, 'o')
+    .replace(/ü/g, 'u')
+    .replace(/ş/g, 's')
+    .replace(/ç/g, 'c')
+    .replace(/ğ/g, 'g')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function normalizeRegistrationStatus(value) {
+  if (value == null || value === '') return null;
+  const raw = foldTr(value);
+  if (raw === 'aktif' || raw === 'active') return 'aktif';
+  if (raw === 'nakil giden') return 'nakil_giden';
+  if (
+    raw === 'orgun egitim disi' ||
+    raw === 'kayit silindi' ||
+    raw === 'kaydi silindi'
+  ) {
+    return 'orgun_egitim_disi';
+  }
+  if (raw === 'nakil gelen') return 'aktif';
+  return null;
+}
+
 function parseBirthDate(value) {
   if (value == null || value === '') return null;
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -190,6 +287,54 @@ function parseBirthDate(value) {
   }
   if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
   return null;
+}
+
+function normalizeNationalId(value) {
+  if (value == null || value === '') return null;
+  let s = String(value).trim();
+  if (/^\d+\.0+$/.test(s)) s = s.replace(/\.0+$/, '');
+  const digits = s.replace(/\D/g, '');
+  return /^\d{11}$/.test(digits) ? digits : null;
+}
+
+function hasNationalIdInput(value) {
+  if (value == null || value === '') return false;
+  return String(value).replace(/\D/g, '').length > 0;
+}
+
+function normalizeStudentNumber(value) {
+  if (value == null || value === '') return null;
+  let s = String(value).trim();
+  if (/^\d+\.0+$/.test(s)) s = s.replace(/\.0+$/, '');
+  return s || null;
+}
+
+function rememberStudent(maps, student) {
+  const nid = normalizeNationalId(student.national_id);
+  const num = normalizeStudentNumber(student.student_number);
+  if (nid) maps.byNationalId.set(nid, student);
+  if (num) maps.byStudentNumber.set(num, student);
+}
+
+function findExistingStudent(maps, nationalId, studentNumber) {
+  if (nationalId && maps.byNationalId.has(nationalId)) return maps.byNationalId.get(nationalId);
+  if (studentNumber && maps.byStudentNumber.has(studentNumber)) {
+    return maps.byStudentNumber.get(studentNumber);
+  }
+  return null;
+}
+
+function pickChangedFields(existing, incoming) {
+  const patch = {};
+  Object.entries(incoming).forEach(([key, next]) => {
+    if (next == null || next === '') return;
+    if (key === 'is_inclusion' || key === 'is_foreign') {
+      if (Boolean(existing[key]) !== Boolean(next)) patch[key] = next;
+      return;
+    }
+    if (String(existing[key] ?? '') !== String(next)) patch[key] = next;
+  });
+  return patch;
 }
 
 function formatExtraContacts(contacts) {
@@ -222,11 +367,14 @@ function normalizeExtraContacts(contacts) {
 }
 
 function formatCellValue(student, key) {
+  if (key === 'full_name') return `${student.first_name || ''} ${student.last_name || ''}`.trim();
+  if (key === 'school_name') return student.School?.name || '';
   const value = student[key];
   if (key === 'extra_contacts') return formatExtraContacts(value);
   if (value == null || value === '') return '';
   if (key === 'is_inclusion' || key === 'is_foreign') return value ? 'Evet' : 'Hayır';
   if (key === 'gender') return value === 'K' ? 'Kız' : value === 'E' ? 'Erkek' : value;
+  if (key === 'registration_status') return REGISTRATION_STATUS_LABELS[value] || String(value);
   return String(value);
 }
 
@@ -262,6 +410,126 @@ function assertTenantAccess(req, student) {
   return true;
 }
 
+function photoUrlFor(student) {
+  return student.photo_path ? `/api/students/${student.id}/photo` : null;
+}
+
+function serializeStudent(student) {
+  const json = typeof student.toJSON === 'function' ? student.toJSON() : student;
+  return { ...json, photo_url: photoUrlFor(student) };
+}
+
+async function buildPhotoRosterPreview(buffer, tenantId) {
+  const parsed = parsePhotoRoster(buffer);
+  if (!parsed.students.length) {
+    const err = new Error('Dosyada tanınabilir bir öğrenci kaydı bulunamadı');
+    err.status = 400;
+    throw err;
+  }
+
+  const existingRows = await Student.findAll({ where: { tenant_id: tenantId } });
+  const maps = { byNationalId: new Map(), byStudentNumber: new Map() };
+  existingRows.forEach((s) => rememberStudent(maps, s));
+
+  const rows = parsed.students.map((s) => {
+    const match = findExistingStudent(
+      maps,
+      normalizeNationalId(s.national_id),
+      normalizeStudentNumber(s.student_number)
+    );
+    return {
+      row: s.rowNumber,
+      student_number: s.student_number,
+      full_name: s.full_name,
+      matched: Boolean(match),
+      current_name: match ? `${match.first_name} ${match.last_name}`.trim() : null,
+      has_photo: Boolean(s.photo),
+    };
+  });
+
+  return {
+    format: 'photo_roster',
+    sheet_name: parsed.sheetName,
+    total_rows: rows.length,
+    matched: rows.filter((r) => r.matched).length,
+    not_found: rows.filter((r) => !r.matched).length,
+    photos_found: rows.filter((r) => r.has_photo).length,
+    rows,
+  };
+}
+
+async function commitPhotoRosterImport(req) {
+  const parsed = parsePhotoRoster(req.file.buffer);
+  if (!parsed.students.length) {
+    const err = new Error('Dosyada tanınabilir bir öğrenci kaydı bulunamadı');
+    err.status = 400;
+    throw err;
+  }
+
+  const tenantId = req.user.tenant_id;
+  const existingRows = await Student.findAll({ where: { tenant_id: tenantId } });
+  const maps = { byNationalId: new Map(), byStudentNumber: new Map() };
+  existingRows.forEach((s) => rememberStudent(maps, s));
+
+  const photoUpload = require('../services/studentPhotoUpload');
+  let updated = 0;
+  let notFound = 0;
+  let photosSaved = 0;
+  const errors = [];
+
+  for (const s of parsed.students) {
+    try {
+      const nationalId = normalizeNationalId(s.national_id);
+      const studentNumber = normalizeStudentNumber(s.student_number);
+      const student = findExistingStudent(maps, nationalId, studentNumber);
+      if (!student) {
+        notFound += 1;
+        continue;
+      }
+
+      const incoming = {};
+      if (nationalId) incoming.national_id = nationalId;
+      if (s.first_name) incoming.first_name = s.first_name;
+      if (s.last_name) incoming.last_name = s.last_name;
+      if (s.mother_name) incoming.mother_name = String(s.mother_name).trim();
+      if (s.father_name) incoming.father_name = String(s.father_name).trim();
+      const gender = normalizeGender(s.gender);
+      if (gender) incoming.gender = gender;
+      const birthDate = parseBirthDate(s.birth_date);
+      if (birthDate) incoming.birth_date = birthDate;
+      applyAgeFromBirthDate(incoming);
+
+      const patch = pickChangedFields(student, incoming);
+      if (Object.keys(patch).length > 0) {
+        await student.update(patch);
+      }
+
+      if (s.photo) {
+        const previousPath = student.photo_path;
+        const storedName = photoUpload.saveBuffer(student.id, {
+          originalname: `${studentNumber || student.id}.jpg`,
+          buffer: s.photo,
+        });
+        await student.update({ photo_path: storedName });
+        if (previousPath) photoUpload.removeStoredFile(previousPath);
+        photosSaved += 1;
+      }
+
+      updated += 1;
+    } catch (err) {
+      errors.push({ row: s.rowNumber, message: err.message || 'Satır işlenemedi' });
+    }
+  }
+
+  await audit.log(req, {
+    action: 'update',
+    entityType: 'student_photo_roster_import',
+    summary: `Fotoğraflı öğrenci listesinden içe aktarma: ${updated} güncellendi, ${photosSaved} fotoğraf kaydedildi, ${notFound} eşleşmeyen`,
+  });
+
+  return { format: 'photo_roster', updated, not_found: notFound, photos_saved: photosSaved, errors };
+}
+
 module.exports = {
   COLUMN_LABELS,
 
@@ -287,7 +555,7 @@ module.exports = {
         ],
         limit: 2000,
       });
-      res.json({ success: true, data: students });
+      res.json({ success: true, data: students.map(serializeStudent) });
     } catch (err) {
       next(err);
     }
@@ -302,7 +570,87 @@ module.exports = {
       if (!assertTenantAccess(req, student)) {
         return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
       }
-      res.json({ success: true, data: student });
+      res.json({ success: true, data: serializeStudent(student) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // Mobil uygulamada öğretmenin numarayla öğrenci aradığı ekran için:
+  // tek kayıt döner, tenant dışı/kayıt bulunamayan numaralarda 404 verir.
+  async lookupByNumber(req, res, next) {
+    try {
+      const tenantId = req.user && req.user.tenant_id;
+      const number = normalizeStudentNumber(req.params.number);
+      if (!number) {
+        return res.status(400).json({ success: false, message: 'Öğrenci numarası gerekli' });
+      }
+
+      const where = { student_number: number };
+      if (tenantId) where.tenant_id = tenantId;
+
+      const student = await Student.findOne({
+        where,
+        include: [{ model: Classroom, attributes: ['id', 'class_level', 'section'], required: false }],
+      });
+      if (!student) {
+        return res.status(404).json({ success: false, code: 'STUDENT_NOT_FOUND', message: 'Bu numarayla öğrenci bulunamadı' });
+      }
+
+      res.json({ success: true, data: serializeStudent(student) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async getPhoto(req, res, next) {
+    try {
+      const student = await Student.findByPk(req.params.id);
+      if (!student) return res.status(404).json({ success: false, message: 'Bulunamadı' });
+      if (!assertTenantAccess(req, student)) {
+        return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
+      }
+      if (!student.photo_path) {
+        return res.status(404).json({ success: false, message: 'Fotoğraf bulunamadı' });
+      }
+
+      const photoUpload = require('../services/studentPhotoUpload');
+      const filePath = photoUpload.absolutePath(student.photo_path);
+      res.setHeader('Content-Type', photoUpload.mimeTypeFor(student.photo_path));
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.sendFile(filePath, (err) => {
+        if (err) next(err);
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async uploadPhoto(req, res, next) {
+    try {
+      const student = await Student.findByPk(req.params.id);
+      if (!student) return res.status(404).json({ success: false, message: 'Bulunamadı' });
+      if (!assertTenantAccess(req, student)) {
+        return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
+      }
+      if (!req.file) {
+        return res.status(400).json({ success: false, message: 'Fotoğraf dosyası gerekli' });
+      }
+
+      const photoUpload = require('../services/studentPhotoUpload');
+      const previousPath = student.photo_path;
+      const storedName = photoUpload.saveBuffer(student.id, req.file);
+      await student.update({ photo_path: storedName });
+      if (previousPath) photoUpload.removeStoredFile(previousPath);
+
+      await audit.log(req, {
+        action: 'update',
+        entityType: 'student_photo',
+        entityId: student.id,
+        summary: `Öğrenci fotoğrafı güncellendi: ${student.first_name} ${student.last_name}`,
+      });
+
+      res.json({ success: true, data: { photo_url: photoUrlFor(student) } });
     } catch (err) {
       next(err);
     }
@@ -314,14 +662,27 @@ module.exports = {
       if (req.user && req.user.tenant_id) payload.tenant_id = req.user.tenant_id;
       if (payload.gender === '') payload.gender = null;
       if (payload.national_id === '') payload.national_id = null;
+      if (payload.national_id) {
+        payload.national_id = normalizeNationalId(payload.national_id);
+        if (!payload.national_id) {
+          return res.status(400).json({
+            success: false,
+            message: 'T.C. kimlik no 11 haneli sayı olmalıdır',
+          });
+        }
+      }
       if (payload.student_number) payload.student_number = String(payload.student_number).trim();
       if (!payload.registration_status) payload.registration_status = 'aktif';
+      if (!payload.boarding_status || String(payload.boarding_status).trim() === '') {
+        payload.boarding_status = 'Gündüzlü';
+      }
       if (payload.extra_contacts !== undefined) {
         payload.extra_contacts = normalizeExtraContacts(payload.extra_contacts);
       } else {
         payload.extra_contacts = [];
       }
       await applyClassroomToPayload(payload, payload.tenant_id);
+      applyAgeFromBirthDate(payload);
       const student = await Student.create(payload);
       await audit.log(req, {
         action: 'create',
@@ -329,7 +690,7 @@ module.exports = {
         entityId: student.id,
         summary: `Öğrenci oluşturuldu: ${student.student_number || ''} ${student.first_name} ${student.last_name}`.trim(),
       });
-      res.status(201).json({ success: true, data: student });
+      res.status(201).json({ success: true, data: serializeStudent(student) });
     } catch (err) {
       if (err.status) {
         return res.status(err.status).json({
@@ -346,6 +707,29 @@ module.exports = {
     }
   },
 
+  async bulkRegistrationStatus(req, res, next) {
+    try {
+      const tenantId = req.user && req.user.tenant_id;
+      const updates = (req.validatedBody || req.body).updates || [];
+      const ids = updates.map((row) => row.id);
+      const students = await Student.findAll({
+        where: { id: { [Op.in]: ids }, ...(tenantId ? { tenant_id: tenantId } : {}) },
+      });
+      const byId = new Map(students.map((student) => [student.id, student]));
+      let updated = 0;
+      for (const row of updates) {
+        const student = byId.get(row.id);
+        if (!student) continue;
+        if (student.registration_status === row.registration_status) continue;
+        await student.update({ registration_status: row.registration_status });
+        updated += 1;
+      }
+      res.json({ success: true, data: { updated } });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async update(req, res, next) {
     try {
       const student = await Student.findByPk(req.params.id);
@@ -357,6 +741,15 @@ module.exports = {
       if (req.user && req.user.tenant_id) payload.tenant_id = req.user.tenant_id;
       if (payload.gender === '') payload.gender = null;
       if (payload.national_id === '') payload.national_id = null;
+      if (payload.national_id) {
+        payload.national_id = normalizeNationalId(payload.national_id);
+        if (!payload.national_id) {
+          return res.status(400).json({
+            success: false,
+            message: 'T.C. kimlik no 11 haneli sayı olmalıdır',
+          });
+        }
+      }
       if (payload.student_number != null) payload.student_number = String(payload.student_number).trim();
       if (payload.extra_contacts !== undefined) {
         payload.extra_contacts = normalizeExtraContacts(payload.extra_contacts);
@@ -364,6 +757,7 @@ module.exports = {
       if (payload.classroom_id) {
         await applyClassroomToPayload(payload, payload.tenant_id || student.tenant_id);
       }
+      applyAgeFromBirthDate(payload, student.birth_date);
       await student.update(payload);
       await audit.log(req, {
         action: 'update',
@@ -371,7 +765,7 @@ module.exports = {
         entityId: student.id,
         summary: `Öğrenci güncellendi: ${student.student_number || ''} ${student.first_name} ${student.last_name}`.trim(),
       });
-      res.json({ success: true, data: student });
+      res.json({ success: true, data: serializeStudent(student) });
     } catch (err) {
       if (err.status) {
         return res.status(err.status).json({
@@ -397,7 +791,12 @@ module.exports = {
       }
       const label = `${student.student_number || ''} ${student.first_name} ${student.last_name}`.trim();
       const id = student.id;
+      const previousPath = student.photo_path;
       await student.destroy();
+      if (previousPath) {
+        const photoUpload = require('../services/studentPhotoUpload');
+        photoUpload.removeStoredFile(previousPath);
+      }
       await audit.log(req, {
         action: 'delete',
         entityType: 'student',
@@ -405,70 +804,6 @@ module.exports = {
         summary: `Öğrenci silindi: ${label}`,
       });
       res.json({ success: true });
-    } catch (err) {
-      next(err);
-    }
-  },
-
-  async certificate(req, res, next) {
-    try {
-      const type = CERTIFICATE_TITLES[req.query.type] ? req.query.type : 'ogrenci_belgesi';
-      const student = await Student.findByPk(req.params.id, {
-        include: [
-          { model: Classroom, required: false },
-          { model: School, required: false },
-        ],
-      });
-      if (!student) return res.status(404).json({ success: false, message: 'Bulunamadı' });
-      if (!assertTenantAccess(req, student)) {
-        return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
-      }
-
-      const doc = new PDFDocument({ margin: 60, size: 'A4' });
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${type}-${student.student_number || student.id}.pdf"`);
-      doc.pipe(res);
-
-      const schoolName = student.School?.name || 'Okul Müdürlüğü';
-      doc.fontSize(13).text(schoolName.toUpperCase(), { align: 'center' });
-      doc.fontSize(13).text(CERTIFICATE_TITLES[type], { align: 'center' });
-      doc.moveDown(2);
-
-      const rows = [
-        ['Adı Soyadı', `${student.first_name} ${student.last_name}`],
-        ['Öğrenci No', student.student_number || '—'],
-        ['T.C. Kimlik No', student.national_id || '—'],
-        ['Sınıfı / Şubesi', student.Classroom ? `${student.Classroom.class_level}/${student.Classroom.section}` : `${student.class_level || ''}/${student.section || ''}`],
-        ['Kayıt Durumu', student.registration_status || '—'],
-      ];
-
-      doc.fontSize(11);
-      rows.forEach(([label, value]) => {
-        doc.font('Helvetica-Bold').text(`${label}: `, { continued: true });
-        doc.font('Helvetica').text(String(value));
-        doc.moveDown(0.5);
-      });
-
-      doc.moveDown(2);
-      const bodyText =
-        type === 'ogrenim_durumu'
-          ? `Yukarıda kimlik bilgileri yazılı öğrencinin okulumuz kayıtlarına göre öğrenim durumu bu belge ile onaylanmıştır.`
-          : `Yukarıda kimlik bilgileri yazılı öğrencinin okulumuzda kayıtlı öğrenci olduğu bu belge ile onaylanmıştır.`;
-      doc.text(bodyText, { align: 'justify' });
-
-      doc.moveDown(4);
-      doc.text(`Düzenleme Tarihi: ${new Date().toLocaleDateString('tr-TR')}`, { align: 'right' });
-      doc.moveDown(2);
-      doc.text('Okul Müdürü', { align: 'right' });
-
-      await audit.log(req, {
-        action: 'export',
-        entityType: 'student_certificate',
-        entityId: student.id,
-        summary: `${CERTIFICATE_TITLES[type]} üretildi: ${student.first_name} ${student.last_name}`,
-      });
-
-      doc.end();
     } catch (err) {
       next(err);
     }
@@ -484,9 +819,14 @@ module.exports = {
         });
       }
 
+      if (isPhotoRosterWorkbook(req.file.buffer)) {
+        const data = await buildPhotoRosterPreview(req.file.buffer, req.user.tenant_id);
+        return res.json({ success: true, data });
+      }
+
       const headerRow = req.body.header_row ? Number(req.body.header_row) : null;
       const preview = previewWorkbook(req.file.buffer, { headerRow });
-      res.json({ success: true, data: preview });
+      res.json({ success: true, data: { format: 'table', ...preview } });
     } catch (err) {
       next(err);
     }
@@ -500,6 +840,11 @@ module.exports = {
           code: 'FILE_REQUIRED',
           message: 'Excel dosyası gerekli (.xls veya .xlsx)',
         });
+      }
+
+      if (isPhotoRosterWorkbook(req.file.buffer)) {
+        const data = await commitPhotoRosterImport(req);
+        return res.json({ success: true, data });
       }
 
       const tenantId = req.user.tenant_id;
@@ -524,6 +869,11 @@ module.exports = {
       if (!preview) {
         preview = previewWorkbook(req.file.buffer, { headerRow: effectiveHeaderRow });
       }
+
+      columnMapping = fillMissingMappedFields(columnMapping, preview.headers, [
+        'mother_name',
+        'father_name',
+      ]);
 
       const mappedFields = Object.values(columnMapping);
       if (!mappedFields.includes('first_name') || !mappedFields.includes('last_name')) {
@@ -555,10 +905,10 @@ module.exports = {
       const defaultSection =
         bodySection || (detected && detected.section) || null;
 
-      const hasClassColumns =
-        mappedFields.includes('class_level') && mappedFields.includes('section');
+      const hasClassHint =
+        mappedFields.includes('class_level') || mappedFields.includes('section');
 
-      if (!hasClassColumns && !defaultClassroom) {
+      if (!hasClassHint && !defaultClassroom) {
         if (!defaultClassLevel || !defaultSection) {
           return res.status(400).json({
             success: false,
@@ -577,11 +927,76 @@ module.exports = {
       const rows = getMappedRows(req.file.buffer, {
         headerRow: effectiveHeaderRow,
         columnMapping,
+        detectRepeatingClassBlocks: true,
       });
+
+      // Sistemin otomatik sütun tanıma sözlüğünün (IMPORT_HEADER_MAP) eşleştiremediği
+      // başlıklar için otomatik geri bildirim açılır — kullanıcının eşleme ekranında
+      // sonradan elle yaptığı/atladığı seçimlerden bağımsız olarak, sistemin kendi
+      // tanıyamadığı başlıklar esas alınır.
+      const autoMappedIndexes = new Set(Object.keys(preview.suggested_mapping || {}).map((k) => Number(k)));
+      const columnSuggestions = parseColumnSuggestions(req.body.column_suggestions);
+      const unmatchedHeaders = (preview.headers || []).filter((h) => !autoMappedIndexes.has(h.index));
+      const unmatchedColumns = unmatchedHeaders.map((h) => h.label);
+
+      let feedbackCreated = false;
+      if (unmatchedHeaders.length > 0) {
+        const columnLines = unmatchedHeaders
+          .map((h) => {
+            const suggestion = columnSuggestions[String(h.index)];
+            return suggestion ? `"${h.label}" (kullanıcı önerisi: "${suggestion}")` : `"${h.label}"`;
+          })
+          .join(', ');
+        try {
+          await Feedback.create({
+            tenant_id: tenantId,
+            user_id: req.user.user_id || null,
+            message:
+              `Öğrenci Excel içe aktarımında sistemdeki hiçbir alanla eşleştirilemeyen sütun(lar) tespit edildi: ` +
+              `${columnLines}. ` +
+              `Dosya: ${req.file.originalname || 'bilinmiyor'}, sayfa: ${preview.sheet_name}. ` +
+              `Bu alan(lar) için sistemde karşılık gelen bir alan tanımlanması değerlendirilebilir.`,
+          });
+          feedbackCreated = true;
+        } catch {
+          // Geri bildirim oluşturulamasa da içe aktarım engellenmemeli.
+        }
+      }
+
+      const existingRows = await Student.findAll({ where: { tenant_id: tenantId } });
+      const maps = { byNationalId: new Map(), byStudentNumber: new Map() };
+      existingRows.forEach((s) => rememberStudent(maps, s));
+
+      const classroomCache = new Map();
+      async function classroomFor(level, section, rowSchoolId) {
+        const key = `${level}|${section}|${rowSchoolId || ''}`;
+        if (classroomCache.has(key)) return classroomCache.get(key);
+        const room = await resolveOrCreateClassroomForImport(
+          tenantId,
+          level,
+          section,
+          rowSchoolId
+        );
+        classroomCache.set(key, room);
+        return room;
+      }
 
       let created = 0;
       let updated = 0;
       const errors = [];
+      const seenStudentIds = new Set();
+      const touchedClassrooms = new Map();
+
+      function markImported(student, classroom) {
+        if (student && student.id) seenStudentIds.add(student.id);
+        if (classroom && classroom.id) {
+          touchedClassrooms.set(classroom.id, {
+            classroom_id: classroom.id,
+            class_level: classroom.class_level,
+            section: classroom.section,
+          });
+        }
+      }
 
       for (const { rowNumber, raw } of rows) {
         if (!raw.first_name && !raw.last_name && !raw.national_id && !raw.student_number) {
@@ -592,70 +1007,137 @@ module.exports = {
           errors.push({ row: rowNumber, message: 'Ad ve soyad zorunludur' });
           continue;
         }
-        if (!raw.student_number) {
+        const studentNumber = normalizeStudentNumber(raw.student_number);
+        if (!studentNumber) {
           errors.push({ row: rowNumber, message: 'Öğrenci numarası zorunludur' });
           continue;
         }
 
-        let classroom = defaultClassroom;
-        if (hasClassColumns) {
-          classroom = await findClassroomForImport(
-            tenantId,
-            raw.class_level,
-            raw.section,
-            schoolId || (defaultClassroom && defaultClassroom.school_id) || null
-          );
-          if (!classroom && defaultClassroom) classroom = defaultClassroom;
+        const parsedClass = parseClassSection(raw.class_level, raw.section);
+        const classInfo = parsedClass
+          || (defaultClassroom
+            ? { class_level: defaultClassroom.class_level, section: defaultClassroom.section }
+            : defaultClassLevel && defaultSection
+              ? { class_level: defaultClassLevel, section: defaultSection }
+              : null);
+
+        if (!classInfo) {
+          errors.push({
+            row: rowNumber,
+            message: `Sınıf/şube okunamadı: ${raw.class_level || '?'}/${raw.section || '?'}`,
+          });
+          continue;
+        }
+
+        const rowSchoolId =
+          schoolId || (defaultClassroom && defaultClassroom.school_id) || null;
+        let classroom;
+        try {
+          classroom = await classroomFor(classInfo.class_level, classInfo.section, rowSchoolId);
+        } catch (err) {
+          errors.push({
+            row: rowNumber,
+            message: err.message || `Sınıf oluşturulamadı: ${classInfo.class_level}/${classInfo.section}`,
+          });
+          continue;
         }
 
         if (!classroom) {
           errors.push({
             row: rowNumber,
-            message: `Tanımlı sınıf/şube bulunamadı: ${raw.class_level || '?'}/${raw.section || '?'}`,
+            message: `Tanımlı sınıf/şube bulunamadı: ${classInfo.class_level}/${classInfo.section}`,
           });
           continue;
         }
 
-        const payload = {
-          tenant_id: tenantId,
+        const nationalId = normalizeNationalId(raw.national_id);
+        if (hasNationalIdInput(raw.national_id) && !nationalId) {
+          errors.push({ row: rowNumber, message: 'T.C. kimlik no 11 haneli sayı olmalıdır' });
+          continue;
+        }
+        const incoming = {
           school_id: schoolId || classroom.school_id,
           classroom_id: classroom.id,
-          student_number: raw.student_number,
-          national_id: raw.national_id || null,
-          first_name: raw.first_name,
-          last_name: raw.last_name,
+          student_number: studentNumber,
+          first_name: String(raw.first_name).trim(),
+          last_name: String(raw.last_name).trim(),
           class_level: classroom.class_level,
           section: classroom.section,
-          gender: normalizeGender(raw.gender),
-          birth_date: parseBirthDate(raw.birth_date),
-          registration_status: raw.registration_status || 'aktif',
-          parent_name: raw.parent_name || null,
-          parent_phone: raw.parent_phone || null,
-          is_inclusion: normalizeBool(raw.is_inclusion),
-          is_foreign: normalizeBool(raw.is_foreign),
-          meta: { import_row: rowNumber },
         };
+        if (nationalId) incoming.national_id = nationalId;
+        const gender = normalizeGender(raw.gender);
+        if (gender) incoming.gender = gender;
+        const birthDate = parseBirthDate(raw.birth_date);
+        if (birthDate) incoming.birth_date = birthDate;
+        if (raw.yasi != null && raw.yasi !== '') {
+          const age = Number.parseInt(String(raw.yasi).trim(), 10);
+          if (Number.isFinite(age)) incoming.yasi = age;
+        }
+        applyAgeFromBirthDate(incoming);
+        const registrationStatus = normalizeRegistrationStatus(raw.registration_status);
+        if (registrationStatus) incoming.registration_status = registrationStatus;
+        if (raw.parent_name) incoming.parent_name = String(raw.parent_name).trim();
+        if (raw.mother_name) incoming.mother_name = String(raw.mother_name).trim();
+        if (raw.father_name) incoming.father_name = String(raw.father_name).trim();
+        if (raw.parent_phone) incoming.parent_phone = String(raw.parent_phone).trim();
+        if (raw.student_phone) incoming.student_phone = String(raw.student_phone).trim();
+        if (raw.is_inclusion != null && raw.is_inclusion !== '') {
+          incoming.is_inclusion = normalizeBool(raw.is_inclusion);
+        }
+        if (raw.is_foreign != null && raw.is_foreign !== '') {
+          incoming.is_foreign = normalizeBool(raw.is_foreign);
+        }
+        incoming.boarding_status = normalizeBoardingStatus(raw.boarding_status);
 
         try {
-          let existing = null;
-          if (payload.national_id) {
-            existing = await Student.findOne({
-              where: { tenant_id: tenantId, national_id: payload.national_id },
-            });
-          }
-          if (!existing) {
-            existing = await Student.findOne({
-              where: { tenant_id: tenantId, student_number: payload.student_number },
-            });
-          }
+          let existing = findExistingStudent(maps, nationalId, studentNumber);
           if (existing) {
-            await existing.update(payload);
+            markImported(existing, classroom);
+            const patch = pickChangedFields(existing, incoming);
+            if (Object.keys(patch).length > 0) {
+              await existing.update(patch);
+            }
+            rememberStudent(maps, existing);
             updated += 1;
             continue;
           }
-          await Student.create(payload);
+
+          const createdStudent = await Student.create({
+            tenant_id: tenantId,
+            ...incoming,
+            registration_status: incoming.registration_status || 'aktif',
+            is_inclusion: incoming.is_inclusion || false,
+            is_foreign: incoming.is_foreign || false,
+            national_id: nationalId,
+            meta: { import_row: rowNumber },
+          });
+          rememberStudent(maps, createdStudent);
+          markImported(createdStudent, classroom);
           created += 1;
         } catch (err) {
+          if (err.name === 'SequelizeUniqueConstraintError') {
+            const again =
+              (nationalId &&
+                (await Student.findOne({
+                  where: { tenant_id: tenantId, national_id: nationalId },
+                }))) ||
+              (await Student.findOne({
+                where: { tenant_id: tenantId, student_number: studentNumber },
+              }));
+            if (again) {
+              const patch = pickChangedFields(again, incoming);
+              if (Object.keys(patch).length > 0) {
+                await again.update(patch);
+              }
+              rememberStudent(maps, again);
+              markImported(again, classroom);
+              updated += 1;
+              continue;
+            }
+            const info = uniqueConstraintMessage(err);
+            errors.push({ row: rowNumber, message: info.message });
+            continue;
+          }
           errors.push({
             row: rowNumber,
             message: err.message || 'Satır işlenemedi',
@@ -663,9 +1145,52 @@ module.exports = {
         }
       }
 
+      const classroomIds = [...touchedClassrooms.keys()];
+      let missingByClass = [];
+      if (classroomIds.length) {
+        const absent = await Student.findAll({
+          where: {
+            tenant_id: tenantId,
+            classroom_id: { [Op.in]: classroomIds },
+            id: { [Op.notIn]: seenStudentIds.size ? [...seenStudentIds] : [0] },
+            [Op.or]: [{ registration_status: 'aktif' }, { registration_status: null }],
+          },
+          attributes: ['id', 'first_name', 'last_name', 'student_number', 'classroom_id'],
+          order: [
+            ['last_name', 'ASC'],
+            ['first_name', 'ASC'],
+          ],
+        });
+        const groups = new Map();
+        absent.forEach((student) => {
+          const meta = touchedClassrooms.get(student.classroom_id);
+          if (!meta) return;
+          if (!groups.has(student.classroom_id)) groups.set(student.classroom_id, { ...meta, students: [] });
+          groups.get(student.classroom_id).students.push({
+            id: student.id,
+            first_name: student.first_name,
+            last_name: student.last_name,
+            student_number: student.student_number,
+          });
+        });
+        missingByClass = [...groups.values()].sort((a, b) => {
+          const level = String(a.class_level).localeCompare(String(b.class_level), 'tr', { numeric: true });
+          if (level) return level;
+          return String(a.section || '').localeCompare(String(b.section || ''), 'tr');
+        });
+      }
+
       res.json({
         success: true,
-        data: { created, updated, errors },
+        data: {
+          format: 'table',
+          created,
+          updated,
+          errors,
+          unmatched_columns: unmatchedColumns,
+          feedback_created: feedbackCreated,
+          missing_by_class: missingByClass,
+        },
       });
     } catch (err) {
       next(err);
@@ -690,6 +1215,7 @@ module.exports = {
 
       let students = await Student.findAll({
         where: buildWhere(tenantId, queryFilters),
+        include: [{ model: School, attributes: ['id', 'name'], required: false }],
         order: [
           ['class_level', 'ASC'],
           ['section', 'ASC'],

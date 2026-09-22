@@ -15,7 +15,9 @@ import { FeedbackListPage } from './pages/platform/FeedbackListPage'
 import { PlatformNotificationsPage } from './pages/platform/PlatformNotificationsPage'
 import { LicensesPage } from './pages/platform/LicensesPage'
 import { BackupsPage } from './pages/platform/BackupsPage'
+import { PlatformRolesPage } from './pages/platform/PlatformRolesPage'
 import { SchoolsPage } from './pages/SchoolsPage'
+import { DirectorySchoolsPage } from './pages/platform/DirectorySchoolsPage'
 import { TeachersPage } from './pages/TeachersPage'
 import { StudentsPage } from './pages/StudentsPage'
 import { ClassroomsPage } from './pages/ClassroomsPage'
@@ -25,8 +27,8 @@ import { SchedulePage } from './pages/SchedulePage'
 import { SubjectsPage } from './pages/SubjectsPage'
 import { LeavesPage } from './pages/LeavesPage'
 import { NormPositionsPage } from './pages/NormPositionsPage'
+import { PromotionsPage } from './pages/PromotionsPage'
 import { AcademicYearsPage } from './pages/AcademicYearsPage'
-import { TrainingsPage } from './pages/TrainingsPage'
 import { DutyPage } from './pages/DutyPage'
 import { ExtraLessonsPage } from './pages/ExtraLessonsPage'
 import { AttendancePage } from './pages/AttendancePage'
@@ -38,6 +40,10 @@ import { KelebekPage } from './pages/KelebekPage'
 import { DisciplinePage } from './pages/DisciplinePage'
 import { GuidancePage } from './pages/GuidancePage'
 import { TeacherDocumentsPage } from './pages/TeacherDocumentsPage'
+import { OtherPersonnelPage } from './pages/OtherPersonnelPage'
+import { WorkTasksPage } from './pages/WorkTasksPage'
+import { CalendarPage } from './pages/CalendarPage'
+import { MessageLogsPage } from './pages/MessageLogsPage'
 
 function ThemedApp() {
   const { mode } = useThemeMode()
@@ -52,7 +58,18 @@ function ThemedApp() {
   }
 
   return (
-    <ConfigProvider locale={trTR} theme={theme}>
+    <ConfigProvider
+      locale={trTR}
+      theme={theme}
+      popupOverflow="scroll"
+      getPopupContainer={(node) => {
+        if (node) {
+          const overlay = node.closest('.ant-modal-wrap, .ant-drawer-content-wrapper, .ant-drawer-body')
+          if (overlay instanceof HTMLElement) return overlay
+        }
+        return document.body
+      }}
+    >
       <AntApp>
         <AuthProvider>
           <ActiveSchoolProvider>
@@ -69,13 +86,17 @@ function ThemedApp() {
                     <Route path="/audit-logs" element={<AuditLogsPage />} />
                   </Route>
                   <Route path="/feedback" element={<FeedbackPage />} />
+                  <Route path="/work-tasks" element={<WorkTasksPage />} />
+                  <Route path="/calendar" element={<CalendarPage />} />
+                  <Route path="/message-logs" element={<MessageLogsPage />} />
                   <Route element={<ModuleRoute module="schools" />}>
                     <Route path="/schools" element={<SchoolsPage />} />
                   </Route>
                   <Route element={<ModuleRoute module="teachers" />}>
                     <Route path="/teachers" element={<TeachersPage />} />
+                    <Route path="/other-personnel" element={<OtherPersonnelPage />} />
                     <Route path="/norm-positions" element={<NormPositionsPage />} />
-                    <Route path="/trainings" element={<TrainingsPage />} />
+                    <Route path="/promotions" element={<PromotionsPage />} />
                     <Route path="/teacher-documents" element={<TeacherDocumentsPage />} />
                   </Route>
                   <Route element={<ModuleRoute module="exams" />}>
@@ -123,7 +144,10 @@ function ThemedApp() {
                 <Route element={<PlatformAdminRoute />}>
                   <Route path="/platform/tenants" element={<TenantsListPage />} />
                   <Route path="/platform/tenants/:id" element={<TenantDetailPage />} />
+                  <Route path="/platform/roles" element={<PlatformRolesPage />} />
                   <Route path="/platform/licenses" element={<LicensesPage />} />
+                  <Route path="/platform/directory-schools" element={<DirectorySchoolsPage />} />
+                  <Route path="/directory-schools" element={<Navigate to="/platform/directory-schools" replace />} />
                   <Route path="/platform/feedback" element={<FeedbackListPage />} />
                   <Route path="/platform/notifications" element={<PlatformNotificationsPage />} />
                   <Route path="/platform/backups" element={<BackupsPage />} />

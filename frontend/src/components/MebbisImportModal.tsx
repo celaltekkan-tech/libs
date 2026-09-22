@@ -1,10 +1,12 @@
 import { useState } from 'react'
-import { App, Alert, Button, Checkbox, Input, Modal, Select, Table, Tag, Typography, Upload } from 'antd'
+import { App, Alert, Button, Checkbox, Input, Modal, Select, Tag, Typography, Upload } from 'antd'
+import { SortableTable } from './SortableTable'
 import { InboxOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import type { RcFile } from 'antd/es/upload/interface'
 import { commitMebbisImport, previewMebbisImport, type MebbisImportRow } from '../api/teachers'
 import { getErrorMessage } from '../api/client'
+import { tablePagination } from '../utils/tablePagination'
 
 const PERSONNEL_TYPE_OPTIONS = [
   { value: 'ogretmen', label: 'Öğretmen' },
@@ -102,9 +104,12 @@ export function MebbisImportModal({ open, schoolId, schoolName, onCancel, onImpo
     },
     { title: 'TC Kimlik No', dataIndex: 'national_id' },
     {
-      title: 'Unvan / Branş',
-      render: (_: unknown, row) => [row.gorev, row.brans].filter(Boolean).join(' / ') || '—',
+      title: 'Unvan',
+      dataIndex: 'gorev',
+      render: (_: unknown, row) => row.gorev || row.unvan || '—',
     },
+    { title: 'Branş', dataIndex: 'brans', render: (v: string | null) => v || '—' },
+    { title: 'Kariyer', dataIndex: 'kariyer', render: (v: string | null) => v || '—' },
     {
       title: 'Personel Tipi',
       width: 140,
@@ -147,7 +152,7 @@ export function MebbisImportModal({ open, schoolId, schoolName, onCancel, onImpo
       title="MEBBİS'ten İçe Aktar"
       open={open}
       onCancel={handleCancel}
-      width={step === 'preview' ? 1000 : 520}
+      width={step === 'preview' ? 1100 : 520}
       destroyOnHidden
       footer={
         step === 'preview'
@@ -222,12 +227,12 @@ export function MebbisImportModal({ open, schoolId, schoolName, onCancel, onImpo
             (TC kimlik no ile eşleşenler MEBBİS verisiyle tamamen güncellenir; Sendika alanı korunur/manuel
             girilir).
           </Typography.Paragraph>
-          <Table
+          <SortableTable
             rowKey="row_index"
             size="small"
             columns={columns}
             dataSource={rows}
-            pagination={{ pageSize: 10 }}
+            pagination={tablePagination(10)}
             scroll={{ x: 900 }}
           />
         </>

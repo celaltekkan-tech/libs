@@ -1,23 +1,32 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Button, Form, Input, Modal, Select, Space, Switch, Table, Tabs, Tag, Typography } from 'antd'
+import { App, Button, Form, Input, Modal, Select, Space, Switch, Tabs, Tag, Typography } from 'antd'
 import { DeleteOutlined, EditOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { SortableTable } from '../components/SortableTable'
 import { RoleGroupsPanel } from '../components/RoleGroupsPanel'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
+import { useActiveSchool } from '../auth/ActiveSchoolContext'
 import {
   createManagedUser,
   deleteManagedUser,
   fetchUserFormOptions,
   listManagedUsers,
+  resetManagedUserSmsLogin,
   updateManagedUser,
 } from '../api/managedUsers'
 import { getErrorMessage } from '../api/client'
 import type { ManagedUser, ManagedUserPayload, UserFormOptions } from '../types/managedUser'
+import { tablePagination } from '../utils/tablePagination'
+import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
+import { requiredMobilePhoneRule } from '../utils/phone'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 interface UserFormValues {
   full_name: string
   email: string
+  phone?: string
   password?: string
   school_id: number
   role_id: number
@@ -27,20 +36,27 @@ interface UserFormValues {
 export function UsersPage() {
   const { message, modal } = App.useApp()
   const { session, hasPermission } = useAuth()
+  const { activeSchoolId } = useActiveSchool()
   const [users, setUsers] = useState<ManagedUser[]>([])
   const [options, setOptions] = useState<UserFormOptions>({
     school_roles: [],
     schools: [],
     user_limit: null,
     user_count: 0,
+    user_exempt_count: 0,
     user_remaining: null,
+    quota_exempt_roles: [],
   })
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<ManagedUser | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [search, setSearch] = useState('')
+  const searchQuery = useDebouncedValue(search)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
   const [form] = Form.useForm<UserFormValues>()
+  const selectedRoleId = Form.useWatch('role_id', form)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -60,7 +76,7 @@ export function UsersPage() {
   }, [load])
 
   const filteredUsers = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase('tr-TR')
+    const q = searchQuery.trim().toLocaleLowerCase('tr-TR')
     if (!q) return users
     return users.filter((u) => {
       return (
@@ -70,7 +86,12 @@ export function UsersPage() {
         (u.assigned_school_name || '').toLocaleLowerCase('tr-TR').includes(q)
       )
     })
-  }, [users, search])
+  }, [users, searchQuery])
+
+  const deletableUsers = useMemo(
+    () => filteredUsers.filter((u) => u.id !== session?.user.id),
+    [filteredUsers, session?.user.id],
+  )
 
   const roleOptions = useMemo(
     () =>
@@ -95,7 +116,7 @@ export function UsersPage() {
     form.setFieldsValue({
       role_id: options.school_roles.find((r) => r.name === 'Memur')?.id || options.school_roles[0]?.id,
       is_active: true,
-      school_id: options.schools[0]?.id,
+      school_id: activeSchoolId ?? options.schools[0]?.id,
     })
     setModalOpen(true)
   }
@@ -108,6 +129,7 @@ export function UsersPage() {
       school_id: user.assigned_school_id || user.school_id || undefined,
       role_id: resolveRoleId(user),
       is_active: user.is_active,
+      phone: user.phone || undefined,
       password: undefined,
     })
     setModalOpen(true)
@@ -125,6 +147,12 @@ export function UsersPage() {
       }
 
       const roleMeta = options.school_roles.find((r) => r.id === values.role_id)
+      const alreadyCounted = Boolean(editing && !isExemptRole(editing.school_role))
+      if (atUserLimit && !isExemptRole(roleMeta?.name) && !alreadyCounted) {
+        message.warning('Yönetici kullanıcı limiti doldu. Öğretmen veya rehber öğretmen seçebilirsiniz.')
+        setSubmitting(false)
+        return
+      }
       const payload: ManagedUserPayload = {
         full_name: values.full_name,
         email: values.email,
@@ -132,6 +160,7 @@ export function UsersPage() {
         role_id: values.role_id,
         school_role: roleMeta?.name || 'Memur',
         is_active: isSelf ? true : values.is_active,
+        phone: values.phone?.trim() || null,
       }
       if (values.password) payload.password = values.password
 
@@ -174,18 +203,67 @@ export function UsersPage() {
     })
   }
 
+  const onResetSmsLogin = (user: ManagedUser) => {
+    modal.confirm({
+      title: 'SMS giriş sayacını sıfırla',
+      content: `"${user.full_name}" için günlük SMS istek hakkı ve giriş kilidi sıfırlansın mı?`,
+      okText: 'Sıfırla',
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        try {
+          await resetManagedUserSmsLogin(user.id)
+          message.success('SMS giriş sayacı sıfırlandı')
+          void load()
+        } catch (err) {
+          message.error(getErrorMessage(err))
+        }
+      },
+    })
+  }
+
+  const onBulkDelete = async () => {
+    const ids = deletableUsers.map((u) => u.id)
+    if (ids.length === 0) {
+      message.warning('Silinecek kullanıcı yok (kendi hesabınız hariç tutulur)')
+      setBulkOpen(false)
+      return
+    }
+    setBulkLoading(true)
+    try {
+      const result = await bulkDeleteByIds(ids, (id) => deleteManagedUser(Number(id)))
+      const text = bulkDeleteResultMessage(result, 'kullanıcı')
+      if (result.failed === 0) message.success(text)
+      else message.warning(text)
+      setBulkOpen(false)
+      void load()
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   const canCreate = hasPermission('users.create')
   const canUpdate = hasPermission('users.update')
   const canDelete = hasPermission('users.delete')
+  const smsLoginRequiresPhone = Boolean(session?.tenant_sms_login_enabled)
+  const exemptRoles = options.quota_exempt_roles?.length
+    ? options.quota_exempt_roles
+    : ['Öğretmen', 'Rehber Öğretmen']
+  const isExemptRole = (roleName?: string | null) =>
+    Boolean(roleName && exemptRoles.some((name) => name.toLocaleLowerCase('tr-TR') === roleName.toLocaleLowerCase('tr-TR')))
   const atUserLimit = options.user_limit != null && options.user_count >= options.user_limit
+  const selectedRoleName = options.school_roles.find((r) => r.id === selectedRoleId)?.name
+  const existingAlreadyCounted = Boolean(editing && !isExemptRole(editing.school_role))
+  const selectedBlockedByQuota =
+    atUserLimit && !isExemptRole(selectedRoleName) && !existingAlreadyCounted
   const quotaLabel =
     options.user_limit == null
-      ? `Kullanıcı: ${options.user_count} (sınırsız)`
-      : `Kullanıcı: ${options.user_count}/${options.user_limit}`
+      ? `Kullanıcı: ${options.user_count + (options.user_exempt_count || 0)} (sınırsız)`
+      : `Yönetici kullanıcı: ${options.user_count}/${options.user_limit} · Öğretmen hesapları sınırsız`
 
   const columns: ColumnsType<ManagedUser> = [
     { title: 'Ad soyad', dataIndex: 'full_name' },
     { title: 'E-posta', dataIndex: 'email' },
+    { title: 'Telefon', dataIndex: 'phone', render: (p: string | null) => p || '—' },
     {
       title: 'Yetki grubu',
       dataIndex: 'school_role',
@@ -210,6 +288,11 @@ export function UsersPage() {
                 {canUpdate && (
                   <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)} title="Düzenle" />
                 )}
+                {canUpdate && (
+                  <Button size="small" onClick={() => onResetSmsLogin(record)} title="SMS sayacı sıfırla">
+                    SMS sıfırla
+                  </Button>
+                )}
                 {canDelete && session?.user.id !== record.id && (
                   <Button
                     size="small"
@@ -228,7 +311,7 @@ export function UsersPage() {
 
   return (
     <AppLayout title="Kullanıcılar ve Yetkilendirme">
-      <div style={{ maxWidth: 1100 }}>
+      <div style={{ width: '100%' }}>
         <Typography.Title level={3} style={{ margin: 0, marginBottom: 4 }}>
           Kullanıcılar ve Yetkilendirme
         </Typography.Title>
@@ -257,12 +340,17 @@ export function UsersPage() {
                       onChange={(e) => setSearch(e.target.value)}
                       style={{ maxWidth: 420 }}
                     />
+                    {canDelete && deletableUsers.length > 0 && (
+                      <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+                        Toplu sil ({deletableUsers.length})
+                      </Button>
+                    )}
                     {canCreate && (
                       <Button
                         type="primary"
                         icon={<PlusOutlined />}
                         onClick={openCreate}
-                        disabled={options.schools.length === 0 || atUserLimit}
+                        disabled={options.schools.length === 0}
                       >
                         Yeni Kullanıcı
                       </Button>
@@ -276,16 +364,17 @@ export function UsersPage() {
                   )}
                   {atUserLimit && (
                     <Typography.Paragraph type="warning">
-                      Plan kullanıcı limitine ulaşıldı ({options.user_count}/{options.user_limit}).
+                      Yönetici kullanıcı limiti doldu ({options.user_count}/{options.user_limit}). Öğretmen
+                      ve rehber öğretmen hesapları bu limite dahil değildir.
                     </Typography.Paragraph>
                   )}
 
-                  <Table
+                  <SortableTable
                     rowKey="id"
                     loading={loading}
                     columns={columns}
                     dataSource={filteredUsers}
-                    pagination={{ pageSize: 20 }}
+                    pagination={tablePagination(20)}
                     scroll={{ x: 'max-content' }}
                   />
                 </>
@@ -301,6 +390,7 @@ export function UsersPage() {
         onCancel={() => setModalOpen(false)}
         onOk={() => form.submit()}
         confirmLoading={submitting}
+        okButtonProps={{ disabled: selectedBlockedByQuota }}
         okText={editing ? 'Kaydet' : 'Oluştur'}
         cancelText="Vazgeç"
         destroyOnHidden
@@ -319,6 +409,23 @@ export function UsersPage() {
             ]}
           >
             <Input placeholder="kullanici@okul.local" />
+          </Form.Item>
+          <Form.Item
+            name="phone"
+            label="Kullanıcı telefonu (SMS)"
+            extra={
+              smsLoginRequiresPhone
+                ? 'SMS ile giriş açık: geçerli cep telefonu zorunludur (05xxxxxxxxx).'
+                : 'SMS bildirimleri ve SMS giriş için kullanılır (05xxxxxxxxx).'
+            }
+            rules={[
+              ...(smsLoginRequiresPhone
+                ? [{ required: true, message: 'Telefon zorunludur' }]
+                : []),
+              requiredMobilePhoneRule(smsLoginRequiresPhone),
+            ]}
+          >
+            <Input placeholder="05xx xxx xx xx" maxLength={30} />
           </Form.Item>
           <Form.Item
             name="password"
@@ -344,10 +451,15 @@ export function UsersPage() {
             name="role_id"
             label="Yetki grubu"
             rules={[{ required: true, message: 'Yetki grubu seçin' }]}
-            extra="Menü görünürlüğü ve işlem yetkileri bu gruba göre belirlenir."
+            extra="Menü görünürlüğü ve işlem yetkileri bu gruba göre belirlenir. Öğretmen ve rehber öğretmen hesapları plan kotasına dahil değildir."
           >
             <Select showSearch optionFilterProp="label" options={roleOptions} />
           </Form.Item>
+          {selectedBlockedByQuota && (
+            <Typography.Paragraph type="warning">
+              Yönetici kullanıcı limiti doldu. Öğretmen veya rehber öğretmen seçebilirsiniz.
+            </Typography.Paragraph>
+          )}
           <Form.Item
             name="is_active"
             label="Aktif"
@@ -360,6 +472,14 @@ export function UsersPage() {
           </Form.Item>
         </Form>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Kullanıcıları toplu sil"
+        description={`Filtreye uyan ${deletableUsers.length} kullanıcı kaydı silinecek (kendi hesabınız hariç).`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

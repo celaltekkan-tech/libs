@@ -38,3 +38,7 @@ export async function updateManagedUser(
 export async function deleteManagedUser(id: number): Promise<void> {
   await client.delete(`/api/users/${id}`)
 }
+
+export async function resetManagedUserSmsLogin(id: number): Promise<void> {
+  await client.post(`/api/users/${id}/reset-sms-login`)
+}

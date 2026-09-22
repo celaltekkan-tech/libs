@@ -7,9 +7,15 @@ interface Envelope<T> {
   data: T
 }
 
-export async function submitFeedback(message: string, files: File[] = []): Promise<Feedback> {
+export async function submitFeedback(
+  message: string,
+  files: File[] = [],
+  page?: { path?: string | null; title?: string | null },
+): Promise<Feedback> {
   const form = new FormData()
   form.append('message', message)
+  if (page?.path) form.append('page_path', page.path)
+  if (page?.title) form.append('page_title', page.title)
   files.forEach((file) => form.append('files', file))
   const { data } = await client.post<Envelope<Feedback>>('/api/feedback', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -44,6 +50,11 @@ export async function cancelFeedback(id: number, cancelReason: string): Promise<
   const { data } = await client.put<Envelope<Feedback>>(`/api/feedback/${id}/cancel`, {
     cancel_reason: cancelReason,
   })
+  return data.data
+}
+
+export async function addFeedbackUpdate(id: number, body: string): Promise<Feedback> {
+  const { data } = await client.post<Envelope<Feedback>>(`/api/feedback/${id}/updates`, { body })
   return data.data
 }
 

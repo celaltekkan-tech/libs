@@ -12,11 +12,13 @@
         "smoke:auth": "node scripts/auth-smoke-test.js",
         "smoke:cors": "node scripts/cors-check.js",
         "dev:frontend": "npm run dev --prefix frontend",
+        "dev:mobile": "npm start --prefix mobile",
         "dev:all": "concurrently -n be,fe -c cyan,magenta \"npm run dev\" \"npm run dev:frontend\"",
         "build:frontend": "npm run build --prefix frontend"
     },
     "dependencies": {
         "bcrypt": "^5.1.0",
+        "cfb": "^1.2.1",
         "cors": "^2.8.6",
         "dotenv": "^16.0.3",
         "exceljs": "^4.4.0",
@@ -26,6 +28,8 @@
         "joi": "^17.9.2",
         "jsonwebtoken": "^9.0.0",
         "multer": "^2.3.0",
+        "node-cron": "^4.6.0",
+        "nodemailer": "^10.0.10",
         "otplib": "^12.0.1",
         "pdfkit": "^0.20.2",
         "pg": "^8.11.0",

@@ -6,6 +6,7 @@ import { fetchAbsenceCalendar } from '../api/absences'
 import type { AbsenceCalendarDay } from '../api/absences'
 import { listStudents } from '../api/students'
 import { getErrorMessage } from '../api/client'
+import { FilterBar } from './FilterBar'
 import { ABSENCE_TYPE_COLORS, ABSENCE_TYPE_LABELS } from '../types/studentAbsence'
 import type { Student } from '../types/student'
 
@@ -118,7 +119,7 @@ export function AbsenceCalendarView() {
 
   return (
     <div>
-      <Space wrap style={{ marginBottom: 12 }}>
+      <FilterBar style={{ marginBottom: 12 }}>
         <Select
           allowClear
           showSearch
@@ -130,7 +131,7 @@ export function AbsenceCalendarView() {
           style={{ width: 300 }}
         />
         {!selectedStudentId && <Typography.Text type="secondary">Toplam öğrenci: {totalStudents}</Typography.Text>}
-      </Space>
+      </FilterBar>
 
       <Calendar
         value={panelDate}

@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Form, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd'
+import { App, Button, Form, Input, Modal, Select, Space, Tag, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import { DeleteOutlined, LockOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { ClearFiltersButton } from '../components/ClearFiltersButton'
+import { FilterBar } from '../components/FilterBar'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import {
   createGuidanceSession,
@@ -15,6 +19,9 @@ import { getErrorMessage } from '../api/client'
 import { REFERRAL_LABELS, REFERRAL_OPTIONS, SESSION_TYPE_LABELS, SESSION_TYPE_OPTIONS } from '../types/guidanceSession'
 import type { GuidanceSession, GuidanceSessionPayload, GuidanceStats } from '../types/guidanceSession'
 import type { Student } from '../types/student'
+import { tablePagination } from '../utils/tablePagination'
+import { nestedPersonNameSorter, SORT_AZ } from '../utils/tableSort'
+import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 export function GuidancePage() {
   const { message, modal } = App.useApp()
@@ -53,6 +60,14 @@ export function GuidancePage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
+    getIds: () => sessions.map((s) => s.id),
+    deleteOne: (id) => deleteGuidanceSession(Number(id)),
+    noun: 'görüşme kaydı',
+    reload: () => void load(),
+    message,
+  })
 
   const onFinish = async (values: GuidanceSessionPayload) => {
     if (!session) return
@@ -93,6 +108,8 @@ export function GuidancePage() {
     { title: 'Tarih', dataIndex: 'session_date' },
     {
       title: 'Öğrenci',
+      sorter: nestedPersonNameSorter((r: GuidanceSession) => r.Student),
+      sortDirections: [...SORT_AZ],
       render: (_: unknown, r: GuidanceSession) => (r.Student ? `${r.Student.first_name} ${r.Student.last_name}` : '—'),
     },
     { title: 'Görüşme Türü', dataIndex: 'session_type', render: (v: string) => SESSION_TYPE_LABELS[v] || v },
@@ -134,29 +151,42 @@ export function GuidancePage() {
       )}
 
       <Space wrap style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Select
-          allowClear
-          showSearch
-          optionFilterProp="label"
-          placeholder="Öğrenciye göre filtrele"
-          value={selectedStudentId ?? undefined}
-          onChange={(v) => setSelectedStudentId(v ?? null)}
-          options={students.map((s) => ({ value: s.id, label: `${s.first_name} ${s.last_name}` }))}
-          style={{ width: 260 }}
-        />
-        {canCreate && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-            Yeni Görüşme Kaydı
-          </Button>
-        )}
+        <FilterBar style={{ marginBottom: 0, width: 'auto' }}>
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="Öğrenciye göre filtrele"
+            value={selectedStudentId ?? undefined}
+            onChange={(v) => setSelectedStudentId(v ?? null)}
+            options={students.map((s) => ({ value: s.id, label: `${s.first_name} ${s.last_name}` }))}
+            style={{ width: 260 }}
+          />
+          <ClearFiltersButton
+            active={selectedStudentId != null}
+            onClick={() => setSelectedStudentId(null)}
+          />
+        </FilterBar>
+        <Space wrap>
+          {canDelete && sessions.length > 0 && (
+            <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+              Toplu sil ({sessions.length})
+            </Button>
+          )}
+          {canCreate && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
+              Yeni Görüşme Kaydı
+            </Button>
+          )}
+        </Space>
       </Space>
 
-      <Table
+      <SortableTable
         rowKey="id"
         loading={loading}
         columns={columns}
         dataSource={sessions}
-        pagination={{ pageSize: 20 }}
+        pagination={tablePagination(20)}
         scroll={{ x: 'max-content' }}
       />
 
@@ -192,6 +222,14 @@ export function GuidancePage() {
           </Form.Item>
         </Form>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Görüşme kayıtlarını toplu sil"
+        description={`Filtreye uyan ${sessions.length} görüşme kaydı silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

@@ -2,6 +2,8 @@ const bcrypt = require('bcrypt');
 const db = require('../models');
 const { Tenant, School, User, Role, UserSchool } = db;
 const { seedDefaultHolidays } = require('../services/holidayService');
+const { applyDirectorySchoolToPayload } = require('../services/directorySchoolService');
+const licenseService = require('../services/licenseService');
 
 const MANAGER_ROLE_NAME = 'Müdür';
 const BCRYPT_ROUNDS = 10;
@@ -93,7 +95,15 @@ module.exports = {
   async create(req, res, next) {
     const payload = req.validatedBody || req.body;
 
-    const existingSchool = await School.findOne({ where: { code: payload.school.code } });
+    const schoolPayload = { ...payload.school };
+    try {
+      await applyDirectorySchoolToPayload(schoolPayload);
+    } catch (err) {
+      if (err.status) return res.status(err.status).json({ success: false, message: err.message });
+      return next(err);
+    }
+
+    const existingSchool = await School.findOne({ where: { code: schoolPayload.code } });
     if (existingSchool) {
       return res.status(409).json({ success: false, message: 'Bu okul kodu zaten kullanılıyor' });
     }
@@ -110,17 +120,39 @@ module.exports = {
     const transaction = await db.sequelize.transaction();
 
     try {
+      const { assertValidMobilePhone } = require('../utils/phone');
+      let tenantPhone = null;
+      let adminPhone = null;
+      try {
+        tenantPhone = assertValidMobilePhone(payload.tenant.phone, { required: false });
+        adminPhone = assertValidMobilePhone(payload.admin.phone, { required: true });
+      } catch (err) {
+        await transaction.rollback();
+        return res.status(err.status || 400).json({
+          success: false,
+          code: err.code || 'PHONE_INVALID',
+          message: err.message,
+        });
+      }
+
       const tenant = await Tenant.create(
-        { name: payload.tenant.name, plan: payload.tenant.plan || null },
+        {
+          name: payload.tenant.name,
+          plan: payload.tenant.plan || null,
+          phone: tenantPhone,
+        },
         { transaction }
       );
 
       const school = await School.create(
         {
           tenant_id: tenant.id,
-          name: payload.school.name,
-          code: payload.school.code,
-          school_type: payload.school.school_type,
+          name: schoolPayload.name,
+          code: schoolPayload.code,
+          school_type: schoolPayload.school_type,
+          province_id: schoolPayload.province_id || null,
+          district_id: schoolPayload.district_id || null,
+          directory_school_id: schoolPayload.directory_school_id || null,
         },
         { transaction }
       );
@@ -134,6 +166,7 @@ module.exports = {
           email: payload.admin.email,
           password_hash,
           role: 'admin',
+          phone: adminPhone,
         },
         { transaction }
       );
@@ -176,8 +209,66 @@ module.exports = {
         Object.prototype.hasOwnProperty.call(payload, 'two_factor_enabled') &&
         payload.two_factor_enabled === false &&
         tenant.two_factor_enabled === true;
+      const enablingSms =
+        Object.prototype.hasOwnProperty.call(payload, 'sms_login_enabled') &&
+        payload.sms_login_enabled === true &&
+        !tenant.sms_login_enabled;
 
-      await tenant.update(payload);
+      const updates = { ...payload };
+      if (Object.prototype.hasOwnProperty.call(payload, 'phone')) {
+        const { assertValidMobilePhone } = require('../utils/phone');
+        try {
+          updates.phone = assertValidMobilePhone(payload.phone, { required: false });
+        } catch (err) {
+          return res.status(err.status || 400).json({
+            success: false,
+            code: err.code || 'PHONE_INVALID',
+            message: err.message,
+          });
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(payload, 'plan') && payload.plan === '') {
+        updates.plan = null;
+      }
+
+      const effectiveTenantPhone =
+        updates.phone !== undefined ? updates.phone : tenant.phone;
+
+      let usersPhoneSynced = 0;
+      if (Object.prototype.hasOwnProperty.call(payload, 'phone') && updates.phone) {
+        const { syncTenantPhoneToUsersWithoutPhone } = require('../utils/phone');
+        usersPhoneSynced = await syncTenantPhoneToUsersWithoutPhone(tenant.id, updates.phone);
+      }
+
+      if (enablingSms) {
+        try {
+          await licenseService.assertCanSendSms(tenant.id, 1);
+        } catch (err) {
+          if (err instanceof licenseService.SmsLicenseError) {
+            return res.status(err.status).json({
+              success: false,
+              code: err.code,
+              message: err.message,
+              ...(err.details || {}),
+            });
+          }
+          throw err;
+        }
+        const { assertTenantUsersHaveValidPhones } = require('../utils/phone');
+        try {
+          await assertTenantUsersHaveValidPhones(tenant.id, {
+            tenantPhone: effectiveTenantPhone,
+          });
+        } catch (err) {
+          return res.status(err.status || 400).json({
+            success: false,
+            code: err.code || 'SMS_PHONE_REQUIRED',
+            message: err.message,
+          });
+        }
+      }
+
+      await tenant.update(updates);
 
       if (disabling2fa) {
         await User.update(
@@ -186,7 +277,11 @@ module.exports = {
         );
       }
 
-      res.json({ success: true, data: tenant });
+      res.json({
+        success: true,
+        data: tenant,
+        meta: { users_phone_synced: usersPhoneSynced },
+      });
     } catch (err) {
       next(err);
     }
@@ -245,6 +340,109 @@ module.exports = {
           user_id: user.id,
           totp_enabled: false,
         },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async resetUserSmsLoginRequests(req, res, next) {
+    try {
+      const tenant = await Tenant.findByPk(req.params.id);
+      if (!tenant) {
+        return res.status(404).json({ success: false, message: 'Hesap bulunamadı' });
+      }
+
+      const user = await User.findOne({
+        where: { id: req.params.userId, tenant_id: tenant.id },
+      });
+      if (!user || user.is_platform_admin) {
+        return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı' });
+      }
+
+      const smsLoginService = require('../services/smsLoginService');
+      const loginLockout = require('../services/loginLockoutService');
+      await smsLoginService.resetSmsRequestCounter(user);
+      await loginLockout.clearFailures(user);
+
+      res.json({
+        success: true,
+        message: `SMS giriş istek sayacı sıfırlandı: ${user.full_name}`,
+        data: {
+          user_id: user.id,
+          sms_login_requests_count: 0,
+          login_failed_count: 0,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async updateUser(req, res, next) {
+    try {
+      const tenant = await Tenant.findByPk(req.params.id);
+      if (!tenant) {
+        return res.status(404).json({ success: false, message: 'Hesap bulunamadı' });
+      }
+
+      const user = await User.findOne({
+        where: { id: req.params.userId, tenant_id: tenant.id },
+      });
+      if (!user || user.is_platform_admin) {
+        return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı' });
+      }
+
+      const payload = req.validatedBody || req.body;
+      const nextEmail =
+        payload.email !== undefined ? String(payload.email).toLowerCase().trim() : user.email;
+      const nextFullName =
+        payload.full_name !== undefined ? String(payload.full_name).trim() : user.full_name;
+
+      const { assertValidMobilePhone } = require('../utils/phone');
+      let nextPhone = user.phone;
+      try {
+        if (payload.phone !== undefined) {
+          nextPhone = assertValidMobilePhone(payload.phone, {
+            required: Boolean(tenant.sms_login_enabled),
+          });
+        } else if (tenant.sms_login_enabled) {
+          assertValidMobilePhone(user.phone, { required: true });
+        }
+      } catch (err) {
+        return res.status(err.status || 400).json({
+          success: false,
+          code: err.code || 'PHONE_INVALID',
+          message: err.message,
+        });
+      }
+
+      if (nextEmail !== user.email) {
+        const existingUser = await User.findOne({ where: { email: nextEmail } });
+        if (existingUser) {
+          return res.status(409).json({
+            success: false,
+            code: 'EMAIL_IN_USE',
+            message: 'Bu e-posta zaten kullanılıyor',
+          });
+        }
+      }
+
+      await user.update({
+        full_name: nextFullName,
+        email: nextEmail,
+        phone: nextPhone,
+      });
+
+      const data = user.toJSON();
+      delete data.password_hash;
+      delete data.totp_secret;
+      delete data.totp_backup_codes;
+
+      res.json({
+        success: true,
+        message: 'Kullanıcı bilgileri güncellendi',
+        data,
       });
     } catch (err) {
       next(err);

@@ -24,6 +24,15 @@ function serializeRole(role) {
   return data;
 }
 
+function isGlobalSystemRole(role) {
+  return Boolean(role && role.is_system && role.tenant_id == null);
+}
+
+async function assignPermissionKeys(role, keys) {
+  const perms = await Permission.findAll({ where: { permission_key: keys } });
+  await role.setPermissions(perms);
+}
+
 module.exports = {
   async catalog(req, res, next) {
     try {
@@ -125,8 +134,7 @@ module.exports = {
       });
 
       if (keys.length) {
-        const perms = await Permission.findAll({ where: { permission_key: keys } });
-        await role.setPermissions(perms);
+        await assignPermissionKeys(role, keys);
       }
 
       const full = await loadRoleWithPermissions(role.id);
@@ -167,8 +175,7 @@ module.exports = {
       await role.save();
 
       if (Array.isArray(permission_keys)) {
-        const perms = await Permission.findAll({ where: { permission_key: permission_keys } });
-        await role.setPermissions(perms);
+        await assignPermissionKeys(role, permission_keys);
       }
 
       const full = await loadRoleWithPermissions(role.id);
@@ -208,6 +215,135 @@ module.exports = {
         entityType: 'role',
         entityId: Number(req.params.id),
         summary: `Yetki grubu silindi: ${name}`,
+      });
+      res.json({ success: true });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async listSystem(req, res, next) {
+    try {
+      const roles = await Role.findAll({
+        where: { is_system: true, tenant_id: null },
+        include: [{ model: Permission, through: { attributes: [] }, attributes: ['id', 'permission_key'] }],
+        order: [['role_name', 'ASC']],
+      });
+      res.json({ success: true, data: roles.map(serializeRole) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async createSystem(req, res, next) {
+    try {
+      const { role_name, description, permission_keys, clone_from_role_id } = req.validatedBody || req.body;
+
+      const exists = await Role.findOne({
+        where: { is_system: true, tenant_id: null, role_name },
+      });
+      if (exists) {
+        return res.status(409).json({ success: false, message: 'Bu isimde bir global yetki grubu zaten var' });
+      }
+
+      let keys = Array.isArray(permission_keys) ? permission_keys : [];
+      if (clone_from_role_id) {
+        const source = await loadRoleWithPermissions(clone_from_role_id);
+        if (!source || !isGlobalSystemRole(source)) {
+          return res.status(400).json({ success: false, message: 'Kopyalanacak global rol bulunamadı' });
+        }
+        keys = (source.Permissions || []).map((p) => p.permission_key);
+      }
+
+      const role = await Role.create({
+        role_name,
+        description: description || null,
+        tenant_id: null,
+        is_system: true,
+      });
+
+      if (keys.length) {
+        await assignPermissionKeys(role, keys);
+      }
+
+      const full = await loadRoleWithPermissions(role.id);
+      await audit.log(req, {
+        action: 'create',
+        entityType: 'system_role',
+        entityId: role.id,
+        summary: `Global yetki grubu oluşturuldu: ${role_name}`,
+      });
+      res.status(201).json({ success: true, data: serializeRole(full) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async updateSystem(req, res, next) {
+    try {
+      const role = await Role.findByPk(req.params.id);
+      if (!role) return res.status(404).json({ success: false, message: 'Rol bulunamadı' });
+      if (!isGlobalSystemRole(role)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Yalnızca global sistem rolleri düzenlenebilir',
+        });
+      }
+
+      const { role_name, description, permission_keys } = req.validatedBody || req.body;
+      if (role_name && role_name !== role.role_name) {
+        const exists = await Role.findOne({
+          where: { is_system: true, tenant_id: null, role_name, id: { [Op.ne]: role.id } },
+        });
+        if (exists) {
+          return res.status(409).json({ success: false, message: 'Bu isimde bir global yetki grubu zaten var' });
+        }
+        role.role_name = role_name;
+      }
+      if (description !== undefined) role.description = description;
+      await role.save();
+
+      if (Array.isArray(permission_keys)) {
+        await assignPermissionKeys(role, permission_keys);
+      }
+
+      const full = await loadRoleWithPermissions(role.id);
+      await audit.log(req, {
+        action: 'update',
+        entityType: 'system_role',
+        entityId: role.id,
+        summary: `Global yetki grubu güncellendi: ${role.role_name}`,
+      });
+      res.json({ success: true, data: serializeRole(full) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async removeSystem(req, res, next) {
+    try {
+      const role = await Role.findByPk(req.params.id);
+      if (!role) return res.status(404).json({ success: false, message: 'Rol bulunamadı' });
+      if (!isGlobalSystemRole(role)) {
+        return res.status(403).json({ success: false, message: 'Yalnızca global sistem rolleri silinebilir' });
+      }
+
+      const inUse = await UserSchool.count({ where: { role_id: role.id } });
+      if (inUse > 0) {
+        return res.status(409).json({
+          success: false,
+          message: `Bu yetki grubu ${inUse} kullanıcıda tanımlı; önce kullanıcı rollerini değiştirin`,
+        });
+      }
+
+      const name = role.role_name;
+      await RolePermission.destroy({ where: { role_id: role.id } });
+      await role.destroy();
+      await audit.log(req, {
+        action: 'delete',
+        entityType: 'system_role',
+        entityId: Number(req.params.id),
+        summary: `Global yetki grubu silindi: ${name}`,
       });
       res.json({ success: true });
     } catch (err) {

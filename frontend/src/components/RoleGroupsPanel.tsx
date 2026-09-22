@@ -1,33 +1,31 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  App,
-  Button,
-  Checkbox,
-  Form,
-  Input,
-  Modal,
-  Space,
-  Table,
-  Tag,
-  Typography,
-} from 'antd'
+import { App, Alert, Button, Checkbox, Form, Input, Modal, Space, Tag, Typography } from 'antd'
+import { SortableTable } from './SortableTable'
 import { CopyOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import {
   createRole,
+  createSystemRole,
   deleteRole,
+  deleteSystemRole,
   fetchPermissionCatalog,
+  fetchPlatformPermissionCatalog,
   listRoles,
+  listSystemRoles,
   updateRole,
+  updateSystemRole,
 } from '../api/roles'
 import { getErrorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { ACTION_LABELS } from '../constants/menuPermissions'
 import type { PermissionCatalog, TenantRole } from '../types/role'
+import { TypedPhraseConfirmModal } from './TypedPhraseConfirmModal'
+import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
-export function RoleGroupsPanel() {
+export function RoleGroupsPanel({ variant = 'tenant' }: { variant?: 'tenant' | 'platform' }) {
   const { message, modal } = App.useApp()
   const { hasPermission } = useAuth()
+  const isPlatform = variant === 'platform'
 
   const [roles, setRoles] = useState<TenantRole[]>([])
   const [catalog, setCatalog] = useState<PermissionCatalog | null>(null)
@@ -38,14 +36,16 @@ export function RoleGroupsPanel() {
   const [submitting, setSubmitting] = useState(false)
   const [form] = Form.useForm<{ role_name: string; description?: string; clone_from_role_id?: number }>()
 
-  const canCreate = hasPermission('users.create')
-  const canUpdate = hasPermission('users.update')
-  const canDelete = hasPermission('users.delete')
+  const canCreate = isPlatform || hasPermission('users.create')
+  const canUpdate = isPlatform || hasPermission('users.update')
+  const canDelete = isPlatform || hasPermission('users.delete')
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [roleRows, cat] = await Promise.all([listRoles(), fetchPermissionCatalog()])
+      const [roleRows, cat] = isPlatform
+        ? await Promise.all([listSystemRoles(), fetchPlatformPermissionCatalog()])
+        : await Promise.all([listRoles(), fetchPermissionCatalog()])
       setRoles(roleRows)
       setCatalog(cat)
     } catch (err) {
@@ -53,11 +53,24 @@ export function RoleGroupsPanel() {
     } finally {
       setLoading(false)
     }
-  }, [message])
+  }, [isPlatform, message])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  const deletableRoles = useMemo(
+    () => (isPlatform ? [] : roles.filter((r) => !r.is_system)),
+    [isPlatform, roles],
+  )
+
+  const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
+    getIds: () => deletableRoles.map((r) => r.id),
+    deleteOne: (id) => deleteRole(Number(id)),
+    noun: 'yetki grubu',
+    reload: () => void load(),
+    message,
+  })
 
   const openCreate = () => {
     setEditing(null)
@@ -67,7 +80,7 @@ export function RoleGroupsPanel() {
   }
 
   const openEdit = (role: TenantRole) => {
-    if (role.is_system) {
+    if (!isPlatform && role.is_system) {
       message.info('Sistem rolleri değiştirilemez. Kopyala ile özel grup oluşturun.')
       return
     }
@@ -84,7 +97,7 @@ export function RoleGroupsPanel() {
     setEditing(null)
     setSelectedKeys([...role.permission_keys])
     form.setFieldsValue({
-      role_name: `${role.role_name} (Özel)`,
+      role_name: isPlatform ? `${role.role_name} (kopya)` : `${role.role_name} (Özel)`,
       description: role.description || undefined,
       clone_from_role_id: role.id,
     })
@@ -94,19 +107,18 @@ export function RoleGroupsPanel() {
   const onSave = async (values: { role_name: string; description?: string }) => {
     setSubmitting(true)
     try {
+      const payload = {
+        role_name: values.role_name,
+        description: values.description || null,
+        permission_keys: selectedKeys,
+      }
       if (editing) {
-        await updateRole(editing.id, {
-          role_name: values.role_name,
-          description: values.description || null,
-          permission_keys: selectedKeys,
-        })
+        if (isPlatform) await updateSystemRole(editing.id, payload)
+        else await updateRole(editing.id, payload)
         message.success('Yetki grubu güncellendi')
       } else {
-        await createRole({
-          role_name: values.role_name,
-          description: values.description || null,
-          permission_keys: selectedKeys,
-        })
+        if (isPlatform) await createSystemRole(payload)
+        else await createRole(payload)
         message.success('Yetki grubu oluşturuldu')
       }
       setEditorOpen(false)
@@ -121,13 +133,16 @@ export function RoleGroupsPanel() {
   const onDelete = (role: TenantRole) => {
     modal.confirm({
       title: 'Yetki grubunu sil',
-      content: `"${role.role_name}" silinsin mi?`,
+      content: isPlatform
+        ? `"${role.role_name}" global yetki grubu silinsin mi? Kullanıcılarda tanımlıysa silinemez.`
+        : `"${role.role_name}" silinsin mi?`,
       okText: 'Sil',
       okButtonProps: { danger: true },
       cancelText: 'Vazgeç',
       onOk: async () => {
         try {
-          await deleteRole(role.id)
+          if (isPlatform) await deleteSystemRole(role.id)
+          else await deleteRole(role.id)
           message.success('Silindi')
           void load()
         } catch (err) {
@@ -168,7 +183,7 @@ export function RoleGroupsPanel() {
       render: (name: string, row) => (
         <Space>
           <span>{name}</span>
-          {row.is_system ? <Tag>Sistem</Tag> : <Tag color="blue">Özel</Tag>}
+          {row.is_system ? <Tag color={isPlatform ? 'purple' : undefined}>Sistem</Tag> : <Tag color="blue">Özel</Tag>}
         </Space>
       ),
     },
@@ -190,10 +205,10 @@ export function RoleGroupsPanel() {
           {canCreate && (
             <Button size="small" icon={<CopyOutlined />} title="Kopyala" onClick={() => openClone(row)} />
           )}
-          {!row.is_system && canUpdate && (
+          {(isPlatform || !row.is_system) && canUpdate && (
             <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(row)} />
           )}
-          {!row.is_system && canDelete && (
+          {(isPlatform || !row.is_system) && canDelete && (
             <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onDelete(row)} />
           )}
         </Space>
@@ -204,18 +219,26 @@ export function RoleGroupsPanel() {
   return (
     <div>
       <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }} wrap>
-        <Typography.Paragraph type="secondary" style={{ margin: 0, maxWidth: 640 }}>
-          İstediğiniz yetki grubunu tanımlayın; her menü için görüntüle / ekle / düzenle / sil yetkilerini
-          ayrı ayrı verin. Sistem rolleri sabittir — kopyalayarak özelleştirin.
+        <Typography.Paragraph type="secondary" style={{ margin: 0, maxWidth: 720 }}>
+          {isPlatform
+            ? 'Müdür, öğretmen gibi tüm kurumlarda kullanılan varsayılan yetki gruplarını buradan düzenlersiniz. Değişiklik, bu gruba atanmış bütün kullanıcıları etkiler.'
+            : 'İstediğiniz yetki grubunu tanımlayın; her menü için görüntüle / ekle / düzenle / sil yetkilerini ayrı ayrı verin. Sistem rolleri sabittir — kopyalayarak özelleştirin.'}
         </Typography.Paragraph>
-        {canCreate && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-            Yeni Yetki Grubu
-          </Button>
-        )}
+        <Space wrap>
+          {!isPlatform && canDelete && deletableRoles.length > 0 && (
+            <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+              Toplu sil ({deletableRoles.length})
+            </Button>
+          )}
+          {canCreate && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+              Yeni Yetki Grubu
+            </Button>
+          )}
+        </Space>
       </Space>
 
-      <Table rowKey="id" loading={loading} columns={columns} dataSource={roles} pagination={false} />
+      <SortableTable rowKey="id" loading={loading} columns={columns} dataSource={roles} pagination={false} />
 
       <Modal
         title={editing ? 'Yetki Grubunu Düzenle' : 'Yeni Yetki Grubu'}
@@ -228,9 +251,18 @@ export function RoleGroupsPanel() {
         width={880}
         destroyOnHidden
       >
+        {isPlatform && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="Bu yetkiler tüm kurumlar için geçerlidir."
+            description="Kaydettiğinizde bu gruba atanmış bütün kullanıcıların menü ve işlem yetkileri güncellenir."
+          />
+        )}
         <Form form={form} layout="vertical" onFinish={onSave}>
           <Form.Item name="role_name" label="Grup adı" rules={[{ required: true, message: 'Ad zorunludur' }]}>
-            <Input placeholder="Örn. Sınav Komisyonu" />
+            <Input placeholder={isPlatform ? 'Örn. Müdür Yardımcısı' : 'Örn. Sınav Komisyonu'} />
           </Form.Item>
           <Form.Item name="description" label="Açıklama">
             <Input.TextArea rows={2} placeholder="Bu grubun ne işe yaradığı" />
@@ -283,6 +315,14 @@ export function RoleGroupsPanel() {
           ))}
         </div>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Yetki gruplarını toplu sil"
+        description={`${deletableRoles.length} özel yetki grubu silinecek (sistem rolleri hariç).`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </div>
   )
 }

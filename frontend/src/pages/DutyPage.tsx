@@ -123,7 +123,7 @@ interface CellTarget {
 }
 
 export function DutyPage() {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const { session, hasPermission } = useAuth()
   const tenantId = session?.user.tenant_id
 
@@ -162,7 +162,7 @@ export function DutyPage() {
     try {
       const [locationData, teacherData, assignmentData] = await Promise.all([
         listDutyLocations(),
-        listTeachers(),
+        listTeachers({ scope: 'teachers' }),
         listDutyAssignments({ start_date: startDate, end_date: endDate }),
       ])
       setLocations(
@@ -241,36 +241,52 @@ export function DutyPage() {
       return
     }
 
-    setSubmitting(true)
-    try {
-      const nextCapacity = Math.max(1, Math.min(50, Math.floor(values.capacity || 1)))
-      writeCapacity(tenantId, nextCapacity)
-      setCapacity(nextCapacity)
+    const wanted = new Set(names.map((n) => n.toLocaleLowerCase('tr-TR')))
+    const removedLocations = locations.filter((loc) => !wanted.has(loc.name.toLocaleLowerCase('tr-TR')))
 
-      const existingByName = new Map(locations.map((l) => [l.name.toLocaleLowerCase('tr-TR'), l]))
-      const wanted = new Set(names.map((n) => n.toLocaleLowerCase('tr-TR')))
+    const applySetup = async () => {
+      setSubmitting(true)
+      try {
+        const nextCapacity = Math.max(1, Math.min(50, Math.floor(values.capacity || 1)))
+        writeCapacity(tenantId, nextCapacity)
+        setCapacity(nextCapacity)
 
-      for (const name of names) {
-        const key = name.toLocaleLowerCase('tr-TR')
-        if (!existingByName.has(key)) {
-          await createDutyLocation(tenantId, { name })
+        const existingByName = new Map(locations.map((l) => [l.name.toLocaleLowerCase('tr-TR'), l]))
+
+        for (const name of names) {
+          const key = name.toLocaleLowerCase('tr-TR')
+          if (!existingByName.has(key)) {
+            await createDutyLocation(tenantId, { name })
+          }
         }
-      }
 
-      for (const loc of locations) {
-        if (!wanted.has(loc.name.toLocaleLowerCase('tr-TR'))) {
+        for (const loc of removedLocations) {
           await deleteDutyLocation(loc.id)
         }
-      }
 
-      message.success('Nöbet tablosu hazırlandı')
-      setSetupOpen(false)
-      void load()
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    } finally {
-      setSubmitting(false)
+        message.success('Nöbet tablosu hazırlandı')
+        setSetupOpen(false)
+        void load()
+      } catch (err) {
+        message.error(getErrorMessage(err))
+      } finally {
+        setSubmitting(false)
+      }
     }
+
+    if (removedLocations.length > 0) {
+      modal.confirm({
+        title: 'Nöbet yerlerini sil',
+        content: `${removedLocations.length} nöbet yeri listeden çıkarılacak ve silinecek. Devam etmek istiyor musunuz?`,
+        okText: 'Sil ve kaydet',
+        okButtonProps: { danger: true },
+        cancelText: 'Vazgeç',
+        onOk: () => applySetup(),
+      })
+      return
+    }
+
+    await applySetup()
   }
 
   const openPicker = (locationId: number, date: dayjs.Dayjs, slot: number) => {
@@ -294,51 +310,76 @@ export function DutyPage() {
       return
     }
 
-    setSubmitting(true)
-    try {
-      if (existing) {
-        if (existing.teacher_id === teacherId) {
-          setPickerOpen(false)
-          return
+    const doAssign = async () => {
+      setSubmitting(true)
+      try {
+        if (existing) {
+          if (existing.teacher_id === teacherId) {
+            setPickerOpen(false)
+            return
+          }
+          await deleteDutyAssignment(existing.id)
         }
-        await deleteDutyAssignment(existing.id)
+        await createDutyAssignment(session.user.tenant_id, {
+          teacher_id: teacherId,
+          duty_location_id: activeCell.locationId,
+          duty_date: activeCell.date,
+        })
+        message.success('Nöbet atandı')
+        setPickerOpen(false)
+        setActiveCell(null)
+        void load()
+      } catch (err) {
+        message.error(getErrorMessage(err))
+        void load()
+      } finally {
+        setSubmitting(false)
       }
-      await createDutyAssignment(session.user.tenant_id, {
-        teacher_id: teacherId,
-        duty_location_id: activeCell.locationId,
-        duty_date: activeCell.date,
-      })
-      message.success('Nöbet atandı')
-      setPickerOpen(false)
-      setActiveCell(null)
-      void load()
-    } catch (err) {
-      message.error(getErrorMessage(err))
-      void load()
-    } finally {
-      setSubmitting(false)
     }
+
+    if (existing && existing.teacher_id !== teacherId) {
+      modal.confirm({
+        title: 'Nöbeti değiştir',
+        content: 'Mevcut nöbet ataması silinip yenisi kaydedilecek. Devam etmek istiyor musunuz?',
+        okText: 'Değiştir',
+        okButtonProps: { danger: true },
+        cancelText: 'Vazgeç',
+        onOk: () => doAssign(),
+      })
+      return
+    }
+
+    await doAssign()
   }
 
-  const clearCell = async () => {
+  const clearCell = () => {
     if (!activeCell || !canDelete) return
     const existing = assignmentByCell.get(`${activeCell.locationId}|${activeCell.date}`)
     if (!existing) {
       setPickerOpen(false)
       return
     }
-    setSubmitting(true)
-    try {
-      await deleteDutyAssignment(existing.id)
-      message.success('Nöbet kaldırıldı')
-      setPickerOpen(false)
-      setActiveCell(null)
-      void load()
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    } finally {
-      setSubmitting(false)
-    }
+    modal.confirm({
+      title: 'Nöbeti kaldır',
+      content: 'Bu nöbet atamasını kaldırmak istediğinize emin misiniz?',
+      okText: 'Kaldır',
+      okButtonProps: { danger: true },
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        setSubmitting(true)
+        try {
+          await deleteDutyAssignment(existing.id)
+          message.success('Nöbet kaldırıldı')
+          setPickerOpen(false)
+          setActiveCell(null)
+          void load()
+        } catch (err) {
+          message.error(getErrorMessage(err))
+        } finally {
+          setSubmitting(false)
+        }
+      },
+    })
   }
 
   const onExport = async () => {
@@ -373,7 +414,7 @@ export function DutyPage() {
       <div className="duty-teacher-picker-head">
         <Typography.Text strong>Öğretmen seç</Typography.Text>
         {activeAssignment && canDelete && (
-          <Button size="small" type="link" danger onClick={() => void clearCell()} disabled={submitting}>
+          <Button size="small" type="link" danger onClick={() => clearCell()} disabled={submitting}>
             Kaldır
           </Button>
         )}

@@ -13,9 +13,13 @@ module.exports = (sequelize, DataTypes) => {
       section: DataTypes.STRING,
       gender: DataTypes.STRING(1),
       birth_date: DataTypes.DATEONLY,
+      yasi: DataTypes.INTEGER,
       registration_status: DataTypes.STRING,
       parent_name: DataTypes.STRING,
+      mother_name: DataTypes.STRING,
+      father_name: DataTypes.STRING,
       parent_phone: DataTypes.STRING,
+      student_phone: DataTypes.STRING,
       extra_contacts: {
         type: DataTypes.JSONB,
         allowNull: false,
@@ -23,6 +27,12 @@ module.exports = (sequelize, DataTypes) => {
       },
       is_inclusion: DataTypes.BOOLEAN,
       is_foreign: DataTypes.BOOLEAN,
+      boarding_status: {
+        type: DataTypes.STRING,
+        allowNull: true,
+        defaultValue: 'Gündüzlü',
+      },
+      photo_path: DataTypes.STRING,
       meta: DataTypes.JSONB,
     },
     {
@@ -42,8 +52,11 @@ module.exports = (sequelize, DataTypes) => {
     Student.hasMany(models.DykAttendanceRecord, { foreignKey: 'student_id' });
     Student.hasMany(models.ParentConsent, { foreignKey: 'student_id' });
     Student.hasMany(models.SeatAssignment, { foreignKey: 'student_id' });
-    Student.hasMany(models.DisciplinaryCase, { foreignKey: 'student_id' });
+    Student.hasMany(models.DisciplineParticipant, { foreignKey: 'student_id' });
+    Student.hasMany(models.DisciplineBehaviorPoint, { foreignKey: 'student_id' });
+    Student.hasMany(models.TeacherNote, { foreignKey: 'student_id' });
     Student.hasMany(models.GuidanceSession, { foreignKey: 'student_id' });
+    Student.hasMany(models.ResponsibilityExamItem, { foreignKey: 'student_id' });
   };
 
   return Student;

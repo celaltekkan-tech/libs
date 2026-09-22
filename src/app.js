@@ -19,8 +19,9 @@ const subjectClassHoursRoutes = require('./routes/subjectClassHours');
 const scheduleRoutes = require('./routes/schedule');
 const leavesRoutes = require('./routes/leaves');
 const normPositionsRoutes = require('./routes/normPositions');
+const salaryFormRoutes = require('./routes/salaryForm');
 const academicYearsRoutes = require('./routes/academicYears');
-const trainingsRoutes = require('./routes/trainings');
+const personnelCategoriesRoutes = require('./routes/personnelCategories');
 const exportTemplatesRoutes = require('./routes/exportTemplates');
 const dutyRoutes = require('./routes/duty');
 const extraLessonsRoutes = require('./routes/extraLessons');
@@ -31,12 +32,24 @@ const announcementsRoutes = require('./routes/announcements');
 const parentConsentsRoutes = require('./routes/parentConsents');
 const examsRoutes = require('./routes/exams');
 const kelebekRoutes = require('./routes/kelebek');
-const disciplinaryCasesRoutes = require('./routes/disciplinaryCases');
+const disciplineIncidentsRoutes = require('./routes/disciplineIncidents');
+const disciplineFormsRoutes = require('./routes/disciplineForms');
+const disciplineDecisionsRoutes = require('./routes/disciplineDecisions');
+const disciplineBehaviorPointsRoutes = require('./routes/disciplineBehaviorPoints');
+const disciplineRegulationArticlesRoutes = require('./routes/disciplineRegulationArticles');
+const teacherNotesRoutes = require('./routes/teacherNotes');
 const guidanceRoutes = require('./routes/guidance');
 const teacherDocumentsRoutes = require('./routes/teacherDocuments');
 const holidaysRoutes = require('./routes/holidays');
 const notificationsRoutes = require('./routes/notifications');
+const workTasksRoutes = require('./routes/workTasks');
+const calendarRoutes = require('./routes/calendar');
+const messageLogsRoutes = require('./routes/messageLogs');
 const backupsRoutes = require('./routes/backups');
+const platformRolesRoutes = require('./routes/platformRoles');
+const geoRoutes = require('./routes/geo');
+const regulationsRoutes = require('./routes/regulations');
+const serverMetricsRoutes = require('./routes/serverMetrics');
 const errorHandler = require('./middlewares/errorHandler');
 const db = require('./models');
 
@@ -98,15 +111,28 @@ app.use(express.urlencoded({ extended: true }));
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  // SPA + bildirim/zorunlu-iş poll için 300 yetersiz kalıyordu.
+  max: Number(process.env.RATE_LIMIT_API_MAX || 2000),
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, code: 'RATE_LIMITED', message: 'Çok fazla istek gönderildi' },
+  // Giriş uçları ayrı authLimiter ile korunur; API kotası dolunca login kilitlenmesin.
+  skip: (req) => {
+    const path = String(req.originalUrl || req.url || '').split('?')[0];
+    return (
+      path === '/api/auth/login' ||
+      path === '/api/auth/register' ||
+      path === '/api/auth/verify-2fa' ||
+      path === '/api/auth/verify-sms' ||
+      path === '/api/auth/resend-sms' ||
+      (req.method !== 'GET' && path.startsWith('/api/auth/teacher-register'))
+    );
+  },
 });
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: Number(process.env.RATE_LIMIT_AUTH_MAX || 30),
   skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
@@ -129,6 +155,12 @@ app.use('/api', apiLimiter);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/verify-2fa', authLimiter);
+app.use('/api/auth/verify-sms', authLimiter);
+app.use('/api/auth/resend-sms', authLimiter);
+app.use('/api/auth/teacher-register', (req, res, next) => {
+  if (req.method === 'GET') return next();
+  return authLimiter(req, res, next);
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/teachers', teachersRoutes);
@@ -146,8 +178,9 @@ app.use('/api/subject-class-hours', subjectClassHoursRoutes);
 app.use('/api/schedule', scheduleRoutes);
 app.use('/api/leaves', leavesRoutes);
 app.use('/api/norm-positions', normPositionsRoutes);
+app.use('/api/salary-form', salaryFormRoutes);
 app.use('/api/academic-years', academicYearsRoutes);
-app.use('/api/trainings', trainingsRoutes);
+app.use('/api/personnel-categories', personnelCategoriesRoutes);
 app.use('/api/export-templates', exportTemplatesRoutes);
 app.use('/api/duty', dutyRoutes);
 app.use('/api/extra-lessons', extraLessonsRoutes);
@@ -158,12 +191,24 @@ app.use('/api/announcements', announcementsRoutes);
 app.use('/api/parent-consents', parentConsentsRoutes);
 app.use('/api/exams', examsRoutes);
 app.use('/api/kelebek', kelebekRoutes);
-app.use('/api/disciplinary-cases', disciplinaryCasesRoutes);
+app.use('/api/discipline/incidents', disciplineIncidentsRoutes);
+app.use('/api/discipline/forms', disciplineFormsRoutes);
+app.use('/api/discipline/decisions', disciplineDecisionsRoutes);
+app.use('/api/discipline/behavior-points', disciplineBehaviorPointsRoutes);
+app.use('/api/discipline/regulation-articles', disciplineRegulationArticlesRoutes);
+app.use('/api/teacher-notes', teacherNotesRoutes);
 app.use('/api/guidance', guidanceRoutes);
 app.use('/api/teacher-documents', teacherDocumentsRoutes);
 app.use('/api/holidays', holidaysRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/work-tasks', workTasksRoutes);
+app.use('/api/calendar', calendarRoutes);
+app.use('/api/message-logs', messageLogsRoutes);
 app.use('/api/backups', backupsRoutes);
+app.use('/api/platform/roles', platformRolesRoutes);
+app.use('/api/platform/metrics', serverMetricsRoutes);
+app.use('/api/geo', geoRoutes);
+app.use('/api/regulations', regulationsRoutes);
 
 app.use((req, res) => {
   res.status(404).json({

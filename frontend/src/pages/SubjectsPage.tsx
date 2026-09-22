@@ -1,18 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import {
-  App,
-  Button,
-  Form,
-  Input,
-  InputNumber,
-  List,
-  Modal,
-  Select,
-  Space,
-  Switch,
-  Table,
-  Typography,
-} from 'antd'
+import { App, Button, Form, Input, InputNumber, List, Modal, Select, Space, Switch, Typography } from 'antd'
+import { SortableTable } from '../components/SortableTable'
 import {
   ClockCircleOutlined,
   DeleteOutlined,
@@ -23,6 +11,7 @@ import {
 } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
+import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import { createSubject, deleteSubject, exportSubjects, listSubjects, updateSubject } from '../api/subjects'
 import {
@@ -35,6 +24,9 @@ import { getErrorMessage } from '../api/client'
 import { DIFFICULTY_LEVEL_OPTIONS } from '../types/subject'
 import type { Subject, SubjectClassHour, SubjectPayload } from '../types/subject'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+import { tablePagination } from '../utils/tablePagination'
+import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 export function SubjectsPage() {
   const { message, modal } = App.useApp()
@@ -46,7 +38,10 @@ export function SubjectsPage() {
   const [editing, setEditing] = useState<Subject | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [search, setSearch] = useState('')
+  const searchQuery = useDebouncedValue(search)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx')
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
   const [form] = Form.useForm<SubjectPayload>()
 
   const [classHoursSubject, setClassHoursSubject] = useState<Subject | null>(null)
@@ -74,14 +69,14 @@ export function SubjectsPage() {
   }, [load])
 
   const filteredRows = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase('tr-TR')
+    const q = searchQuery.trim().toLocaleLowerCase('tr-TR')
     if (!q) return rows
     return rows.filter(
       (row) =>
         row.name.toLocaleLowerCase('tr-TR').includes(q) ||
         (row.code || '').toLocaleLowerCase('tr-TR').includes(q),
     )
-  }, [rows, search])
+  }, [rows, searchQuery])
 
   const openCreate = () => {
     setEditing(null)
@@ -141,12 +136,29 @@ export function SubjectsPage() {
     })
   }
 
+  const onBulkDelete = async () => {
+    setBulkLoading(true)
+    try {
+      const result = await bulkDeleteByIds(
+        filteredRows.map((r) => r.id),
+        (id) => deleteSubject(Number(id)),
+      )
+      const text = bulkDeleteResultMessage(result, 'ders')
+      if (result.failed === 0) message.success(text)
+      else message.warning(text)
+      setBulkOpen(false)
+      void load()
+    } finally {
+      setBulkLoading(false)
+    }
+  }
+
   const onExport = async () => {
     setSubmitting(true)
     try {
       const blob = await exportSubjects({
         format: exportFormat,
-        filters: search.trim() ? { q: search.trim() } : undefined,
+        filters: searchQuery.trim() ? { q: searchQuery.trim() } : undefined,
       })
       downloadBlob(blob, exportFilename('dersler', exportFormat))
       message.success('Dışa aktarma indirildi')
@@ -193,15 +205,24 @@ export function SubjectsPage() {
     }
   }
 
-  const onDeleteClassHour = async (row: SubjectClassHour) => {
+  const onDeleteClassHour = (row: SubjectClassHour) => {
     if (!classHoursSubject) return
-    try {
-      await deleteSubjectClassHour(row.id)
-      message.success('Silindi')
-      setClassHours(await listSubjectClassHours(classHoursSubject.id))
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    }
+    modal.confirm({
+      title: 'Sınıf saatini sil',
+      content: `${row.class_level}. sınıf için tanımlı haftalık saati silmek istediğinize emin misiniz?`,
+      okText: 'Sil',
+      okButtonProps: { danger: true },
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        try {
+          await deleteSubjectClassHour(row.id)
+          message.success('Silindi')
+          setClassHours(await listSubjectClassHours(classHoursSubject.id))
+        } catch (err) {
+          message.error(getErrorMessage(err))
+        }
+      },
+    })
   }
 
   const columns: ColumnsType<Subject> = [
@@ -232,12 +253,17 @@ export function SubjectsPage() {
 
   return (
     <AppLayout title="Dersler">
-      <div style={{ maxWidth: 900 }}>
+      <div>
         <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }} wrap>
           <Typography.Title level={3} style={{ margin: 0 }}>
             Dersler
           </Typography.Title>
           <Space wrap>
+            {canDelete && filteredRows.length > 0 && (
+              <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+                Toplu sil ({filteredRows.length})
+              </Button>
+            )}
             <Button icon={<DownloadOutlined />} onClick={() => setExportOpen(true)}>
               Dışa Aktar
             </Button>
@@ -258,12 +284,12 @@ export function SubjectsPage() {
           style={{ maxWidth: 420, marginBottom: 16 }}
         />
 
-        <Table
+        <SortableTable
           rowKey="id"
           loading={loading}
           columns={columns}
           dataSource={filteredRows}
-          pagination={{ pageSize: 20 }}
+          pagination={tablePagination(20)}
           scroll={{ x: 'max-content' }}
         />
       </div>
@@ -321,7 +347,7 @@ export function SubjectsPage() {
             <List.Item
               actions={
                 canDelete
-                  ? [<Button key="del" size="small" danger icon={<DeleteOutlined />} onClick={() => void onDeleteClassHour(row)} />]
+                  ? [<Button key="del" size="small" danger icon={<DeleteOutlined />} onClick={() => onDeleteClassHour(row)} />]
                   : []
               }
             >
@@ -386,6 +412,14 @@ export function SubjectsPage() {
           </Form.Item>
         </Form>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Dersleri toplu sil"
+        description={`Filtreye uyan ${filteredRows.length} ders kaydı silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={onBulkDelete}
+      />
     </AppLayout>
   )
 }

@@ -1,0 +1,488 @@
+[
+  {
+    "id": 1,
+    "name": "Adana",
+    "slug": "adana",
+    "region": "Akdeniz"
+  },
+  {
+    "id": 2,
+    "name": "Adıyaman",
+    "slug": "adiyaman",
+    "region": "Güneydoğu Anadolu"
+  },
+  {
+    "id": 3,
+    "name": "Afyonkarahisar",
+    "slug": "afyonkarahisar",
+    "region": "Ege"
+  },
+  {
+    "id": 4,
+    "name": "Ağrı",
+    "slug": "agri",
+    "region": "Doğu Anadolu"
+  },
+  {
+    "id": 5,
+    "name": "Amasya",
+    "slug": "amasya",
+    "region": "Karadeniz"
+  },
+  {
+    "id": 6,
+    "name": "Ankara",
+    "slug": "ankara",
+    "region": "İç Anadolu"
+  },
+  {
+    "id": 7,
+    "name": "Antalya",
+    "slug": "antalya",
+    "region": "Akdeniz"
+  },
+  {
+    "id": 8,
+    "name": "Artvin",
+    "slug": "artvin",
+    "region": "Karadeniz"
+  },
+  {
+    "id": 9,
+    "name": "Aydın",
+    "slug": "aydin",
+    "region": "Ege"
+  },
+  {
+    "id": 10,
+    "name": "Balıkesir",
+    "slug": "balikesir",
+    "region": "Marmara"
+  },
+  {
+    "id": 11,
+    "name": "Bilecik",
+    "slug": "bilecik",
+    "region": "Marmara"
+  },
+  {
+    "id": 12,
+    "name": "Bingöl",
+    "slug": "bingol",
+    "region": "Doğu Anadolu"
+  },
+  {
+    "id": 13,
+    "name": "Bitlis",
+    "slug": "bitlis",
+    "region": "Doğu Anadolu"
+  },
+  {
+    "id": 14,
+    "name": "Bolu",
+    "slug": "bolu",
+    "region": "Karadeniz"
+  },
+  {
+    "id": 15,
+    "name": "Burdur",
+    "slug": "burdur",
+    "region": "Akdeniz"
+  },
+  {
+    "id": 16,
+    "name": "Bursa",
+    "slug": "bursa",
+    "region": "Marmara"
+  },
+  {
+    "id": 17,
+    "name": "Çanakkale",
+    "slug": "canakkale",
+    "region": "Marmara"
+  },
+  {
+    "id": 18,
+    "name": "Çankırı",
+    "slug": "cankiri",
+    "region": "Marmara"
+  },
+  {
+    "id": 19,
+    "name": "Çorum",
+    "slug": "corum",
+    "region": "Karadeniz"
+  },
+  {
+    "id": 20,
+    "name": "Denizli",
+    "slug": "denizli",
+    "region": "Ege"
+  },
+  {
+    "id": 21,
+    "name": "Diyarbakır",
+    "slug": "diyarbakir",
+    "region": "Güneydoğu Anadolu"
+  },
+  {
+    "id": 22,
+    "name": "Edirne",
+    "slug": "edirne",
+    "region": "Marmara"
+  },
+  {
+    "id": 23,
+    "name": "Elazığ",
+    "slug": "elazig",
+    "region": "Doğu Anadolu"
+  },
+  {
+    "id": 24,
+    "name": "Erzincan",
+    "slug": "erzincan",
+    "region": "Doğu Anadolu"
+  },
+  {
+    "id": 25,
+    "name": "Erzurum",
+    "slug": "erzurum",
+    "region": "Doğu Anadolu"
+  },
+  {
+    "id": 26,
+    "name": "Eskişehir",
+    "slug": "eskisehir",
+    "region": "İç Anadolu"
+  },
+  {
+    "id": 27,
+    "name": "Gaziantep",
+    "slug": "gaziantep",
+    "region": "Güneydoğu Anadolu"
+  },
+  {
+    "id": 28,
+    "name": "Giresun",
+    "slug": "giresun",
+    "region": "Karadeniz"
+  },
+  {
+    "id": 29,
+    "name": "Gümüşhane",
+    "slug": "gumushane",
+    "region": "Karadeniz"
+  },
+  {
+    "id": 30,
+    "name": "Hakkari",
+    "slug": "hakkari",
+    "region": "Güneydoğu Anadolu"
+  },
+  {
+    "id": 31,
+    "name": "Hatay",
+    "slug": "hatay",
+    "region": "Akdeniz"
+  },
+  {
+    "id": 32,
+    "name": "Isparta",
+    "slug": "isparta",
+    "region": "Akdeniz"
+  },
+  {
+    "id": 33,
+    "name": "Mersin",
+    "slug": "mersin",
+    "region": "Akdeniz"
+  },
+  {
+    "id": 34,
+    "name": "İstanbul",
+    "slug": "istanbul",
+    "region": "Marmara"
+  },
+  {
+    "id": 35,
+    "name": "İzmir",
+    "slug": "izmir",
+    "region": "Ege"
+  },
+  {
+    "id": 36,
+    "name": "Kars",
+    "slug": "kars",
+    "region": "Doğu Anadolu"
+  },
+  {
+    "id": 37,
+    "name": "Kastamonu",
+    "slug": "kastamonu",
+    "region": "Karadeniz"
+  },
+  {
+    "id": 38,
+    "name": "Kayseri",
+    "slug": "kayseri",
+    "region": "İç Anadolu"
+  },
+  {
+    "id": 39,
+    "name": "Kırklareli",
+    "slug": "kirklareli",
+    "region": "Marmara"
+  },
+  {
+    "id": 40,
+    "name": "Kırşehir",
+    "slug": "kirsehir",
+    "region": "İç Anadolu"
+  },
+  {
+    "id": 41,
+    "name": "Kocaeli",
+    "slug": "kocaeli",
+    "region": "Marmara"
+  },
+  {
+    "id": 42,
+    "name": "Konya",
+    "slug": "konya",
+    "region": "İç Anadolu"
+  },
+  {
+    "id": 43,
+    "name": "Kütahya",
+    "slug": "kutahya",
+    "region": "Ege"
+  },
+  {
+    "id": 44,
+    "name": "Malatya",
+    "slug": "malatya",
+    "region": "Doğu Anadolu"
+  },
+  {
+    "id": 45,
+    "name": "Manisa",
+    "slug": "manisa",
+    "region": "Ege"
+  },
+  {
+    "id": 46,
+    "name": "Kahramanmaraş",
+    "slug": "kahramanmaras",
+    "region": "Akdeniz"
+  },
+  {
+    "id": 47,
+    "name": "Mardin",
+    "slug": "mardin",
+    "region": "Güneydoğu Anadolu"
+  },
+  {
+    "id": 48,
+    "name": "Muğla",
+    "slug": "mugla",
+    "region": "Ege"
+  },
+  {
+    "id": 49,
+    "name": "Muş",
+    "slug": "mus",
+    "region": "Doğu Anadolu"
+  },
+  {
+    "id": 50,
+    "name": "Nevşehir",
+    "slug": "nevsehir",
+    "region": "İç Anadolu"
+  },
+  {
+    "id": 51,
+    "name": "Niğde",
+    "slug": "nigde",
+    "region": "İç Anadolu"
+  },
+  {
+    "id": 52,
+    "name": "Ordu",
+    "slug": "ordu",
+    "region": "Karadeniz"
+  },
+  {
+    "id": 53,
+    "name": "Rize",
+    "slug": "rize",
+    "region": "Karadeniz"
+  },
+  {
+    "id": 54,
+    "name": "Sakarya",
+    "slug": "sakarya",
+    "region": "Marmara"
+  },
+  {
+    "id": 55,
+    "name": "Samsun",
+    "slug": "samsun",
+    "region": "Karadeniz"
+  },
+  {
+    "id": 56,
+    "name": "Siirt",
+    "slug": "siirt",
+    "region": "Güneydoğu Anadolu"
+  },
+  {
+    "id": 57,
+    "name": "Sinop",
+    "slug": "sinop",
+    "region": "Karadeniz"
+  },
+  {
+    "id": 58,
+    "name": "Sivas",
+    "slug": "sivas",
+    "region": "İç Anadolu"
+  },
+  {
+    "id": 59,
+    "name": "Tekirdağ",
+    "slug": "tekirdag",
+    "region": "Marmara"
+  },
+  {
+    "id": 60,
+    "name": "Tokat",
+    "slug": "tokat",
+    "region": "Karadeniz"
+  },
+  {
+    "id": 61,
+    "name": "Trabzon",
+    "slug": "trabzon",
+    "region": "Karadeniz"
+  },
+  {
+    "id": 62,
+    "name": "Tunceli",
+    "slug": "tunceli",
+    "region": "Doğu Anadolu"
+  },
+  {
+    "id": 63,
+    "name": "Şanlıurfa",
+    "slug": "sanliurfa",
+    "region": "Güneydoğu Anadolu"
+  },
+  {
+    "id": 64,
+    "name": "Uşak",
+    "slug": "usak",
+    "region": "Ege"
+  },
+  {
+    "id": 65,
+    "name": "Van",
+    "slug": "van",
+    "region": "Doğu Anadolu"
+  },
+  {
+    "id": 66,
+    "name": "Yozgat",
+    "slug": "yozgat",
+    "region": "İç Anadolu"
+  },
+  {
+    "id": 67,
+    "name": "Zonguldak",
+    "slug": "zonguldak",
+    "region": "Karadeniz"
+  },
+  {
+    "id": 68,
+    "name": "Aksaray",
+    "slug": "aksaray",
+    "region": "İç Anadolu"
+  },
+  {
+    "id": 69,
+    "name": "Bayburt",
+    "slug": "bayburt",
+    "region": "Karadeniz"
+  },
+  {
+    "id": 70,
+    "name": "Karaman",
+    "slug": "karaman",
+    "region": "İç Anadolu"
+  },
+  {
+    "id": 71,
+    "name": "Kırıkkale",
+    "slug": "kirikkale",
+    "region": "İç Anadolu"
+  },
+  {
+    "id": 72,
+    "name": "Batman",
+    "slug": "batman",
+    "region": "Güneydoğu Anadolu"
+  },
+  {
+    "id": 73,
+    "name": "Şırnak",
+    "slug": "sirnak",
+    "region": "Güneydoğu Anadolu"
+  },
+  {
+    "id": 74,
+    "name": "Bartın",
+    "slug": "bartin",
+    "region": "Karadeniz"
+  },
+  {
+    "id": 75,
+    "name": "Ardahan",
+    "slug": "ardahan",
+    "region": "Doğu Anadolu"
+  },
+  {
+    "id": 76,
+    "name": "Iğdır",
+    "slug": "igdir",
+    "region": "Doğu Anadolu"
+  },
+  {
+    "id": 77,
+    "name": "Yalova",
+    "slug": "yalova",
+    "region": "Marmara"
+  },
+  {
+    "id": 78,
+    "name": "Karabük",
+    "slug": "karabuk",
+    "region": "Karadeniz"
+  },
+  {
+    "id": 79,
+    "name": "Kilis",
+    "slug": "kilis",
+    "region": "Güneydoğu Anadolu"
+  },
+  {
+    "id": 80,
+    "name": "Osmaniye",
+    "slug": "osmaniye",
+    "region": "Akdeniz"
+  },
+  {
+    "id": 81,
+    "name": "Düzce",
+    "slug": "duzce",
+    "region": "Karadeniz"
+  }
+]

@@ -1,10 +1,13 @@
 import { useState } from 'react'
+import { useLocation } from 'react-router-dom'
+import { createPortal } from 'react-dom'
 import { App, Button, Form, Modal, Tooltip, Typography, Upload } from 'antd'
 import { CommentOutlined, InboxOutlined, SendOutlined } from '@ant-design/icons'
 import type { RcFile, UploadFile } from 'antd/es/upload/interface'
 import { submitFeedback } from '../api/feedback'
 import { getErrorMessage } from '../api/client'
 import { FEEDBACK_ACCEPT } from '../types/feedback'
+import { getPageHelp } from '../constants/pageHelp'
 import { RichTextEditor, sanitizeFeedbackHtml, stripHtml } from './RichTextEditor'
 
 const ALLOWED_EXT = /\.(pdf|docx?|xlsx?|pptx?|odt|ods|odp|png|jpe?g|gif|webp)$/i
@@ -13,6 +16,7 @@ const MAX_FILES = 5
 
 export function FeedbackFabModal() {
   const { message } = App.useApp()
+  const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [fileList, setFileList] = useState<UploadFile[]>([])
@@ -65,7 +69,8 @@ export function FeedbackFabModal() {
       const files = fileList
         .map((f) => f.originFileObj)
         .filter((f): f is RcFile => Boolean(f))
-      await submitFeedback(html, files)
+      const page = getPageHelp(pathname)
+      await submitFeedback(html, files, { path: pathname, title: page.title })
       message.success('Geri bildiriminiz gönderildi, teşekkürler')
       close()
     } catch (err) {
@@ -77,16 +82,21 @@ export function FeedbackFabModal() {
 
   return (
     <>
-      <Tooltip title="Geri bildirim gönder" placement="left">
-        <button
-          type="button"
-          className="feedback-fab"
-          aria-label="Geri bildirim gönder"
-          onClick={() => setOpen(true)}
-        >
-          <CommentOutlined />
-        </button>
-      </Tooltip>
+      {createPortal(
+        <div className="feedback-fab-host">
+          <Tooltip title="Geri bildirim gönder" placement="left">
+            <button
+              type="button"
+              className="feedback-fab"
+              aria-label="Geri bildirim gönder"
+              onClick={() => setOpen(true)}
+            >
+              <CommentOutlined />
+            </button>
+          </Tooltip>
+        </div>,
+        document.body,
+      )}
 
       <Modal
         title="Geri Bildirim Gönder"
@@ -99,6 +109,7 @@ export function FeedbackFabModal() {
         <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
           Öneri, sorun veya isteklerinizi yazın. Madde imi, kalın yazı gibi biçimlendirme
           kullanabilirsiniz. Dosya veya ekran görüntüsü ekleyebilirsiniz (Ctrl+V).
+          Bulunduğunuz sayfa ({getPageHelp(pathname).title}) kayda otomatik eklenir.
         </Typography.Paragraph>
 
         <Form form={form} layout="vertical" onFinish={onFinish}>

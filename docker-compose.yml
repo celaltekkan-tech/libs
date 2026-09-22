@@ -29,9 +29,10 @@ services:
       HOST: 0.0.0.0
       PORT: 4000
       NODE_ENV: production
+      BACKUP_DIR: /app/backups
     volumes:
       - ./uploads:/app/uploads
-      - ./backups:/app/backups:ro
+      - ${BACKUP_HOST_DIR:-./backups}:/app/backups
     depends_on:
       db:
         condition: service_healthy

@@ -2,7 +2,7 @@ const { Op } = require('sequelize');
 const bcrypt = require('bcrypt');
 const { User, Tenant, School, Role, UserSchool } = require('../models');
 const licenseService = require('../services/licenseService');
-const { getUserLimitForPlan } = require('../config/licensePlans');
+const { getUserLimitForPlan, isUnlimitedAccountRole, UNLIMITED_ACCOUNT_ROLES } = require('../config/licensePlans');
 const audit = require('../services/auditService');
 
 const assignmentInclude = [
@@ -90,19 +90,58 @@ async function syncPrimarySchoolRole(userId, schoolId, roleId) {
   }
 }
 
+async function getUserPrimaryRoleName(userId) {
+  const row = await UserSchool.findOne({
+    where: { user_id: userId },
+    include: [{ model: Role, attributes: ['role_name'] }],
+    order: [['id', 'ASC']],
+  });
+  return row?.Role?.role_name || null;
+}
+
 async function getTenantUserQuota(tenantId) {
   const activeLicense = await licenseService.getActiveLicense(tenantId);
   const plan = activeLicense?.plan || null;
   const limit = getUserLimitForPlan(plan);
-  const count = await User.count({
+  const users = await User.findAll({
     where: { tenant_id: tenantId, is_platform_admin: false },
+    include: [
+      {
+        model: UserSchool,
+        include: [{ model: Role, attributes: ['id', 'role_name'] }],
+      },
+    ],
+    attributes: ['id'],
   });
+  let count = 0;
+  let exemptCount = 0;
+  for (const user of users) {
+    const primary = (user.UserSchools || [])[0];
+    if (isUnlimitedAccountRole(primary?.Role?.role_name)) exemptCount += 1;
+    else count += 1;
+  }
   return {
     plan,
     limit,
     count,
+    exempt_count: exemptCount,
     remaining: limit == null ? null : Math.max(0, limit - count),
+    quota_exempt_roles: UNLIMITED_ACCOUNT_ROLES,
   };
+}
+
+function assertRoleWithinQuota(quota, roleName, { alreadyCounted = false } = {}) {
+  if (quota.limit == null) return;
+  if (isUnlimitedAccountRole(roleName)) return;
+  if (alreadyCounted) return;
+  if (quota.count >= quota.limit) {
+    const err = new Error(
+      `"${quota.plan || 'Mevcut'}" planında öğretmen ve rehber öğretmen dışında en fazla ${quota.limit} kullanıcı oluşturulabilir. Limit doldu (${quota.count}/${quota.limit}).`,
+    );
+    err.status = 403;
+    err.code = 'USER_LIMIT_REACHED';
+    throw err;
+  }
 }
 
 module.exports = {
@@ -140,7 +179,9 @@ module.exports = {
           schools,
           user_limit: quota.limit,
           user_count: quota.count,
+          user_exempt_count: quota.exempt_count,
           user_remaining: quota.remaining,
+          quota_exempt_roles: quota.quota_exempt_roles,
         },
       });
     } catch (err) {
@@ -216,15 +257,23 @@ module.exports = {
       }
 
       const quota = await getTenantUserQuota(payload.tenant_id);
-      if (quota.limit != null && quota.count >= quota.limit) {
-        return res.status(403).json({
-          success: false,
-          code: 'USER_LIMIT_REACHED',
-          message: `"${quota.plan || 'Mevcut'}" planında en fazla ${quota.limit} kullanıcı oluşturulabilir. Limit doldu (${quota.count}/${quota.limit}).`,
-        });
-      }
+      assertRoleWithinQuota(quota, role.role_name);
 
       const password_hash = await bcrypt.hash(payload.password, 10);
+
+      const { assertValidMobilePhone } = require('../utils/phone');
+      let phone = null;
+      try {
+        phone = assertValidMobilePhone(payload.phone, {
+          required: Boolean(tenant.sms_login_enabled),
+        });
+      } catch (err) {
+        return res.status(err.status || 400).json({
+          success: false,
+          code: err.code || 'PHONE_INVALID',
+          message: err.message,
+        });
+      }
 
       // Alt kullanıcılar global admin olmaz; arayüz yetkisi okul rolünden gelir.
       const user = await User.create({
@@ -235,6 +284,7 @@ module.exports = {
         password_hash,
         role: 'user',
         is_active: payload.is_active !== false,
+        phone,
       });
 
       await UserSchool.create({
@@ -293,6 +343,11 @@ module.exports = {
         role_id: payload.role_id,
         school_role: payload.school_role,
       });
+      const previousRoleName = await getUserPrimaryRoleName(user.id);
+      const quota = await getTenantUserQuota(tenantId);
+      assertRoleWithinQuota(quota, role.role_name, {
+        alreadyCounted: !isUnlimitedAccountRole(previousRoleName),
+      });
 
       const updates = {
         school_id: payload.school_id,
@@ -300,6 +355,26 @@ module.exports = {
         email: payload.email ?? user.email,
       };
       if (payload.is_active !== undefined) updates.is_active = payload.is_active;
+      {
+        const tenantRow = await Tenant.findByPk(tenantId);
+        const smsRequired = Boolean(tenantRow?.sms_login_enabled);
+        if (payload.phone !== undefined || smsRequired) {
+          const { assertValidMobilePhone } = require('../utils/phone');
+          try {
+            if (payload.phone !== undefined) {
+              updates.phone = assertValidMobilePhone(payload.phone, { required: smsRequired });
+            } else if (smsRequired) {
+              assertValidMobilePhone(user.phone, { required: true });
+            }
+          } catch (err) {
+            return res.status(err.status || 400).json({
+              success: false,
+              code: err.code || 'PHONE_INVALID',
+              message: err.message,
+            });
+          }
+        }
+      }
       if (payload.password) {
         updates.password_hash = await bcrypt.hash(payload.password, 10);
       }
@@ -341,6 +416,38 @@ module.exports = {
           message: err.message,
         });
       }
+      next(err);
+    }
+  },
+
+  async resetSmsLogin(req, res, next) {
+    try {
+      const user = await User.findByPk(req.params.id);
+      if (!user || user.is_platform_admin) {
+        return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı' });
+      }
+      if (req.user && req.user.tenant_id && user.tenant_id !== req.user.tenant_id) {
+        return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
+      }
+
+      const smsLoginService = require('../services/smsLoginService');
+      const loginLockout = require('../services/loginLockoutService');
+      await smsLoginService.resetSmsRequestCounter(user);
+      await loginLockout.clearFailures(user);
+
+      await audit.log(req, {
+        action: 'update',
+        entityType: 'user',
+        entityId: user.id,
+        summary: `SMS giriş sayacı sıfırlandı: ${user.full_name}`,
+      });
+
+      res.json({
+        success: true,
+        message: `SMS giriş istek sayacı sıfırlandı: ${user.full_name}`,
+        data: { user_id: user.id, sms_login_requests_count: 0 },
+      });
+    } catch (err) {
       next(err);
     }
   },

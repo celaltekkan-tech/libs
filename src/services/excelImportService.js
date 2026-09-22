@@ -11,11 +11,16 @@ const IMPORTABLE_FIELDS = [
   { key: 'section', label: 'Şube', required: false },
   { key: 'gender', label: 'Cinsiyet', required: false },
   { key: 'birth_date', label: 'Doğum Tarihi', required: false },
+  { key: 'yasi', label: 'Yaşı', required: false },
   { key: 'registration_status', label: 'Kayıt Durumu', required: false },
   { key: 'parent_name', label: 'Veli Adı', required: false },
+  { key: 'mother_name', label: 'Anne Adı', required: false },
+  { key: 'father_name', label: 'Baba Adı', required: false },
   { key: 'parent_phone', label: 'Veli Telefon', required: false },
+  { key: 'student_phone', label: 'Öğrenci Telefon', required: false },
   { key: 'is_inclusion', label: 'Kaynaştırma', required: false },
   { key: 'is_foreign', label: 'Yabancı Uyruklu', required: false },
+  { key: 'boarding_status', label: 'Yurt Durumu', required: false },
 ];
 
 const IMPORT_HEADER_MAP = {
@@ -48,20 +53,68 @@ const IMPORT_HEADER_MAP = {
   subesi: 'section',
   şube: 'section',
   sube: 'section',
+  'sınıf/şube': 'class_level',
+  'sınıf / şube': 'class_level',
+  'sınıf-şube': 'class_level',
+  'sınıf şube': 'class_level',
+  'sinif/sube': 'class_level',
+  'sinif / sube': 'class_level',
+  'sınıfı / şubesi': 'class_level',
+  'sınıfı/şubesi': 'class_level',
+  'sınıf - şube': 'class_level',
   cinsiyeti: 'gender',
   cinsiyet: 'gender',
   'doğum tarihi': 'birth_date',
   'dogum tarihi': 'birth_date',
+  yasi: 'yasi',
+  yaşı: 'yasi',
+  yas: 'yasi',
+  yaş: 'yasi',
+  'öğrenci yaşı': 'yasi',
+  'ogrenci yasi': 'yasi',
   'kayıt durumu': 'registration_status',
   'kayit durumu': 'registration_status',
   'veli adı': 'parent_name',
   'veli adi': 'parent_name',
+  'veli adı soyadı': 'parent_name',
+  'veli adi soyadi': 'parent_name',
+  'anne adı': 'mother_name',
+  'anne adi': 'mother_name',
+  'anne adı soyadı': 'mother_name',
+  'anne adi soyadi': 'mother_name',
+  anneadi: 'mother_name',
+  anneadı: 'mother_name',
+  anne: 'mother_name',
+  'ana adı': 'mother_name',
+  'ana adi': 'mother_name',
+  'ana adı soyadı': 'mother_name',
+  'ana adi soyadi': 'mother_name',
+  anaadi: 'mother_name',
+  anaadı: 'mother_name',
+  ana: 'mother_name',
+  'baba adı': 'father_name',
+  'baba adi': 'father_name',
+  'baba adı soyadı': 'father_name',
+  'baba adi soyadi': 'father_name',
+  babaadi: 'father_name',
+  babaadı: 'father_name',
+  baba: 'father_name',
   'veli telefon': 'parent_phone',
   'veli telefonu': 'parent_phone',
+  'öğrenci telefon': 'student_phone',
+  'ogrenci telefon': 'student_phone',
+  'öğrenci telefonu': 'student_phone',
+  'ogrenci telefonu': 'student_phone',
+  'öğrenci cep': 'student_phone',
+  'öğrenci cep telefonu': 'student_phone',
+  'ogrenci cep telefonu': 'student_phone',
   kaynaştırma: 'is_inclusion',
   kaynastirma: 'is_inclusion',
   'yabancı uyruklu': 'is_foreign',
   'yabanci uyruklu': 'is_foreign',
+  'pansiyon durum': 'boarding_status',
+  'pansiyon durumu': 'boarding_status',
+  'yurt durumu': 'boarding_status',
 };
 
 function normalizeHeader(header) {
@@ -120,7 +173,7 @@ function scoreHeaderRow(row, headerMap = IMPORT_HEADER_MAP, hintRegex = null) {
   if (!Array.isArray(row)) return 0;
   const hintKeys = new Set(Object.keys(headerMap));
   const defaultHint =
-    /(ad|soyad|öğrenci|ogrenci|kimlik|şube|sube|sınıf|sinif|cinsiyet|doğum|dogum|ders|öğretmen|ogretmen|gün|gun|saat)/i;
+    /(ad|soyad|öğrenci|ogrenci|kimlik|şube|sube|sınıf|sinif|cinsiyet|doğum|dogum|anne|ana|baba|veli|ders|öğretmen|ogretmen|gün|gun|saat)/i;
   const hint = hintRegex || defaultHint;
   let score = 0;
   let nonEmpty = 0;
@@ -161,11 +214,29 @@ function extractHeaders(row) {
   return headers;
 }
 
+function inferHeaderField(label, headerMap = IMPORT_HEADER_MAP) {
+  const normalized = normalizeHeader(label);
+  const compact = normalized.replace(/\s+/g, '');
+  if (headerMap[normalized]) return headerMap[normalized];
+  if (headerMap[compact]) return headerMap[compact];
+  if (
+    (/^(anne|ana)(adi|adı|adsoyadi|adisoyadi)?$/.test(compact) ||
+      /\b(anne|ana)\b.*\bad/.test(normalized)) &&
+    !/\bbaba\b/.test(normalized)
+  ) {
+    return 'mother_name';
+  }
+  if (/^baba(adi|adı|adsoyadi|adisoyadi)?$/.test(compact) || /\bbaba\b.*\bad/.test(normalized)) {
+    return 'father_name';
+  }
+  return null;
+}
+
 function suggestMapping(headers, headerMap = IMPORT_HEADER_MAP) {
   const mapping = {};
   const usedFields = new Set();
   headers.forEach(({ index, label }) => {
-    const field = headerMap[normalizeHeader(label)];
+    const field = inferHeaderField(label, headerMap);
     if (field && !usedFields.has(field)) {
       mapping[String(index)] = field;
       usedFields.add(field);
@@ -174,30 +245,112 @@ function suggestMapping(headers, headerMap = IMPORT_HEADER_MAP) {
   return mapping;
 }
 
+function fillMissingMappedFields(columnMapping, headers, fields, headerMap = IMPORT_HEADER_MAP) {
+  const mapping = { ...(columnMapping || {}) };
+  const used = new Set(Object.values(mapping).filter(Boolean));
+  const wanted = new Set(fields);
+  (headers || []).forEach(({ index, label }) => {
+    const key = String(index);
+    if (mapping[key]) return;
+    const field = inferHeaderField(label, headerMap);
+    if (field && wanted.has(field) && !used.has(field)) {
+      mapping[key] = field;
+      used.add(field);
+    }
+  });
+  return mapping;
+}
+
 function parseClassFromText(text) {
   if (!text) return null;
-  const str = String(text).replace(/\s+/g, ' ');
+  const str = String(text).replace(/\s+/g, ' ').trim();
   const match =
-    str.match(/(\d+)\s*\.\s*S[ıi]n[ıi]f\s*\/\s*([A-ZÇĞİÖŞÜa-zçğıöşü])\s*Şube/i) ||
-    str.match(/(\d+)\s*\.\s*S[ıi]n[ıi]f\s*[\/\-]\s*([A-ZÇĞİÖŞÜa-zçğıöşü])\b/i);
+    str.match(/(\d+)\s*\.\s*S[ıi]n[ıi]f\s*\/\s*([A-ZÇĞİÖŞÜa-zçğıöşü])/i) ||
+    str.match(/(\d+)\s*\.\s*S[ıi]n[ıi]f\s*[\/\-]\s*([A-ZÇĞİÖŞÜa-zçğıöşü])\b/i) ||
+    str.match(/^(\d{1,2})\s*[\/.\-]\s*([A-ZÇĞİÖŞÜa-zçğıöşü])\s*$/i) ||
+    str.match(/^(\d{1,2})\s+([A-ZÇĞİÖŞÜa-zçğıöşü])(?:\s*(?:Şube|Sube))?$/i);
   if (!match) return null;
   return {
-    class_level: match[1],
+    class_level: String(Number(match[1])),
     section: match[2].toLocaleUpperCase('tr-TR'),
   };
+}
+
+/** Sınıf ve şubeyi ayrı veya birleşik (9/A, 9-A, 9.A) hücrelerden okur. */
+function parseClassSection(classLevel, section) {
+  let level = classLevel != null && classLevel !== '' ? String(classLevel).trim() : '';
+  let sec = section != null && section !== '' ? String(section).trim() : '';
+
+  if (level) {
+    const fromText = parseClassFromText(level);
+    if (fromText) {
+      level = fromText.class_level;
+      if (!sec) sec = fromText.section;
+    } else {
+      const onlyLevel = level.match(/^(\d{1,2})(?:\.\s*[Ss][ıi]n[ıi]f)?$/);
+      if (onlyLevel) level = String(Number(onlyLevel[1]));
+    }
+  }
+
+  if (sec) {
+    const fromSec = parseClassFromText(sec);
+    if (fromSec) {
+      if (!level) level = fromSec.class_level;
+      sec = fromSec.section;
+    } else {
+      const letter = sec.match(/([A-Za-zÇĞİÖŞÜçğıöşü])/);
+      sec = letter ? letter[1].toLocaleUpperCase('tr-TR') : sec.toLocaleUpperCase('tr-TR');
+    }
+  }
+
+  if (!level || !sec) return null;
+  return { class_level: String(level), section: sec };
+}
+
+/** Bir satırın herhangi bir hücresinde "N. Sınıf / Şube" biçimli bir başlık arar. */
+function detectRowClassInfo(row) {
+  for (const cell of row || []) {
+    const text = cellToDisplay(cell);
+    const parsed = parseClassFromText(text);
+    if (parsed) return { ...parsed, source_text: text };
+  }
+  return null;
 }
 
 function detectClassInfo(matrix, headerRowIndex) {
   const scanUntil = Math.min(headerRowIndex, 15);
   for (let i = 0; i < scanUntil; i += 1) {
-    const row = matrix[i] || [];
-    for (const cell of row) {
-      const text = cellToDisplay(cell);
-      const parsed = parseClassFromText(text);
-      if (parsed) return { ...parsed, source_text: text };
-    }
+    const found = detectRowClassInfo(matrix[i] || []);
+    if (found) return found;
   }
   return null;
+}
+
+/**
+ * MEB e-okul "Sınıf Listesi" dökümlerinde tek sayfada birden çok sınıf/şube art arda
+ * basılır: her blok "N. Sınıf / X Şubesi ... Sınıf Listesi" başlığıyla açılır, ardından
+ * "Sınıf Öğretmeni/Müdür Yrd" satırları, tablo başlığının tekrarı, öğrenci satırları ve
+ * "... Öğrenci Sayısı" özet satırıyla kapanır — sonra yeni blok başlar. Bu yardımcılar,
+ * öğrenci sütun eşlemesinde ayrı bir Sınıf/Şube sütunu olmayan böyle dosyalarda her
+ * öğrenciyi ait olduğu bloğun sınıfına atayabilmek için "veri olmayan" satırları ayıklar.
+ */
+function isMetaOrSummaryRow(row) {
+  const text = (row || [])
+    .map((c) => cellToDisplay(c))
+    .filter(Boolean)
+    .join(' ');
+  if (!text) return false;
+  return /^(Sınıf Öğretmeni|Sınıf Müdür|Sınıf Başkan)/i.test(text.trim()) || /Öğrenci Sayısı/i.test(text);
+}
+
+function isRepeatedHeaderRow(row, headerCells) {
+  if (!headerCells.length || !row) return false;
+  let matches = 0;
+  headerCells.forEach(({ index, label }) => {
+    const cellLabel = cellToDisplay(row[index]);
+    if (cellLabel && normalizeHeader(cellLabel) === normalizeHeader(label)) matches += 1;
+  });
+  return matches / headerCells.length >= 0.6;
 }
 
 /** Birleşik hücrelerde değer başlığın sağındaki boş sütunda olabilir. */
@@ -261,7 +414,12 @@ function previewWorkbook(buffer, options = {}) {
   };
 }
 
-function getMappedRows(buffer, { headerRow, columnMapping }) {
+/**
+ * @param {boolean} [opts.detectRepeatingClassBlocks] Sadece öğrenci içe aktarımında
+ *   kullanılır (bkz. isMetaOrSummaryRow yorumu). Diğer içe aktarımları (ders programı vb.)
+ *   bu davranışı istemediği için varsayılan kapalıdır.
+ */
+function getMappedRows(buffer, { headerRow, columnMapping, detectRepeatingClassBlocks = false }) {
   const { matrix } = readSheetMatrix(buffer);
   const headerRowIndex = Math.max(0, Number(headerRow || 1) - 1);
   const mappingEntries = Object.entries(columnMapping || {})
@@ -272,6 +430,8 @@ function getMappedRows(buffer, { headerRow, columnMapping }) {
   const headerCells = extractHeaders(matrix[headerRowIndex] || []);
   const headerIndexes = headerCells.map((h) => h.index).sort((a, b) => a - b);
 
+  let currentBlockClass = detectRepeatingClassBlocks ? detectClassInfo(matrix, headerRowIndex) : null;
+
   const rows = [];
   for (let r = headerRowIndex + 1; r < matrix.length; r += 1) {
     const row = matrix[r] || [];
@@ -280,6 +440,25 @@ function getMappedRows(buffer, { headerRow, columnMapping }) {
       const nextHeader = headerIndexes.find((idx) => idx > col);
       raw[field] = readMappedCell(row, col, nextHeader != null ? nextHeader : null);
     });
+
+    if (detectRepeatingClassBlocks) {
+      // Bu kontroller, satırın eşlenen sütunlarında (readMappedCell'in ileri tarama
+      // davranışı yüzünden) tesadüfen sayı/metin olsa bile önce çalışmalı — aksi halde
+      // özet/başlık tekrarı satırları sahte "öğrenci" kaydı gibi görünebilir.
+      if (isMetaOrSummaryRow(row) || isRepeatedHeaderRow(row, headerCells)) {
+        continue;
+      }
+      const blockClass = detectRowClassInfo(row);
+      if (blockClass) {
+        currentBlockClass = blockClass;
+        continue;
+      }
+      if (currentBlockClass) {
+        if (raw.class_level == null || raw.class_level === '') raw.class_level = currentBlockClass.class_level;
+        if (raw.section == null || raw.section === '') raw.section = currentBlockClass.section;
+      }
+    }
+
     const hasAny = Object.values(raw).some((v) => v != null && v !== '');
     if (!hasAny) continue;
     rows.push({ rowNumber: r + 1, raw });
@@ -295,4 +474,8 @@ module.exports = {
   previewWorkbook,
   getMappedRows,
   parseClassFromText,
+  parseClassSection,
+  cellToDisplay,
+  readSheetMatrix,
+  fillMissingMappedFields,
 };
