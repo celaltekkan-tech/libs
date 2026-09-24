@@ -7,6 +7,7 @@ const totpService = require('../services/totpService');
 const smsLoginService = require('../services/smsLoginService');
 const loginLockout = require('../services/loginLockoutService');
 const licenseService = require('../services/licenseService');
+const presence = require('../services/presenceService');
 
 const BCRYPT_ROUNDS = 10;
 const PENDING_2FA_EXPIRES = '5m';
@@ -88,7 +89,9 @@ async function respondWithSession(res, user, status = 200) {
 
 async function finalizeLogin(req, res, user) {
   await loginLockout.clearFailures(user);
-  await user.update({ last_login_at: new Date() });
+  const seenAt = new Date();
+  await user.update({ last_login_at: seenAt, last_seen_at: seenAt });
+  presence.noteWrite(user.id);
 
   const fakeReq = {
     user: { user_id: user.id, tenant_id: user.tenant_id, email: user.email },
@@ -996,7 +999,12 @@ module.exports = {
 
   // Token stateless olduğu için sunucu tarafında iptal edilmez; uç, istemcinin
   // oturumu temizlemesi ve ileride token kara listesi eklenebilmesi için vardır.
-  async logout(req, res) {
-    return res.json({ success: true, message: 'Oturum kapatıldı' });
+  async logout(req, res, next) {
+    try {
+      await presence.clear(req.user?.user_id);
+      return res.json({ success: true, message: 'Oturum kapatıldı' });
+    } catch (err) {
+      return next(err);
+    }
   },
 };

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/authController');
+const presenceCtrl = require('../controllers/presenceController');
 const teacherRegisterCtrl = require('../controllers/teacherRegisterController');
 const auth = require('../middlewares/auth');
 const validate = require('../middlewares/validate');
@@ -39,6 +40,7 @@ router.post('/verify-sms', validate(verifySmsSchema), ctrl.verifySms);
 router.post('/resend-sms', validate(resendSmsSchema), ctrl.resendSms);
 
 router.get('/me', auth, ctrl.me);
+router.post('/presence', auth, presenceCtrl.heartbeat);
 router.put('/profile', auth, validate(updateProfileSchema), ctrl.updateProfile);
 router.post('/change-password', auth, validate(changePasswordSchema), ctrl.changePassword);
 router.post('/logout', auth, ctrl.logout);

@@ -50,6 +50,7 @@ const platformRolesRoutes = require('./routes/platformRoles');
 const geoRoutes = require('./routes/geo');
 const regulationsRoutes = require('./routes/regulations');
 const serverMetricsRoutes = require('./routes/serverMetrics');
+const presenceRoutes = require('./routes/presence');
 const errorHandler = require('./middlewares/errorHandler');
 const backupService = require('./services/backupService');
 const db = require('./models');
@@ -216,6 +217,7 @@ app.use('/api/message-logs', messageLogsRoutes);
 app.use('/api/backups', backupsRoutes);
 app.use('/api/platform/roles', platformRolesRoutes);
 app.use('/api/platform/metrics', serverMetricsRoutes);
+app.use('/api/platform/presence', presenceRoutes);
 app.use('/api/geo', geoRoutes);
 app.use('/api/regulations', regulationsRoutes);
 
