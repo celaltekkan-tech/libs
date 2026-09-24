@@ -758,6 +758,15 @@ kullanmaz, bu yüzden bağlanamaz. Bunun yerine **`https://mobile.oids.com.tr`**
 zaten container'ın 8081 portuna yönlendirir. `exp://` yalnızca `expo start`'ın
 kendi bastığı LAN QR/URL'sinde (dev makinesi ile aynı ağda) anlamlıdır.
 
+**Manifest URL'leri:** Metro, manifest'teki bundle adresini varsayılan olarak
+`https://mobile.oids.com.tr:8081/index.ts.bundle...` şeklinde üretir; manifest 443'ten
+gelse bile telefon bundle'ı dışarıya kapalı 8081'den istemeye çalışıp bağlanamaz.
+Bu yüzden `docker-compose.yml`'da `mobile` servisine
+`EXPO_PACKAGER_PROXY_URL=https://mobile.oids.com.tr` verilir (farklı domain için
+`.env`'de geçersiz kılın). Doğrulama:
+`curl -H "expo-platform: android" https://mobile.oids.com.tr/ | grep -o '"url":"[^"]*bundle'`
+çıktısında `:8081` olmamalıdır.
+
 Kod değişikliği sonrası yeniden build gerekmez (Metro dosya değişikliklerini
 canlı yakalar); container'ın kendisini güncellemek için
 `docker compose up -d --build mobile` yeterlidir.
