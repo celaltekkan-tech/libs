@@ -114,6 +114,7 @@ export async function exportStudents(payload: {
   format: ExportFormat
   columns: string[]
   filters?: StudentFilters
+  ids?: number[]
 }): Promise<Blob> {
   const { data } = await client.post('/api/students/export', payload, {
     responseType: 'blob',
