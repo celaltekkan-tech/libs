@@ -28,7 +28,7 @@ export function ServerSetupScreen() {
   const onSave = async () => {
     const trimmed = url.trim();
     if (!/^https?:\/\/.+/i.test(trimmed)) {
-      setError('Adres http:// veya https:// ile başlamalı (örn: http://192.168.1.10:4000)');
+      setError('Adres http:// veya https:// ile başlamalı (örn: https://api.oids.com.tr)');
       return;
     }
     setSaving(true);
@@ -54,7 +54,7 @@ export function ServerSetupScreen() {
 
       <TextInput
         style={styles.input}
-        placeholder="http://192.168.1.10:4000"
+        placeholder="https://api.oids.com.tr"
         placeholderTextColor={colors.textMuted}
         autoCapitalize="none"
         autoCorrect={false}
