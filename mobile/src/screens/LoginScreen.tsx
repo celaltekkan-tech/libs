@@ -7,6 +7,7 @@ import { useServerConfig } from '../context/ServerConfigContext';
 import { useTheme } from '../context/ThemeContext';
 import { getApiBaseUrl, getErrorMessage } from '../api/client';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { getAppVersionLabel } from '../update/appVersion';
 import type { AuthStackParamList } from '../navigation/types';
 import type { ThemeColors } from '../theme/colors';
 
@@ -79,6 +80,8 @@ export function LoginScreen({ navigation }: Props) {
       <TouchableOpacity style={styles.serverLink} onPress={() => void resetApiBaseUrl()}>
         <Text style={styles.serverLinkText}>Sunucu: {getApiBaseUrl()}  (değiştir)</Text>
       </TouchableOpacity>
+
+      <Text style={styles.versionText}>Sürüm {getAppVersionLabel()}</Text>
     </KeyboardAvoidingView>
   );
 }
@@ -110,6 +113,7 @@ function makeStyles(colors: ThemeColors) {
     error: { color: colors.danger, marginBottom: 12, textAlign: 'center' },
     serverLink: { marginTop: 20, alignItems: 'center' },
     serverLinkText: { color: colors.textMuted, fontSize: 12 },
+    versionText: { marginTop: 12, color: colors.textMuted, fontSize: 11, textAlign: 'center' },
     registerLinkText: { color: colors.headerLink, fontSize: 15, fontWeight: '600' },
   });
 }

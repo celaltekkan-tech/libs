@@ -6,6 +6,7 @@ import { ServerConfigProvider, useServerConfig } from './src/context/ServerConfi
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { ServerSetupScreen } from './src/screens/ServerSetupScreen';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { UpdateBanner } from './src/update/UpdateBanner';
 
 function AppGate() {
   const { apiBaseUrl, isLoading } = useServerConfig();
@@ -41,6 +42,7 @@ export default function App() {
       <ThemeProvider>
         <ServerConfigProvider>
           <AppGate />
+          <UpdateBanner />
           <ThemedStatusBar />
         </ServerConfigProvider>
       </ThemeProvider>
