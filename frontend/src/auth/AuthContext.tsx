@@ -14,6 +14,7 @@ import {
   verify2fa as verify2faRequest,
   verifySms as verifySmsRequest,
 } from '../api/auth'
+import { pingPresence } from '../api/presence'
 import {
   clearSession,
   getStoredExpiry,
@@ -76,6 +77,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUnauthorizedHandler(resetLocalSession)
     return () => setUnauthorizedHandler(null)
   }, [resetLocalSession])
+
+  useEffect(() => {
+    const userId = session?.user.id
+    if (!userId) return
+
+    const beat = () => {
+      if (document.visibilityState !== 'visible') return
+      void pingPresence().catch(() => undefined)
+    }
+
+    beat()
+    const timer = window.setInterval(beat, 30_000)
+    document.addEventListener('visibilitychange', beat)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', beat)
+    }
+  }, [session?.user.id])
 
   useEffect(() => {
     const token = getStoredToken()

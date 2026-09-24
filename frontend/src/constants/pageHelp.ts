@@ -32,7 +32,7 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
     topics: [
       {
         title: 'Özet kartlar',
-        body: 'Okul, öğretmen, öğrenci ve yaklaşan iş sayılarını gösterir. Karta tıklayarak ilgili sayfaya gidebilirsiniz.',
+        body: 'Okul, öğretmen, öğrenci ve yaklaşan iş sayılarını gösterir. Platform yöneticisinde hesap kartı ayrıca çevrimiçi tenant ve alt kullanıcı sayısını verir. Özet kartlar dakikada bir yenilenir. Karta tıklayarak ilgili sayfaya gidebilirsiniz.',
       },
       {
         title: 'Yaklaşan işler',

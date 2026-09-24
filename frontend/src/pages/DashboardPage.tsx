@@ -26,6 +26,7 @@ import { listStudents } from '../api/students'
 import { listTenants } from '../api/tenants'
 import { listLicenses } from '../api/licenses'
 import { listFeedback } from '../api/feedback'
+import { getOnlinePresence, type OnlinePresence } from '../api/presence'
 import { completeWorkTask, listWorkTasks } from '../api/workTasks'
 import { getErrorMessage } from '../api/client'
 import type { Student } from '../types/student'
@@ -58,6 +59,7 @@ function countFeedbackByStatus(rows: Feedback[]): Record<FeedbackStatus, number>
   return counts
 }
 
+const DASHBOARD_REFRESH_MS = 60_000
 const UPCOMING_HORIZON_DAYS = 7
 const UPCOMING_LIST_LIMIT = 8
 
@@ -123,27 +125,34 @@ function PlatformAdminDashboard() {
   const [tenants, setTenants] = useState<TenantListItem[]>([])
   const [licenses, setLicenses] = useState<License[]>([])
   const [feedbackCounts, setFeedbackCounts] = useState<Record<FeedbackStatus, number> | null>(null)
+  const [online, setOnline] = useState<OnlinePresence | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
-      const [tenantRows, licenseRows, feedbackRows] = await Promise.all([
+      const [tenantRows, licenseRows, feedbackRows, presence] = await Promise.all([
         listTenants(),
         listLicenses(),
         listFeedback().catch(() => [] as Feedback[]),
+        getOnlinePresence().catch(() => null),
       ])
       setTenants(tenantRows)
       setLicenses(licenseRows)
       setFeedbackCounts(countFeedbackByStatus(feedbackRows))
+      setOnline(presence)
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [message])
 
   useEffect(() => {
-    void load()
+    void load(false)
+    const timer = window.setInterval(() => {
+      void load(true)
+    }, DASHBOARD_REFRESH_MS)
+    return () => window.clearInterval(timer)
   }, [load])
 
   const summary = useMemo(() => {
@@ -221,7 +230,11 @@ function PlatformAdminDashboard() {
         summary.inactiveTenants > 0
           ? `${summary.activeTenants} aktif · ${summary.inactiveTenants} pasif`
           : `${summary.activeTenants} aktif`,
-      detail: null as React.ReactNode,
+      detail: (
+        <Typography.Text style={{ fontSize: 13, display: 'block', color: '#15803d' }}>
+          {online ? online.online_tenants : '—'} tenant online · {online ? online.online_users : '—'} alt kullanıcı
+        </Typography.Text>
+      ),
       icon: <ApartmentOutlined />,
       color: '#1d4e89',
       path: '/platform/tenants',

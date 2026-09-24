@@ -42,6 +42,10 @@ module.exports = (sequelize, DataTypes) => {
           type: DataTypes.DATE,
           allowNull: true,
         },
+        last_seen_at: {
+          type: DataTypes.DATE,
+          allowNull: true,
+        },
         is_platform_admin: {
           type: DataTypes.BOOLEAN,
           allowNull: false,
