@@ -711,6 +711,10 @@ export function StudentsPage() {
       message.warning('En az bir sütun seçin')
       return
     }
+    if (hasActiveFilters && filteredStudents.length === 0) {
+      message.warning('Seçili filtreye uyan öğrenci yok')
+      return
+    }
     setSubmitting(true)
     try {
       const blob = await exportStudents({
@@ -718,8 +722,9 @@ export function StudentsPage() {
         columns: exportColumns,
         filters: {
           ...filters,
-          ...(searchQuery.trim() ? { q: searchQuery.trim() } : {}),
+          ...(!hasActiveFilters && searchQuery.trim() ? { q: searchQuery.trim() } : {}),
         },
+        ...(hasActiveFilters ? { ids: filteredStudents.map((student) => student.id) } : {}),
       })
       downloadBlob(blob, exportFilename('ogrenciler', exportFormat))
       message.success('Dışa aktarma indirildi')
@@ -1587,6 +1592,20 @@ export function StudentsPage() {
             />
           </Form.Item>
           <Form.Item label="Sütunlar">
+            <Checkbox
+              checked={
+                STUDENT_COLUMN_OPTIONS.length > 0 &&
+                exportColumns.length === STUDENT_COLUMN_OPTIONS.length
+              }
+              onChange={(e) =>
+                setExportColumns(
+                  e.target.checked ? STUDENT_COLUMN_OPTIONS.map((column) => column.value) : [],
+                )
+              }
+              style={{ marginBottom: 8 }}
+            >
+              Tümünü seç
+            </Checkbox>
             <Checkbox.Group
               style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
               options={STUDENT_COLUMN_OPTIONS.map((c) => ({ label: c.label, value: c.value }))}

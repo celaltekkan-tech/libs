@@ -1200,7 +1200,7 @@ module.exports = {
   async exportFile(req, res, next) {
     try {
       const tenantId = req.user && req.user.tenant_id;
-      const { format, columns, filters } = req.validatedBody || req.body;
+      const { format, columns, filters, ids } = req.validatedBody || req.body;
       const allowed = columns.filter((c) => COLUMN_LABELS[c]);
       if (allowed.length === 0) {
         return res.status(400).json({
@@ -1213,8 +1213,13 @@ module.exports = {
       const searchQ = queryFilters.q;
       delete queryFilters.q;
 
+      const where = buildWhere(tenantId, queryFilters);
+      if (Array.isArray(ids)) {
+        where.id = { [Op.in]: ids.length ? ids : [0] };
+      }
+
       let students = await Student.findAll({
-        where: buildWhere(tenantId, queryFilters),
+        where,
         include: [{ model: School, attributes: ['id', 'name'], required: false }],
         order: [
           ['class_level', 'ASC'],
