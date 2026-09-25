@@ -279,4 +279,29 @@ async function sendSms({ phoneNumber, message }) {
   }
 }
 
-module.exports = { sendSms, SMS_STATUS, SmsConfigError };
+/**
+ * Aktif sağlayıcı ve gizli olmayan ayarları döner (platform SMS test ekranı için).
+ * API anahtarı gibi sırlar dahil edilmez.
+ */
+function getSmsConfigSummary() {
+  const provider = process.env.SMS_PROVIDER || 'external_cli';
+  const summary = { provider, known: Boolean(PROVIDERS[provider]), settings: {} };
+  if (provider === 'udp') {
+    summary.settings = {
+      host: process.env.SMS_UDP_HOST || null,
+      port: Number(process.env.SMS_UDP_PORT) || 5005,
+      reply_timeout_ms: Number(process.env.SMS_UDP_REPLY_TIMEOUT_MS) || 0,
+    };
+  } else if (provider === 'http_api') {
+    summary.settings = {
+      url: process.env.SMS_HTTP_URL || null,
+      method: process.env.SMS_HTTP_METHOD || 'POST',
+      api_key_set: Boolean(process.env.SMS_HTTP_API_KEY),
+    };
+  } else if (provider === 'external_cli') {
+    summary.settings = { program_path: process.env.SMS_EXTERNAL_PROGRAM_PATH || null };
+  }
+  return summary;
+}
+
+module.exports = { sendSms, getSmsConfigSummary, toE164Tr, SMS_STATUS, SmsConfigError };

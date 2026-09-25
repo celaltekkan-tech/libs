@@ -563,6 +563,20 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       },
     ],
   },
+  '/platform/sms-test': {
+    title: 'SMS Test',
+    summary: 'Aktif SMS sağlayıcısının ayarlarını görür ve test mesajı gönderirsiniz (platform yöneticisi). Test gönderimleri lisans kotasından düşmez.',
+    topics: [
+      {
+        title: 'Test gönderimi',
+        steps: ['Telefonu 05xx biçiminde girin.', 'Mesajı yazıp Gönder deyin.', 'Sonucu ve süreyi son gönderimler listesinden izleyin.'],
+      },
+      {
+        title: 'UDP motoru',
+        body: 'Yanıt bekleme 0 ise “Başarılı” yalnızca paketin SMS motoruna gönderildiğini gösterir; teslimi telefondan doğrulayın.',
+      },
+    ],
+  },
   '/platform/backups': {
     title: 'Veritabanı Yedekleme',
     summary: 'Yedek klasörünü, saati ve saklama süresini ayarlar; yedek alır, indirir, yükler veya geri yüklersiniz (platform yöneticisi).',
