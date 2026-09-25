@@ -1,6 +1,8 @@
 'use strict';
 
 const { execFile } = require('child_process');
+const dgram = require('dgram');
+const { normalizeMobilePhone } = require('../utils/phone');
 
 // Bir SMS gönderiminin alabileceği durumlar. AnnouncementRecipient.status ve
 // benzeri tablolarda bu sabitler kullanılmalı; serbest string yazılmamalı.
@@ -159,9 +161,87 @@ async function httpApiProvider(phoneNumber, message) {
   }
 }
 
+// --- Sağlayıcı 3: UDP SMS motoru ---------------------------------------
+// Yerel ağdaki SMS motoruna tek bir UDP datagramı gönderir:
+//   {"phone": "+905xxxxxxxxx", "message": "..."}
+// Türkçe karakterler \uXXXX olarak kaçırılır (Python json.dumps ile aynı);
+// böylece alıcı json.loads da ast.literal_eval da kullansa sorunsuz çözer.
+// UDP'de teslim onayı yoktur: SMS_UDP_REPLY_TIMEOUT_MS > 0 ise motordan
+// JSON yanıt ({"success": ...}) beklenir, aksi halde paket gidince başarı sayılır.
+function toE164Tr(phone) {
+  const digits = normalizeMobilePhone(phone);
+  if (digits && /^5\d{9}$/.test(digits)) return `+90${digits}`;
+  const raw = String(phone).trim();
+  return raw.startsWith('+') ? raw : `+${raw.replace(/\D/g, '')}`;
+}
+
+function asciiJson(obj) {
+  return JSON.stringify(obj).replace(/[\u007f-\uffff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
+async function udpProvider(phoneNumber, message) {
+  const host = process.env.SMS_UDP_HOST;
+  if (!host) {
+    throw new SmsConfigError('SMS_UDP_HOST tanımlı değil');
+  }
+  const port = Number(process.env.SMS_UDP_PORT) || 5005;
+  const replyTimeoutMs = Number(process.env.SMS_UDP_REPLY_TIMEOUT_MS) || 0;
+  const payload = Buffer.from(asciiJson({ phone: toE164Tr(phoneNumber), message: String(message) }), 'utf8');
+
+  return new Promise((resolve) => {
+    const socket = dgram.createSocket('udp4');
+    let timer = null;
+    const finish = (result) => {
+      clearTimeout(timer);
+      try {
+        socket.close();
+      } catch {
+        // zaten kapalı
+      }
+      resolve(result);
+    };
+
+    socket.on('error', (err) => finish({ success: false, providerMessageId: null, error: truncate(err.message) }));
+
+    if (replyTimeoutMs > 0) {
+      socket.on('message', (buf) => {
+        const text = buf.toString('utf8').trim();
+        let json = null;
+        try {
+          json = JSON.parse(text);
+        } catch {
+          // JSON değilse düz metin olarak değerlendir
+        }
+        const success = json ? json.success === true : /^(ok|success|true)$/i.test(text);
+        finish({
+          success,
+          providerMessageId: json ? json.messageId ?? null : null,
+          error: success ? null : truncate((json && json.error) || text || 'SMS motoru başarısız yanıt döndürdü'),
+        });
+      });
+    }
+
+    socket.send(payload, port, host, (err) => {
+      if (err) {
+        finish({ success: false, providerMessageId: null, error: truncate(err.message) });
+        return;
+      }
+      if (replyTimeoutMs <= 0) {
+        finish({ success: true, providerMessageId: null, error: null });
+        return;
+      }
+      timer = setTimeout(
+        () => finish({ success: false, providerMessageId: null, error: 'SMS motorundan yanıt alınamadı (zaman aşımı)' }),
+        replyTimeoutMs
+      );
+    });
+  });
+}
+
 const PROVIDERS = {
   external_cli: externalCliProvider,
   http_api: httpApiProvider,
+  udp: udpProvider,
 };
 
 /**

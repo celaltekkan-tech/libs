@@ -173,7 +173,7 @@ export function RegisterScreen({ navigation }: Props) {
         <Text style={styles.subtitle}>
           {step === 'school' && 'Önce il, ilçe ve okulunuzu seçin. Yalnızca geçerli lisansı olan okullar listelenir.'}
           {step === 'identity' &&
-            'T.C. kimlik numarası, soyad ve e-posta ile öğretmen kaydınız eşleştirilir. Cep telefonunuz, öğretmen kaydınızdaki numarayla aynı olmalıdır.'}
+            'T.C. kimlik numarası ve soyad ile öğretmen kaydınız eşleştirilir; doğrulama cep telefonunuza gelen SMS ile yapılır. Telefon, öğretmen kaydınızdaki numarayla aynı olmalıdır. E-posta adresiniz giriş için kullanıcı adı olur.'}
           {step === 'sms' &&
             `Doğrulama kodu ${phoneHint} numarasına gönderildi. Kodu girin; boşluklar otomatik silinir. Varsayılan şifreniz T.C. kimlik numaranızdır.`}
         </Text>

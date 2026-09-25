@@ -220,7 +220,7 @@ module.exports = {
             success: false,
             code: 'ACCOUNT_UNVERIFIED',
             message:
-              'Hesabınız henüz doğrulanmadı. Mobil uygulamadan e-posta veya SMS doğrulamasını tamamlayın.',
+              'Hesabınız henüz doğrulanmadı. Mobil uygulamadan SMS doğrulamasını tamamlayın.',
           });
         }
         return res.status(403).json({
