@@ -15,6 +15,7 @@ import { FeedbackListPage } from './pages/platform/FeedbackListPage'
 import { PlatformNotificationsPage } from './pages/platform/PlatformNotificationsPage'
 import { LicensesPage } from './pages/platform/LicensesPage'
 import { BackupsPage } from './pages/platform/BackupsPage'
+import { SmsTestPage } from './pages/platform/SmsTestPage'
 import { PlatformRolesPage } from './pages/platform/PlatformRolesPage'
 import { SchoolsPage } from './pages/SchoolsPage'
 import { DirectorySchoolsPage } from './pages/platform/DirectorySchoolsPage'
@@ -151,6 +152,7 @@ function ThemedApp() {
                   <Route path="/platform/feedback" element={<FeedbackListPage />} />
                   <Route path="/platform/notifications" element={<PlatformNotificationsPage />} />
                   <Route path="/platform/backups" element={<BackupsPage />} />
+                  <Route path="/platform/sms-test" element={<SmsTestPage />} />
                 </Route>
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />

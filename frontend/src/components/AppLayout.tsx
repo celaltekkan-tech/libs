@@ -15,6 +15,7 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  MessageOutlined,
   MoonOutlined,
   SunOutlined,
   UserOutlined,
@@ -58,6 +59,7 @@ const PLATFORM_ADMIN_ITEMS: NavNode[] = [
   { key: '/platform/feedback', icon: <CommentOutlined />, label: 'Geri Bildirimler' },
   { key: '/platform/notifications', icon: <BellOutlined />, label: 'Bildirimler' },
   { key: '/platform/backups', icon: <DatabaseOutlined />, label: 'Yedekleme' },
+  { key: '/platform/sms-test', icon: <MessageOutlined />, label: 'SMS Test' },
   { key: '/profile', icon: <UserOutlined />, label: 'Profilim' },
 ]
 
