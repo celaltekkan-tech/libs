@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Okul İdari",
+    "name": "OIDS",
     "slug": "lise-idari-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -15,7 +15,7 @@
       "package": "tr.com.oids.liseidari",
       "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#000000",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
