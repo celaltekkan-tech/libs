@@ -115,6 +115,18 @@ module.exports = {
     }
   },
 
+  /** Oturumdaki kullanıcının aldığı bildirimleri siler (gönderilenler kalır). */
+  async clearMine(req, res, next) {
+    try {
+      const deleted = await Notification.destroy({
+        where: { recipient_user_id: req.user.user_id },
+      });
+      res.json({ success: true, data: { deleted } });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async create(req, res, next) {
     try {
       const payload = req.validatedBody || req.body;

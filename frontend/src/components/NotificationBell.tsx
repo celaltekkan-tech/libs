@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Badge, Button, Empty, List, Popover, Space, Typography } from 'antd'
-import { BellOutlined, CheckOutlined } from '@ant-design/icons'
+import { Badge, Button, Empty, List, Popconfirm, Popover, Space, Typography } from 'antd'
+import { BellOutlined, CheckOutlined, DeleteOutlined } from '@ant-design/icons'
 import {
+  clearMyNotifications,
   fetchUnreadNotificationCount,
   listMyNotifications,
   markAllNotificationsRead,
@@ -75,15 +76,42 @@ export function NotificationBell() {
     }
   }
 
+  const onClear = async () => {
+    try {
+      await clearMyNotifications()
+      setItems([])
+      setUnread(0)
+      message.success('Bildirimler temizlendi')
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    }
+  }
+
   const content = (
     <div className="notification-popover">
-      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 8 }}>
+      <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 8 }} align="start">
         <Typography.Text strong>Bildirimler</Typography.Text>
-        {unread > 0 && (
-          <Button type="link" size="small" icon={<CheckOutlined />} onClick={() => void onMarkAll()}>
-            Tümünü okundu say
-          </Button>
-        )}
+        <Space size={0} wrap>
+          {unread > 0 && (
+            <Button type="link" size="small" icon={<CheckOutlined />} onClick={() => void onMarkAll()}>
+              Tümünü okundu say
+            </Button>
+          )}
+          {items.length > 0 && (
+            <Popconfirm
+              title="Listedeki tüm bildirimler silinsin mi?"
+              okText="Temizle"
+              cancelText="Vazgeç"
+              okButtonProps={{ danger: true }}
+              getPopupContainer={(node) => node.parentElement || document.body}
+              onConfirm={() => onClear()}
+            >
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                Temizle
+              </Button>
+            </Popconfirm>
+          )}
+        </Space>
       </Space>
       <List
         loading={loading}
