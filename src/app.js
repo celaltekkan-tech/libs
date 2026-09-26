@@ -110,7 +110,11 @@ app.use(
   })
 );
 
-app.use(express.json({ limit: '1mb' }));
+app.use((req, res, next) => {
+  const path = String(req.originalUrl || req.url || '').split('?')[0];
+  const limit = path.startsWith('/api/feedback/sync/') ? '8mb' : '1mb';
+  return express.json({ limit })(req, res, next);
+});
 app.use(express.urlencoded({ extended: true }));
 
 const apiLimiter = rateLimit({

@@ -13,6 +13,7 @@ import {
   Space,
   Spin,
   Tag,
+  Tooltip,
   Typography,
 } from 'antd'
 import {
@@ -23,6 +24,7 @@ import {
   EyeOutlined,
   PaperClipOutlined,
   PlusOutlined,
+  SyncOutlined,
 } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
 import { AppLayout } from '../../components/AppLayout'
@@ -32,7 +34,9 @@ import {
   addFeedbackUpdate,
   deleteFeedback,
   downloadFeedbackAttachment,
+  getFeedbackSyncStatus,
   listFeedback,
+  runFeedbackSync,
   updateFeedback,
   viewFeedbackAttachment,
 } from '../../api/feedback'
@@ -42,12 +46,16 @@ import {
   FEEDBACK_FILTER_OPTIONS,
   FEEDBACK_STATUS_LABEL,
   OPEN_FEEDBACK_STATUSES,
+  feedbackAuthorLabel,
+  feedbackOriginLabel,
+  feedbackTenantLabel,
   formatFileSize,
   isPdfAttachment,
   type Feedback,
   type FeedbackAttachment,
   type FeedbackStatus,
   type FeedbackStatusFilter,
+  type FeedbackSyncStatus,
 } from '../../types/feedback'
 import type { TenantListItem } from '../../types/tenant'
 import { TypedPhraseConfirmModal } from '../../components/TypedPhraseConfirmModal'
@@ -66,6 +74,20 @@ export function FeedbackListPage() {
   const [replyTarget, setReplyTarget] = useState<Feedback | null>(null)
   const [replyForm] = Form.useForm<{ status: FeedbackStatus; body: string }>()
   const [replySubmitting, setReplySubmitting] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<FeedbackSyncStatus | null>(null)
+  const [syncing, setSyncing] = useState(false)
+
+  const refreshSyncStatus = useCallback(async () => {
+    try {
+      setSyncStatus(await getFeedbackSyncStatus())
+    } catch {
+      setSyncStatus(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshSyncStatus()
+  }, [refreshSyncStatus])
 
   useEffect(() => {
     void (async () => {
@@ -106,6 +128,33 @@ export function FeedbackListPage() {
     reload: () => void load(),
     message,
   })
+
+  const runSync = async () => {
+    setSyncing(true)
+    try {
+      const result = await runFeedbackSync()
+      setSyncStatus((prev) => ({
+        enabled: result.enabled,
+        env: result.env,
+        peer_configured: prev?.peer_configured ?? result.enabled,
+        last_run_at: new Date().toISOString(),
+        last_success_at: result.ok ? new Date().toISOString() : prev?.last_success_at ?? null,
+        last_error: result.ok ? null : result.error || 'Senkron başarısız',
+        last_summary: result.last_summary ?? prev?.last_summary ?? null,
+      }))
+      if (result.ok) {
+        message.success('Geri bildirimler senkronize edildi')
+        void load()
+      } else {
+        message.warning(result.error || 'Senkron tamamlanamadı')
+      }
+      void refreshSyncStatus()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const changeStatus = async (id: number, status: FeedbackStatus) => {
     try {
@@ -191,7 +240,15 @@ export function FeedbackListPage() {
             </Typography.Title>
             <Typography.Text type="secondary">
               Tenant hesaplarından gelen mesajları filtreleyin, yanıtlayın ve ekleri inceleyin.
+              {syncStatus?.last_success_at
+                ? ` Son senkron: ${new Date(syncStatus.last_success_at).toLocaleString('tr-TR')}.`
+                : ''}
             </Typography.Text>
+            {syncStatus?.last_error ? (
+              <div>
+                <Typography.Text type="danger">{syncStatus.last_error}</Typography.Text>
+              </div>
+            ) : null}
           </div>
 
           <Card size="small" styles={{ body: { padding: 12 } }}>
@@ -220,11 +277,31 @@ export function FeedbackListPage() {
                   placeholder={['Başlangıç', 'Bitiş']}
                 />
               </Space>
-              {!loading && feedbacks.length > 0 && (
-                <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
-                  Toplu sil ({feedbacks.length})
-                </Button>
-              )}
+              <Space>
+                <Tooltip
+                  title={
+                    syncStatus && !syncStatus.enabled
+                      ? 'Karşı ortam adresi ve paylaşılan anahtar tanımlı değil'
+                      : 'Karşı ortamdaki geri bildirimleri alır, buradaki değişiklikleri yazar'
+                  }
+                >
+                  <span>
+                    <Button
+                      icon={<SyncOutlined />}
+                      loading={syncing}
+                      disabled={syncStatus != null && !syncStatus.enabled}
+                      onClick={() => void runSync()}
+                    >
+                      Senkronize et
+                    </Button>
+                  </span>
+                </Tooltip>
+                {!loading && feedbacks.length > 0 && (
+                  <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+                    Toplu sil ({feedbacks.length})
+                  </Button>
+                )}
+              </Space>
             </Space>
           </Card>
 
@@ -256,13 +333,14 @@ export function FeedbackListPage() {
                                 #{item.id}
                               </Typography.Text>
                               <Typography.Text strong style={{ fontSize: 15 }}>
-                                {item.Tenant?.name || `Hesap #${item.tenant_id}`}
+                                {feedbackTenantLabel(item)}
                               </Typography.Text>
+                              {feedbackOriginLabel(item.origin_env) && (
+                                <Tag>{feedbackOriginLabel(item.origin_env)}</Tag>
+                              )}
                             </Space>
                             <Typography.Text type="secondary">
-                              {item.User
-                                ? `${item.User.full_name} · ${item.User.email}`
-                                : 'Silinmiş kullanıcı'}
+                              {feedbackAuthorLabel(item)}
                               {' · '}
                               {new Date(item.created_at).toLocaleString('tr-TR')}
                               {item.page_title || item.page_path
@@ -378,8 +456,10 @@ export function FeedbackListPage() {
         {replyTarget && (
           <>
             <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
-              {replyTarget.Tenant?.name || `Hesap #${replyTarget.tenant_id}`}
-              {replyTarget.User ? ` · ${replyTarget.User.full_name}` : ''}
+              {feedbackTenantLabel(replyTarget)}
+              {replyTarget.User?.full_name || replyTarget.author_name
+                ? ` · ${replyTarget.User?.full_name || replyTarget.author_name}`
+                : ''}
             </Typography.Paragraph>
             <div style={{ marginBottom: 16, maxHeight: 280, overflow: 'auto' }}>
               <FeedbackThreadBody item={replyTarget} />

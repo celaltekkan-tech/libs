@@ -22,13 +22,14 @@ export interface FeedbackUpdate {
   body: string
   is_from_platform: boolean
   user_id: number | null
+  author_name?: string | null
   created_at: string
   User?: { id: number; full_name: string } | null
 }
 
 export interface Feedback {
   id: number
-  tenant_id: number
+  tenant_id: number | null
   user_id: number | null
   message: string
   page_path: string | null
@@ -37,12 +38,52 @@ export interface Feedback {
   reply: string | null
   replied_at: string | null
   cancel_reason: string | null
+  origin_env?: string | null
+  author_name?: string | null
+  author_email?: string | null
+  tenant_name?: string | null
   created_at: string
   updated_at: string
   Tenant?: { id: number; name: string } | null
   User?: { id: number; full_name: string; email?: string } | null
   Attachments?: FeedbackAttachment[]
   Updates?: FeedbackUpdate[]
+}
+
+export interface FeedbackSyncStatus {
+  enabled: boolean
+  env: string
+  peer_configured: boolean
+  last_run_at: string | null
+  last_success_at: string | null
+  last_error: string | null
+  last_summary: {
+    ok?: boolean
+    error?: string
+    pulled?: { feedbacks: number; updates: number; attachments: number; tombstones: number; files: number }
+    pushed?: { feedbacks: number; updates: number; attachments: number; tombstones: number; files: number }
+  } | null
+}
+
+export function feedbackTenantLabel(item: Pick<Feedback, 'Tenant' | 'tenant_name' | 'tenant_id'>): string {
+  return item.Tenant?.name || item.tenant_name || (item.tenant_id ? `Hesap #${item.tenant_id}` : 'Karşı ortam')
+}
+
+export function feedbackAuthorLabel(item: Pick<Feedback, 'User' | 'author_name' | 'author_email'>): string {
+  if (item.User) {
+    return item.User.email ? `${item.User.full_name} · ${item.User.email}` : item.User.full_name
+  }
+  if (item.author_name) {
+    return item.author_email ? `${item.author_name} · ${item.author_email}` : item.author_name
+  }
+  return 'Silinmiş kullanıcı'
+}
+
+export function feedbackOriginLabel(env: string | null | undefined): string | null {
+  if (!env) return null
+  if (env === 'prod') return 'Canlı'
+  if (env === 'dev') return 'Geliştirme'
+  return env
 }
 
 export interface FeedbackListParams {

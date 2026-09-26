@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/feedbackController');
 const validate = require('../middlewares/validate');
+const feedbackSyncAuth = require('../middlewares/feedbackSyncAuth');
 const {
   createFeedbackSchema,
   updateFeedbackSchema,
@@ -37,6 +38,21 @@ function handleMulterError(err, req, res, next) {
   }
   return next(err);
 }
+
+// Karşı ortam (paylaşılan anahtar)
+router.post('/sync/export', feedbackSyncAuth, ctrl.syncExport);
+router.post('/sync/import', feedbackSyncAuth, ctrl.syncImport);
+router.get('/sync/files/:publicId', feedbackSyncAuth, ctrl.syncDownloadFile);
+router.put(
+  '/sync/files/:publicId',
+  feedbackSyncAuth,
+  express.raw({ type: 'application/octet-stream', limit: '6mb' }),
+  ctrl.syncUploadFile
+);
+
+// Platform yöneticisi: durum ve elle tetikleme
+router.get('/sync/status', auth, platformAdmin, ctrl.syncStatus);
+router.post('/sync/run', auth, platformAdmin, ctrl.syncRun);
 
 // Giriş yapmış her kullanıcı kendi hesabı adına geri bildirim gönderebilir (opsiyonel dosya)
 router.post(

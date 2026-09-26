@@ -5,9 +5,10 @@ import { FeedbackMessageHtml } from './RichTextEditor'
 import type { Feedback, FeedbackUpdate } from '../types/feedback'
 
 function UpdateItem({ update }: { update: FeedbackUpdate }) {
+  const person = update.User?.full_name || update.author_name
   const who = update.is_from_platform
-    ? `Platform${update.User?.full_name ? ` · ${update.User.full_name}` : ''}`
-    : update.User?.full_name || 'Kullanıcı'
+    ? `Platform${person ? ` · ${person}` : ''}`
+    : person || 'Kullanıcı'
   return (
     <Card size="small" type="inner" title={who}>
       <FeedbackMessageHtml html={update.body} />
@@ -90,7 +91,7 @@ export function FeedbackThreadBody({ item }: { item: Feedback }) {
 
   return (
     <Space direction="vertical" size={12} style={{ width: '100%' }}>
-      <Card size="small" type="inner" title={item.User?.full_name || 'İlk mesaj'}>
+      <Card size="small" type="inner" title={item.User?.full_name || item.author_name || 'İlk mesaj'}>
         <FeedbackMessageHtml html={item.message} />
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
           {new Date(item.created_at).toLocaleString('tr-TR')}
