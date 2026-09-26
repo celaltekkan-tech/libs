@@ -37,6 +37,8 @@ module.exports = (sequelize, DataTypes) => {
     contract_end_date: DataTypes.DATEONLY,
     union_name: DataTypes.STRING,
     personnel_category_id: DataTypes.INTEGER,
+    employment_type: DataTypes.STRING(20),
+    typ_subject: DataTypes.STRING(120),
     meta: DataTypes.JSONB
     }, {
     tableName: 'Teachers',

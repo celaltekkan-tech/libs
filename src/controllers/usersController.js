@@ -16,6 +16,40 @@ const assignmentInclude = [
   { model: School, attributes: ['id', 'name', 'code'] },
 ];
 
+const SCHOOL_ROLE_LIMITS = {
+  Müdür: 1,
+  Yönetici: 1,
+  'Müdür Yardımcısı': 10,
+};
+
+async function assertSchoolRoleHeadcount({ tenantId, schoolId, role, excludeUserId }) {
+  const limit = SCHOOL_ROLE_LIMITS[role?.role_name];
+  if (!limit || !schoolId) return;
+  const where = { school_id: schoolId, role_id: role.id };
+  if (excludeUserId) where.user_id = { [Op.ne]: excludeUserId };
+  const rows = await UserSchool.findAll({
+    where,
+    include: [
+      {
+        model: User,
+        where: { tenant_id: tenantId, is_active: true },
+        attributes: ['id'],
+        required: true,
+      },
+    ],
+  });
+  if (rows.length >= limit) {
+    const err = new Error(
+      role.role_name === 'Müdür' || role.role_name === 'Yönetici'
+        ? 'Bu okulda müdür bir kişidir. İkinci müdür atanamaz.'
+        : 'Bu okulda müdür yardımcısı en fazla 10 kişi olabilir.',
+    );
+    err.status = 400;
+    err.code = 'SCHOOL_ROLE_LIMIT';
+    throw err;
+  }
+}
+
 function serializeManagedUser(user) {
   const data = user.toJSON ? user.toJSON() : { ...user };
   delete data.password_hash;
@@ -258,6 +292,11 @@ module.exports = {
 
       const quota = await getTenantUserQuota(payload.tenant_id);
       assertRoleWithinQuota(quota, role.role_name);
+      await assertSchoolRoleHeadcount({
+        tenantId: payload.tenant_id,
+        schoolId: payload.school_id,
+        role,
+      });
 
       const password_hash = await bcrypt.hash(payload.password, 10);
 
@@ -347,6 +386,12 @@ module.exports = {
       const quota = await getTenantUserQuota(tenantId);
       assertRoleWithinQuota(quota, role.role_name, {
         alreadyCounted: !isUnlimitedAccountRole(previousRoleName),
+      });
+      await assertSchoolRoleHeadcount({
+        tenantId,
+        schoolId: payload.school_id,
+        role,
+        excludeUserId: user.id,
       });
 
       const updates = {

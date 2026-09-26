@@ -58,9 +58,29 @@ const COLUMN_LABELS = {
   kan_grubu: 'Kan grubu',
   durum: 'Durum',
   seviye_unvani: 'Seviye unvanı',
+  employment_type: 'Çalışma biçimi',
+  signature: 'İmza',
+  signature_morning: 'Sabah imza',
+  signature_noon: 'Öğle imza',
+  signature_evening: 'Akşam imza',
+  signature_timed: 'Saatli imza',
 };
 
-const DEFAULT_COLUMNS = Object.keys(COLUMN_LABELS);
+const SIGNATURE_KEYS = new Set([
+  'signature',
+  'signature_morning',
+  'signature_noon',
+  'signature_evening',
+  'signature_timed',
+]);
+
+const EMPLOYMENT_LABELS = {
+  kadrolu: 'Kadrolu',
+  sozlesmeli: 'Sözleşmeli',
+  ucretli: 'Ücretli',
+};
+
+const DEFAULT_COLUMNS = Object.keys(COLUMN_LABELS).filter((key) => !SIGNATURE_KEYS.has(key));
 
 const DATE_COLUMNS = new Set([
   'birth_date',
@@ -199,6 +219,10 @@ function formatDateCell(value) {
 }
 
 function formatTeacherCell(teacher, key) {
+  if (String(key).startsWith('signature')) return '';
+  if (key === 'employment_type') {
+    return EMPLOYMENT_LABELS[teacher.employment_type] || teacher.employment_type || '';
+  }
   if (key === 'school_name') return teacher.School?.name || '';
   if (META_COLUMNS.has(key)) {
     const meta = teacher.meta && typeof teacher.meta === 'object' ? teacher.meta : null;
@@ -789,7 +813,18 @@ module.exports = {
       const tenantId = req.user && req.user.tenant_id;
       const { format, columns, filters } = req.validatedBody || req.body;
       const requested = Array.isArray(columns) && columns.length ? columns : DEFAULT_COLUMNS;
-      const allowed = requested.filter((c) => COLUMN_LABELS[c]);
+      const headers = [];
+      const allowed = [];
+      for (const key of requested) {
+        if (key === 'signature_timed') {
+          headers.push('Saat', 'Saatli imza');
+          allowed.push('signature_time', 'signature_timed');
+          continue;
+        }
+        if (!COLUMN_LABELS[key]) continue;
+        headers.push(COLUMN_LABELS[key]);
+        allowed.push(key);
+      }
       if (allowed.length === 0) {
         return res.status(400).json({ success: false, message: 'Geçerli sütun seçilmedi' });
       }
@@ -817,7 +852,7 @@ module.exports = {
         format,
         filename: 'ogretmenler',
         title: 'Öğretmen Listesi',
-        headers: allowed.map((key) => COLUMN_LABELS[key]),
+        headers,
         rows: teachers.map((t) => allowed.map((key) => formatTeacherCell(t, key))),
       });
     } catch (err) {
