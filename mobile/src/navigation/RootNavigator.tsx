@@ -10,7 +10,11 @@ import { StudentLookupScreen } from '../screens/StudentLookupScreen';
 import { ReasonSelectScreen } from '../screens/ReasonSelectScreen';
 import { MyNotesScreen } from '../screens/MyNotesScreen';
 import { ChangePasswordScreen } from '../screens/ChangePasswordScreen';
+import { NotificationsScreen } from '../screens/NotificationsScreen';
+import { AboutScreen } from '../screens/AboutScreen';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { NotificationBell } from '../components/NotificationBell';
+import { NotificationsProvider } from '../context/NotificationsContext';
 import type { AuthStackParamList, RootStackParamList } from './types';
 
 const AppStack = createNativeStackNavigator<RootStackParamList>();
@@ -54,21 +58,26 @@ export function RootNavigator() {
   return (
     <NavigationContainer theme={navTheme}>
       {user ? (
-        <AppStack.Navigator
-          screenOptions={{
-            ...headerOptions,
-            headerRight: () => (
-              <View style={{ marginRight: 4 }}>
-                <ThemeToggle compact />
-              </View>
-            ),
-          }}
-        >
-          <AppStack.Screen name="StudentLookup" component={StudentLookupScreen} options={{ title: 'Öğrenci Ara' }} />
-          <AppStack.Screen name="ReasonSelect" component={ReasonSelectScreen} options={{ title: 'Bildirim Oluştur' }} />
-          <AppStack.Screen name="MyNotes" component={MyNotesScreen} options={{ title: 'Geçmiş Bildirimlerim' }} />
-          <AppStack.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ title: 'Şifre Değiştir' }} />
-        </AppStack.Navigator>
+        <NotificationsProvider>
+          <AppStack.Navigator
+            screenOptions={{
+              ...headerOptions,
+              headerRight: () => (
+                <View style={{ marginRight: 4, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <NotificationBell />
+                  <ThemeToggle compact />
+                </View>
+              ),
+            }}
+          >
+            <AppStack.Screen name="StudentLookup" component={StudentLookupScreen} options={{ title: 'Öğrenci Ara' }} />
+            <AppStack.Screen name="ReasonSelect" component={ReasonSelectScreen} options={{ title: 'Bildirim Oluştur' }} />
+            <AppStack.Screen name="MyNotes" component={MyNotesScreen} options={{ title: 'Geçmiş Bildirimlerim' }} />
+            <AppStack.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ title: 'Şifre Değiştir' }} />
+            <AppStack.Screen name="Notifications" component={NotificationsScreen} options={{ title: 'Bildirimler' }} />
+            <AppStack.Screen name="About" component={AboutScreen} options={{ title: 'Hakkında' }} />
+          </AppStack.Navigator>
+        </NotificationsProvider>
       ) : (
         <AuthStack.Navigator screenOptions={{ ...headerOptions, headerShown: false }}>
           <AuthStack.Screen name="Login" component={LoginScreen} />

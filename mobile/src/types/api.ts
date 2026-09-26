@@ -65,3 +65,12 @@ export interface TeacherNote {
     Classroom?: StudentClassroom | null;
   } | null;
 }
+
+export interface AppNotification {
+  id: number;
+  title: string;
+  body: string;
+  read_at: string | null;
+  created_at: string;
+  Sender?: { id: number; full_name: string } | null;
+}
