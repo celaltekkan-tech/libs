@@ -395,6 +395,21 @@ module.exports = {
         return res.status(400).json({ success: false, message: 'Seçilen nöbet yeri bulunamadı' });
       }
 
+      const sameDay = await DutyAssignment.findOne({
+        where: {
+          tenant_id: tenantId,
+          teacher_id: payload.teacher_id,
+          duty_date: dateStr(payload.duty_date),
+        },
+      });
+      if (sameDay) {
+        return res.status(409).json({
+          success: false,
+          code: 'DUTY_CONFLICT',
+          message: 'Bu kişi o gün zaten nöbetçi. Aynı gün ikinci kez yazılmaz; haftanın başka gününe yazabilirsiniz.',
+        });
+      }
+
       const row = await DutyAssignment.create(payload);
       const full = await DutyAssignment.findByPk(row.id, { include: [teacherInclude, locationInclude] });
       await audit.log(req, {
@@ -409,7 +424,7 @@ module.exports = {
         return res.status(409).json({
           success: false,
           code: 'DUTY_CONFLICT',
-          message: 'Bu öğretmen veya bu nöbet yeri o tarihte zaten atanmış',
+          message: 'Bu kişi o gün zaten nöbetçi. Aynı gün ikinci kez yazılmaz.',
         });
       }
       next(err);
@@ -436,7 +451,7 @@ module.exports = {
         return res.status(409).json({
           success: false,
           code: 'DUTY_CONFLICT',
-          message: 'Bu öğretmen veya bu nöbet yeri o tarihte zaten atanmış',
+          message: 'Bu kişi o gün zaten nöbetçi. Aynı gün ikinci kez yazılmaz.',
         });
       }
       next(err);

@@ -90,6 +90,34 @@ function merge(ws, r1, c1, r2, c2) {
  * - resmi tatiller her zaman kapatılır
  * - ayda olmayan günler (30/31) her zaman kapatılır
  */
+function personStartIso(person) {
+  const raw = person?.service_start_date || person?.first_duty_date;
+  if (!raw) return null;
+  const text = String(raw).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
+}
+
+function closedDaysForPerson(person, year, month, baseClosed) {
+  const closed = new Set(baseClosed);
+  const start = personStartIso(person);
+  if (!start) return closed;
+  const dim = daysInMonth(year, month);
+  for (let day = 1; day <= dim; day += 1) {
+    const key = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    if (key < start) closed.add(day);
+  }
+  return closed;
+}
+
+function safeSheetName(subject, index, total) {
+  const base = String(subject || 'TYP')
+    .replace(/[\\/*?:[\]]/g, ' ')
+    .trim()
+    .slice(0, 24) || 'TYP';
+  const name = total === 1 ? base : `${base} ${index + 1}`;
+  return name.slice(0, 31);
+}
+
 function buildClosedDaySet(year, month, holidays, closedDays) {
   const closed = new Set();
   const dim = daysInMonth(year, month);
@@ -381,53 +409,64 @@ async function buildTypPuantajWorkbook(opts) {
     attendanceMap.get(row.teacher_id)[day] = row.status;
   });
 
-  const inferredSubject =
-    typSubject ||
-    teachers.find((t) => t.title_branch)?.title_branch ||
-    '';
-  const inferredStart =
-    typStartDate ||
-    formatDateTr(teachers.find((t) => t.contract_start_date)?.contract_start_date) ||
-    '';
-  const inferredEnd =
-    typEndDate || formatDateTr(teachers.find((t) => t.contract_end_date)?.contract_end_date) || '';
-
-  const meta = {
-    year,
-    month,
-    schoolName,
-    principalName,
-    typNo,
-    typSubject: inferredSubject,
-    typStartDate: inferredStart,
-    typEndDate: inferredEnd,
-  };
+  const wantedSubject = String(typSubject || '').trim().toLocaleLowerCase('tr-TR');
+  const groups = new Map();
+  for (const teacher of teachers) {
+    const subject = String(teacher.typ_subject || teacher.title_branch || 'TYP').trim() || 'TYP';
+    if (wantedSubject && subject.toLocaleLowerCase('tr-TR') !== wantedSubject) continue;
+    const list = groups.get(subject) || [];
+    list.push(teacher);
+    groups.set(subject, list);
+  }
+  if (groups.size === 0) groups.set(typSubject || 'TYP', []);
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Okul İdare';
   workbook.created = new Date();
 
-  const chunks = [];
-  for (let i = 0; i < Math.max(teachers.length, 1); i += 4) {
-    chunks.push(teachers.slice(i, i + 4));
+  for (const [subject, people] of groups) {
+    const chunks = [];
+    for (let i = 0; i < Math.max(people.length, 1); i += 4) {
+      chunks.push(people.slice(i, i + 4));
+    }
+    if (people.length === 0) chunks.splice(0, chunks.length, [null, null, null, null]);
+
+    const inferredStart =
+      typStartDate ||
+      formatDateTr(people.find((t) => t.service_start_date)?.service_start_date) ||
+      formatDateTr(people.find((t) => t.contract_start_date)?.contract_start_date) ||
+      '';
+    const inferredEnd =
+      typEndDate || formatDateTr(people.find((t) => t.contract_end_date)?.contract_end_date) || '';
+
+    chunks.forEach((chunk, idx) => {
+      const ws = workbook.addWorksheet(safeSheetName(subject, idx, chunks.length), {
+        views: [{ showGridLines: false }],
+      });
+      setupColumns(ws);
+      writeSheetHeader(ws, {
+        year,
+        month,
+        schoolName,
+        principalName,
+        typNo,
+        typSubject: subject,
+        typStartDate: inferredStart,
+        typEndDate: inferredEnd,
+      });
+
+      PERSON_STARTS.forEach((startCol, personIdx) => {
+        const person = chunk[personIdx] || null;
+        const byDay = person ? attendanceMap.get(person.id) || {} : {};
+        const personClosed = person
+          ? closedDaysForPerson(person, year, month, closedDays)
+          : closedDays;
+        writePersonBlock(ws, startCol, person, year, month, personClosed, byDay);
+      });
+
+      writeFooter(ws);
+    });
   }
-  if (teachers.length === 0) chunks.splice(0, chunks.length, [null, null, null, null]);
-
-  chunks.forEach((chunk, idx) => {
-    const ws = workbook.addWorksheet(chunks.length === 1 ? 'TYP Puantaj' : `TYP Puantaj ${idx + 1}`, {
-      views: [{ showGridLines: false }],
-    });
-    setupColumns(ws);
-    writeSheetHeader(ws, meta);
-
-    PERSON_STARTS.forEach((startCol, personIdx) => {
-      const person = chunk[personIdx] || null;
-      const byDay = person ? attendanceMap.get(person.id) || {} : {};
-      writePersonBlock(ws, startCol, person, year, month, closedDays, byDay);
-    });
-
-    writeFooter(ws);
-  });
 
   return workbook;
 }

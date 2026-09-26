@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   App,
   Button,
@@ -44,6 +44,7 @@ dayjs.locale('tr')
 
 const WEEKDAY_COUNT = 5
 const CAPACITY_STORAGE_KEY = 'duty-daily-capacity'
+const WEEKDAY_NAMES = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 
 const DUTY_DAY_COLORS = [
   '#2563eb',
@@ -145,6 +146,7 @@ export function DutyPage() {
 
   const canCreate = hasPermission('duty.create')
   const canDelete = hasPermission('duty.delete')
+  const ensuredAdminPlace = useRef(false)
 
   const weekDays = useMemo(
     () => Array.from({ length: WEEKDAY_COUNT }, (_, i) => weekStart.add(i, 'day')),
@@ -182,8 +184,20 @@ export function DutyPage() {
   }, [load])
 
   useEffect(() => {
-    if (!loading && locations.length === 0 && canCreate) setSetupOpen(true)
-  }, [loading, locations.length, canCreate])
+    if (!loading && locations.length === 0 && canCreate) {
+      setupForm.setFieldsValue({ location_names: 'Nöbetçi İdareci', capacity })
+      setSetupOpen(true)
+    }
+  }, [loading, locations.length, canCreate, setupForm, capacity])
+
+  useEffect(() => {
+    if (loading || !canCreate || tenantId == null || ensuredAdminPlace.current) return
+    if (locations.length === 0) return
+    const hasAdmin = locations.some((loc) => loc.name.toLocaleLowerCase('tr-TR').includes('idareci'))
+    if (hasAdmin) return
+    ensuredAdminPlace.current = true
+    void createDutyLocation(tenantId, { name: 'Nöbetçi İdareci' }).then(() => load())
+  }, [loading, locations, canCreate, tenantId, load])
 
   const teacherDayMap = useMemo(() => {
     const map = new Map<number, number[]>()
@@ -197,27 +211,15 @@ export function DutyPage() {
     return map
   }, [assignments])
 
-  /** date → slot sırasına dizilmiş atamalar (alfabetik yer adına göre) */
-  const slotsByDate = useMemo(() => {
+  const assignmentsByLocationDate = useMemo(() => {
     const map = new Map<string, DutyAssignment[]>()
     for (const a of assignments) {
-      const list = map.get(a.duty_date) || []
+      const key = `${a.duty_location_id}|${a.duty_date}`
+      const list = map.get(key) || []
       list.push(a)
-      map.set(a.duty_date, list)
+      map.set(key, list)
     }
-    for (const [, list] of map) {
-      list.sort((a, b) =>
-        (a.DutyLocation?.name || '').localeCompare(b.DutyLocation?.name || '', 'tr'),
-      )
-    }
-    return map
-  }, [assignments])
-
-  const assignmentByCell = useMemo(() => {
-    const map = new Map<string, DutyAssignment>()
-    for (const a of assignments) {
-      map.set(`${a.duty_location_id}|${a.duty_date}`, a)
-    }
+    for (const list of map.values()) list.sort((a, b) => a.id - b.id)
     return map
   }, [assignments])
 
@@ -302,11 +304,12 @@ export function DutyPage() {
 
   const assignTeacher = async (teacherId: number) => {
     if (!session || !activeCell) return
-    const existing = assignmentByCell.get(`${activeCell.locationId}|${activeCell.date}`)
-    const daySlots = slotsByDate.get(activeCell.date) || []
+    const placeSlots =
+      assignmentsByLocationDate.get(`${activeCell.locationId}|${activeCell.date}`) || []
+    const existing = placeSlots[activeCell.slot]
 
-    if (!existing && daySlots.length >= capacity) {
-      message.warning(`Bu gün için en fazla ${capacity} nöbetçi olabilir`)
+    if (!existing && placeSlots.length >= capacity) {
+      message.warning(`Bu yerde bu gün en fazla ${capacity} kişi olabilir`)
       return
     }
 
@@ -354,7 +357,9 @@ export function DutyPage() {
 
   const clearCell = () => {
     if (!activeCell || !canDelete) return
-    const existing = assignmentByCell.get(`${activeCell.locationId}|${activeCell.date}`)
+    const existing = (
+      assignmentsByLocationDate.get(`${activeCell.locationId}|${activeCell.date}`) || []
+    )[activeCell.slot]
     if (!existing) {
       setPickerOpen(false)
       return
@@ -406,7 +411,9 @@ export function DutyPage() {
   }, [assignments, activeCell])
 
   const activeAssignment = activeCell
-    ? assignmentByCell.get(`${activeCell.locationId}|${activeCell.date}`)
+    ? (assignmentsByLocationDate.get(`${activeCell.locationId}|${activeCell.date}`) || [])[
+        activeCell.slot
+      ]
     : undefined
 
   const pickerContent = (
@@ -434,6 +441,14 @@ export function DutyPage() {
               onClick={() => void assignTeacher(t.id)}
             >
               <TeacherDutyName name={teacherLabel(t)} dayIndexes={days} />
+              {days.length > 0 && (
+                <span className="duty-teacher-picker-hint">
+                  {[...days]
+                    .sort((a, b) => a - b)
+                    .map((dayIdx) => WEEKDAY_NAMES[dayIdx])
+                    .join(', ')}
+                </span>
+              )}
               {busyOther && <span className="duty-teacher-picker-hint">bu gün dolu</span>}
             </button>
           )
@@ -452,7 +467,7 @@ export function DutyPage() {
             Nöbet Programı
           </Typography.Title>
           <Typography.Text type="secondary">
-            Sütunlar nöbet yerleri; her gün için {capacity} nöbetçi satırı. Kutuya tıklayarak öğretmen seçin.
+            Bir yere birden fazla kişi yazılabilir. Aynı kişi aynı gün yalnızca bir kez yazılır; haftanın başka günlerinde de olabilir. Listede hangi günlerde yazıldığı görünür.
           </Typography.Text>
         </div>
         <Space wrap>
@@ -510,10 +525,9 @@ export function DutyPage() {
                   const dateStr = day.format('YYYY-MM-DD')
                   const dayIndex = day.isoWeekday() - 1
                   const color = DUTY_DAY_COLORS[dayIndex]
-                  const dayAssignments = slotsByDate.get(dateStr) || []
+                  const dayCount = assignments.filter((a) => a.duty_date === dateStr).length
 
                   return slotIndexes.map((slot) => {
-                    const slotAssignment = dayAssignments[slot] || null
                     const isFirstSlot = slot === 0
 
                     return (
@@ -528,22 +542,15 @@ export function DutyPage() {
                               {day.format('dddd')}
                             </span>
                             <span className="duty-grid-day-meta">
-                              {day.format('DD.MM')} · {dayAssignments.length}/{capacity}
+                              {day.format('DD.MM')} · {dayCount} kişi
                             </span>
                           </th>
                         ) : null}
 
                         {locations.map((loc) => {
-                          const cellAssignment =
-                            slotAssignment && slotAssignment.duty_location_id === loc.id
-                              ? slotAssignment
-                              : null
-                          const locationTakenElsewhere =
-                            !cellAssignment && Boolean(assignmentByCell.get(`${loc.id}|${dateStr}`))
-                          const slotFilledElsewhere = Boolean(slotAssignment) && !cellAssignment
-                          // Sadece sıradaki boş satıra atama yapılabilir
-                          const notNextEmptySlot = !slotAssignment && slot !== dayAssignments.length
-                          const locked = locationTakenElsewhere || slotFilledElsewhere || notNextEmptySlot
+                          const placeSlots = assignmentsByLocationDate.get(`${loc.id}|${dateStr}`) || []
+                          const cellAssignment = placeSlots[slot] || null
+                          const locked = !cellAssignment && slot !== placeSlots.length
 
                           const isActive =
                             activeCell?.locationId === loc.id &&
@@ -651,13 +658,13 @@ export function DutyPage() {
             rules={[{ required: true, message: 'En az bir yer adı girin' }]}
             extra="Her satıra bir yer yazın (veya virgülle ayırın)."
           >
-            <Input.TextArea rows={5} placeholder={'Giriş\nKoridor\nBahçe'} />
+            <Input.TextArea rows={5} placeholder={'Nöbetçi İdareci\nGiriş\nKoridor\nBahçe'} />
           </Form.Item>
           <Form.Item
             name="capacity"
             label="Günlük nöbetçi kapasitesi"
             rules={[{ required: true, message: 'Kapasite zorunludur' }]}
-            extra="Bir günde en fazla kaç nöbetçi olabilir (olacağı değil, olabileceği). Her gün için bu kadar satır açılır."
+            extra="Her nöbet yerinde, bir günde en fazla kaç kişi yazılabilir. Aynı kişi aynı gün ikinci kez yazılmaz."
           >
             <InputNumber min={1} max={50} style={{ width: '100%' }} />
           </Form.Item>

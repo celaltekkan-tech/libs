@@ -33,6 +33,8 @@ export interface Teacher {
   contract_end_date: string | null
   union_name: string | null
   personnel_category_id: number | null
+  employment_type?: 'kadrolu' | 'sozlesmeli' | 'ucretli' | null
+  typ_subject?: string | null
   PersonnelCategory?: { id: number; name: string; code: string | null } | null
   created_at: string
   updated_at: string
@@ -103,6 +105,8 @@ export interface TeacherPayload {
   first_duty_date?: string | null
   personnel_type?: string
   personnel_category_id?: number | null
+  employment_type?: 'kadrolu' | 'sozlesmeli' | 'ucretli' | null
+  typ_subject?: string | null
   contract_start_date?: string | null
   contract_end_date?: string | null
   union_name?: string | null

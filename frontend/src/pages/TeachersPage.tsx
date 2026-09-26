@@ -48,6 +48,35 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { FilterFieldsPicker, type FilterFieldOption } from '../components/FilterFieldsPicker'
 import { MOBILE_PHONE_RULE } from '../utils/phone'
 
+type EmploymentKind = 'kadrolu' | 'sozlesmeli' | 'ucretli'
+
+const TEACHER_DATA_EXPORT_OPTIONS = [
+  { value: 'first_name', label: 'Ad' },
+  { value: 'last_name', label: 'Soyad' },
+  { value: 'school_name', label: 'Okul' },
+  { value: 'personnel_no', label: 'Sicil No' },
+  { value: 'national_id', label: 'T.C. Kimlik No' },
+  { value: 'phone', label: 'Cep telefonu' },
+  { value: 'email', label: 'E-posta' },
+  { value: 'employment_type', label: 'Çalışma biçimi' },
+  { value: 'unvan', label: 'Unvan' },
+  { value: 'brans', label: 'Branş' },
+  { value: 'kariyer', label: 'Kariyer' },
+  { value: 'degree', label: 'Derece' },
+  { value: 'rank', label: 'Kademe' },
+  { value: 'degree_rank_date', label: 'Kademe Tarihi' },
+  { value: 'first_duty_date', label: 'İşe ilk başlama tarihi' },
+  { value: 'service_start_date', label: 'Kuruma başlama tarihi' },
+]
+
+const TEACHER_SIGNATURE_EXPORT_OPTIONS = [
+  { value: 'signature', label: 'İmza' },
+  { value: 'signature_morning', label: 'Sabah imza' },
+  { value: 'signature_noon', label: 'Öğle imza' },
+  { value: 'signature_evening', label: 'Akşam imza' },
+  { value: 'signature_timed', label: 'Saatli imza' },
+]
+
 const TEACHER_FILTER_FIELDS = [
   'first_name',
   'last_name',
@@ -182,6 +211,9 @@ interface TeacherFormValues {
   first_duty_date?: Dayjs | null
   annual_leave_quota?: number | null
   union_name?: string
+  employment_type?: EmploymentKind
+  contract_start_date?: Dayjs | null
+  contract_end_date?: Dayjs | null
   add_to_salary_form?: boolean
 }
 
@@ -206,7 +238,11 @@ export function TeachersPage() {
     TEACHER_FILTER_DEFAULTS,
   )
   const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx')
+  const [exportColumns, setExportColumns] = useState<string[]>(
+    TEACHER_DATA_EXPORT_OPTIONS.map((column) => column.value),
+  )
   const [form] = Form.useForm<TeacherFormValues>()
+  const employmentType = Form.useWatch('employment_type', form)
   const [moveTarget, setMoveTarget] = useState<Teacher | null>(null)
   const [moveCategoryId, setMoveCategoryId] = useState<number | null>(null)
   const [categories, setCategories] = useState<PersonnelCategory[]>([])
@@ -273,7 +309,7 @@ export function TeachersPage() {
 
   const filteredTeachers = useMemo(() => {
     const q = searchQuery.trim().toLocaleLowerCase('tr-TR')
-    return teachers.filter((t) => {
+    const list = teachers.filter((t) => {
       if (activeSchoolId && t.school_id && t.school_id !== activeSchoolId) return false
       for (const key of TEACHER_FILTER_FIELDS) {
         const selected = filterValues[key]
@@ -299,15 +335,20 @@ export function TeachersPage() {
         (t.email || '').toLocaleLowerCase('tr-TR').includes(q)
       )
     })
+    list.sort((a, b) =>
+      `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`, 'tr'),
+    )
+    return list
   }, [teachers, searchQuery, filterValues, activeSchoolId])
 
-  const openCreate = () => {
+  const openCreate = (kind: EmploymentKind = 'kadrolu') => {
     setEditing(null)
     form.resetFields()
     form.setFieldsValue({
-      add_to_salary_form: true,
+      employment_type: kind,
+      add_to_salary_form: kind !== 'ucretli',
       school_id: activeSchoolId ?? undefined,
-      kariyer: 'Öğretmen',
+      kariyer: kind === 'ucretli' ? undefined : 'Öğretmen',
       city: activeSchool?.Province?.name || undefined,
       district: activeSchool?.District?.name || undefined,
       school_principal: session?.user.full_name || undefined,
@@ -342,6 +383,9 @@ export function TeachersPage() {
       first_duty_date: teacher.first_duty_date ? dayjs(teacher.first_duty_date) : null,
       annual_leave_quota: teacher.annual_leave_quota,
       union_name: teacher.union_name || undefined,
+      employment_type: teacher.employment_type || 'kadrolu',
+      contract_start_date: teacher.contract_start_date ? dayjs(teacher.contract_start_date) : null,
+      contract_end_date: teacher.contract_end_date ? dayjs(teacher.contract_end_date) : null,
     })
     setModalOpen(true)
   }
@@ -364,6 +408,20 @@ export function TeachersPage() {
         birth_date: values.birth_date ? values.birth_date.format('YYYY-MM-DD') : null,
         service_start_date: values.service_start_date ? values.service_start_date.format('YYYY-MM-DD') : null,
         first_duty_date: values.first_duty_date ? values.first_duty_date.format('YYYY-MM-DD') : null,
+        employment_type: values.employment_type || 'kadrolu',
+        contract_start_date: values.contract_start_date
+          ? values.contract_start_date.format('YYYY-MM-DD')
+          : null,
+        contract_end_date: values.contract_end_date ? values.contract_end_date.format('YYYY-MM-DD') : null,
+      }
+      if (payload.employment_type === 'ucretli') {
+        payload.personnel_no = null
+        payload.unvan = null
+        payload.kariyer = null
+        payload.degree = null
+        payload.rank = null
+        payload.pension_degree = null
+        payload.degree_rank_date = null
       }
 
       if (editing) {
@@ -372,7 +430,7 @@ export function TeachersPage() {
       } else {
         const created = await createTeacher(session.user.tenant_id, payload)
         message.success('Öğretmen oluşturuldu')
-        if (add_to_salary_form) {
+        if (add_to_salary_form && payload.employment_type !== 'ucretli') {
           const startDate = values.service_start_date || dayjs()
           try {
             await addSalaryFormStarter(startDate, {
@@ -432,10 +490,15 @@ export function TeachersPage() {
   }
 
   const onExport = async () => {
+    if (exportColumns.length === 0) {
+      message.warning('En az bir sütun seçin')
+      return
+    }
     setSubmitting(true)
     try {
       const blob = await exportTeachers({
         format: exportFormat,
+        columns: exportColumns,
         filters: {
           scope: 'teachers',
           ...(searchQuery.trim() ? { q: searchQuery.trim() } : {}),
@@ -594,9 +657,22 @@ export function TeachersPage() {
               </Button>
             )}
             {canCreate && (
-              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-                Yeni Öğretmen
-              </Button>
+              <Space direction="vertical" size={4} align="end">
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate('kadrolu')}>
+                  Yeni Öğretmen
+                </Button>
+                <Space size={4}>
+                  <Button size="small" onClick={() => openCreate('kadrolu')}>
+                    Kadrolu
+                  </Button>
+                  <Button size="small" onClick={() => openCreate('sozlesmeli')}>
+                    Sözleşmeli
+                  </Button>
+                  <Button size="small" onClick={() => openCreate('ucretli')}>
+                    Ücretli
+                  </Button>
+                </Space>
+              </Space>
             )}
           </Space>
         </Space>
@@ -665,7 +741,15 @@ export function TeachersPage() {
       </div>
 
       <Modal
-        title={editing ? 'Öğretmeni Düzenle' : 'Yeni Öğretmen'}
+        title={
+          editing
+            ? 'Öğretmeni Düzenle'
+            : employmentType === 'ucretli'
+              ? 'Ücretli öğretmen'
+              : employmentType === 'sozlesmeli'
+                ? 'Sözleşmeli öğretmen'
+                : 'Kadrolu öğretmen'
+        }
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={() => form.submit()}
@@ -676,6 +760,9 @@ export function TeachersPage() {
         width={680}
       >
         <Form form={form} layout="vertical" onFinish={onFinish}>
+          <Form.Item name="employment_type" hidden>
+            <Input />
+          </Form.Item>
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="first_name" label="Ad" rules={[{ required: true, message: 'Ad zorunludur' }]}>
@@ -700,20 +787,36 @@ export function TeachersPage() {
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="personnel_no" label="Sicil No">
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="national_id" label="TC Kimlik No">
+            {employmentType !== 'ucretli' && (
+              <Col span={12}>
+                <Form.Item name="personnel_no" label="Sicil No">
+                  <Input />
+                </Form.Item>
+              </Col>
+            )}
+            <Col span={employmentType === 'ucretli' ? 24 : 12}>
+              <Form.Item
+                name="national_id"
+                label="TC Kimlik No"
+                rules={
+                  employmentType === 'ucretli' ? [{ required: true, message: 'T.C. kimlik no zorunludur' }] : []
+                }
+              >
                 <Input />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="phone" label="Cep telefonu" rules={[MOBILE_PHONE_RULE]}>
+              <Form.Item
+                name="phone"
+                label="Cep telefonu"
+                rules={
+                  employmentType === 'ucretli'
+                    ? [{ required: true, message: 'Telefon zorunludur' }, MOBILE_PHONE_RULE]
+                    : [MOBILE_PHONE_RULE]
+                }
+              >
                 <Input placeholder="05xx xxx xx xx" maxLength={30} />
               </Form.Item>
             </Col>
@@ -721,7 +824,14 @@ export function TeachersPage() {
               <Form.Item
                 name="email"
                 label="E-posta"
-                rules={[{ type: 'email', message: 'Geçerli bir e-posta girin' }]}
+                rules={
+                  employmentType === 'ucretli'
+                    ? [
+                        { required: true, message: 'E-posta zorunludur' },
+                        { type: 'email', message: 'Geçerli bir e-posta girin' },
+                      ]
+                    : [{ type: 'email', message: 'Geçerli bir e-posta girin' }]
+                }
               >
                 <Input placeholder="ornek@okul.k12.tr" maxLength={150} />
               </Form.Item>
@@ -734,22 +844,32 @@ export function TeachersPage() {
             <Input />
           </Form.Item>
           <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item name="unvan" label="Unvan">
-                <Input placeholder="Örn. Öğretmen, Müdür Yardımcısı" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="brans" label="Branş">
+            {employmentType !== 'ucretli' && (
+              <Col span={8}>
+                <Form.Item name="unvan" label="Unvan">
+                  <Input placeholder="Örn. Öğretmen, Müdür Yardımcısı" />
+                </Form.Item>
+              </Col>
+            )}
+            <Col span={employmentType === 'ucretli' ? 24 : 8}>
+              <Form.Item
+                name="brans"
+                label="Branş"
+                rules={employmentType === 'ucretli' ? [{ required: true, message: 'Branş zorunludur' }] : []}
+              >
                 <Input placeholder="Örn. Matematik" />
               </Form.Item>
             </Col>
-            <Col span={8}>
-              <Form.Item name="kariyer" label="Kariyer">
-                <Select options={KARIYER_OPTIONS} placeholder="Kariyer" />
-              </Form.Item>
-            </Col>
+            {employmentType !== 'ucretli' && (
+              <Col span={8}>
+                <Form.Item name="kariyer" label="Kariyer">
+                  <Select options={KARIYER_OPTIONS} placeholder="Kariyer" />
+                </Form.Item>
+              </Col>
+            )}
           </Row>
+          {employmentType !== 'ucretli' && (
+            <>
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="working_institution" label="Görev Yeri">
@@ -836,7 +956,23 @@ export function TeachersPage() {
               </Form.Item>
             </Col>
           </Row>
-          {!editing && (
+          </>
+          )}
+          {employmentType === 'sozlesmeli' && (
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item name="contract_start_date" label="Sözleşme başlangıcı">
+                  <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="contract_end_date" label="Sözleşme bitişi">
+                  <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
+                </Form.Item>
+              </Col>
+            </Row>
+          )}
+          {!editing && employmentType !== 'ucretli' && (
             <Form.Item name="add_to_salary_form" valuePropName="checked">
               <Checkbox>
                 Maaş Değişikliği Bildirim Formuna ekle (C - Başlayan Personel). İşaret kaldırılırsa
@@ -871,9 +1007,41 @@ export function TeachersPage() {
           </Form.Item>
           <Typography.Text type="secondary">
             {hasActiveFilters
-              ? `Aktif filtre uygulanacak (${filteredTeachers.length} kayıt). Her kayıtta sicil, kimlik, iletişim, unvan, derece, tarihler ve MEBBİS alanlarının tümü yer alır.`
-              : 'Tüm öğretmenler, kayıtlarındaki bütün alanlarla dışa aktarılır.'}
+              ? `Aktif filtre uygulanacak (${filteredTeachers.length} kayıt).`
+              : 'Tüm öğretmenler dışa aktarılır.'}
           </Typography.Text>
+          <Typography.Paragraph strong style={{ marginTop: 16, marginBottom: 8 }}>
+            Sütunlar
+          </Typography.Paragraph>
+          <Checkbox
+            style={{ marginBottom: 8 }}
+            checked={
+              TEACHER_DATA_EXPORT_OPTIONS.every((column) => exportColumns.includes(column.value))
+            }
+            indeterminate={
+              TEACHER_DATA_EXPORT_OPTIONS.some((column) => exportColumns.includes(column.value)) &&
+              !TEACHER_DATA_EXPORT_OPTIONS.every((column) => exportColumns.includes(column.value))
+            }
+            onChange={(e) => {
+              const dataKeys = TEACHER_DATA_EXPORT_OPTIONS.map((column) => column.value)
+              const signatureKeys = exportColumns.filter((key) => !dataKeys.includes(key))
+              setExportColumns(e.target.checked ? [...dataKeys, ...signatureKeys] : signatureKeys)
+            }}
+          >
+            Tüm bilgi sütunları
+          </Checkbox>
+          <Checkbox.Group
+            value={exportColumns}
+            onChange={(vals) => setExportColumns(vals as string[])}
+            style={{ display: 'flex', flexDirection: 'column', gap: 4 }}
+            options={[...TEACHER_DATA_EXPORT_OPTIONS, ...TEACHER_SIGNATURE_EXPORT_OPTIONS].map(
+              (column) => ({ label: column.label, value: column.value }),
+            )}
+          />
+          <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
+            İmza, sabah / öğle / akşam imza ve saatli imza sütunları boş gelir; liste çıktısına imza
+            alanı eklemek içindir.
+          </Typography.Paragraph>
         </Form>
       </Modal>
 

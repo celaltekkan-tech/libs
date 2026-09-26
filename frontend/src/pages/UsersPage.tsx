@@ -451,7 +451,7 @@ export function UsersPage() {
             name="role_id"
             label="Yetki grubu"
             rules={[{ required: true, message: 'Yetki grubu seçin' }]}
-            extra="Menü görünürlüğü ve işlem yetkileri bu gruba göre belirlenir. Öğretmen ve rehber öğretmen hesapları plan kotasına dahil değildir."
+            extra="Müdür okulda bir kişidir. Müdür yardımcısı en fazla 10 kişi olabilir. Öğretmen ve rehber öğretmen hesapları plan kotasına dahil değildir."
           >
             <Select showSearch optionFilterProp="label" options={roleOptions} />
           </Form.Item>

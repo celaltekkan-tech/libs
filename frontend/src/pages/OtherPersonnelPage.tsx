@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Button, Checkbox, Collapse, DatePicker, Dropdown, Empty, Form, Input, Modal, Select, Space, Typography } from 'antd'
+import { App, Button, Checkbox, Collapse, DatePicker, Divider, Dropdown, Empty, Form, Input, Modal, Select, Space, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { SortableTable } from '../components/SortableTable'
 import {
@@ -44,6 +44,30 @@ interface CategoryFormValues {
   name: string
 }
 
+const TYP_SUBJECT_DEFAULTS = ['Temizlik', 'Bahçe Görevlisi']
+const TYP_SUBJECT_STORAGE_KEY = 'typ-subjects'
+
+function readExtraTypSubjects(): string[] {
+  try {
+    const raw = localStorage.getItem(TYP_SUBJECT_STORAGE_KEY)
+    const parsed = raw ? (JSON.parse(raw) as unknown) : []
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+  } catch {
+    return []
+  }
+}
+
+function rememberTypSubject(value: string) {
+  const next = value.trim()
+  if (!next) return
+  const known = new Set(
+    [...TYP_SUBJECT_DEFAULTS, ...readExtraTypSubjects()].map((item) => item.toLocaleLowerCase('tr-TR')),
+  )
+  if (known.has(next.toLocaleLowerCase('tr-TR'))) return
+  localStorage.setItem(TYP_SUBJECT_STORAGE_KEY, JSON.stringify([...readExtraTypSubjects(), next]))
+}
+
 interface StaffFormValues {
   personnel_category_id: number
   first_name: string
@@ -52,8 +76,10 @@ interface StaffFormValues {
   personnel_no?: string
   national_id?: string
   title_branch?: string
+  typ_subject?: string
   working_institution?: string
   first_duty_date?: Dayjs | null
+  service_start_date?: Dayjs | null
   add_to_salary_form?: boolean
 }
 
@@ -77,6 +103,9 @@ export function OtherPersonnelPage() {
   const [departureTarget, setDepartureTarget] = useState<Teacher | null>(null)
   const [categoryForm] = Form.useForm<CategoryFormValues>()
   const [staffForm] = Form.useForm<StaffFormValues>()
+  const watchedCategoryId = Form.useWatch('personnel_category_id', staffForm)
+  const [typSubjectDraft, setTypSubjectDraft] = useState('')
+  const [extraTypSubjects, setExtraTypSubjects] = useState<string[]>(() => readExtraTypSubjects())
 
   const canCreate = hasPermission('teachers.create')
   const canUpdate = hasPermission('teachers.update')
@@ -206,8 +235,10 @@ export function OtherPersonnelPage() {
       personnel_no: person.personnel_no || undefined,
       national_id: person.national_id || undefined,
       title_branch: person.title_branch || undefined,
+      typ_subject: person.typ_subject || person.title_branch || undefined,
       working_institution: person.working_institution || undefined,
       first_duty_date: person.first_duty_date ? dayjs(person.first_duty_date) : null,
+      service_start_date: person.service_start_date ? dayjs(person.service_start_date) : null,
     })
     setStaffOpen(true)
   }
@@ -216,11 +247,18 @@ export function OtherPersonnelPage() {
     if (!session) return
     setSubmitting(true)
     try {
-      const { add_to_salary_form, first_duty_date, ...rest } = values
+      const { add_to_salary_form, first_duty_date, service_start_date, typ_subject, ...rest } = values
+      const category = categories.find((item) => item.id === values.personnel_category_id)
+      const isTyp = category?.code === 'typ'
+      if (isTyp && typ_subject) rememberTypSubject(typ_subject)
       const payload = {
         ...rest,
         personnel_category_id: values.personnel_category_id,
         first_duty_date: first_duty_date ? first_duty_date.format('YYYY-MM-DD') : null,
+        service_start_date: isTyp && service_start_date ? service_start_date.format('YYYY-MM-DD') : null,
+        personnel_no: isTyp ? null : values.personnel_no || null,
+        title_branch: isTyp ? typ_subject || null : values.title_branch || null,
+        typ_subject: isTyp ? typ_subject || null : null,
       }
       if (editingStaff) {
         await updateTeacher(editingStaff.id, payload)
@@ -228,7 +266,7 @@ export function OtherPersonnelPage() {
       } else {
         const created = await createTeacher(session.user.tenant_id, payload)
         message.success('Personel eklendi')
-        if (add_to_salary_form) {
+        if (add_to_salary_form && !isTyp) {
           const startDate = dayjs()
           try {
             await addSalaryFormStarter(startDate, {
@@ -318,19 +356,26 @@ export function OtherPersonnelPage() {
     }
   }
 
-  const columns: ColumnsType<Teacher> = [
+  const columnsFor = (isTyp: boolean): ColumnsType<Teacher> => [
     {
       title: 'Ad soyad',
       sorter: personNameSorter<Teacher>(),
       sortDirections: [...SORT_AZ],
       render: (_: unknown, record) => `${record.first_name} ${record.last_name}`,
     },
-    { title: 'Sicil No', dataIndex: 'personnel_no', render: (v: string | null) => v || '—' },
+    ...(isTyp
+      ? []
+      : [{ title: 'Sicil No', dataIndex: 'personnel_no', render: (v: string | null) => v || '—' }]),
     { title: 'T.C.', dataIndex: 'national_id', render: (v: string | null) => v || '—' },
-    { title: 'Unvan', dataIndex: 'title_branch', render: (v: string | null) => v || '—' },
+    isTyp
+      ? {
+          title: 'TYP Konusu',
+          render: (_: unknown, record: Teacher) => record.typ_subject || record.title_branch || '—',
+        }
+      : { title: 'Unvan', dataIndex: 'title_branch', render: (v: string | null) => v || '—' },
     {
-      title: 'İlk başlama',
-      dataIndex: 'first_duty_date',
+      title: isTyp ? 'İşe başlama' : 'İlk başlama',
+      dataIndex: isTyp ? 'service_start_date' : 'first_duty_date',
       render: (v: string | null) => (v ? dayjs(v).format('DD.MM.YYYY') : '—'),
     },
     { title: 'Okul', render: (_: unknown, record) => schoolName(record.school_id) },
@@ -408,7 +453,7 @@ export function OtherPersonnelPage() {
             rowKey="id"
             size="small"
             loading={loading}
-            columns={columns}
+            columns={columnsFor(cat.code === 'typ')}
             dataSource={rows}
             pagination={false}
             locale={{ emptyText: 'Bu kategoride personel yok' }}
@@ -431,7 +476,7 @@ export function OtherPersonnelPage() {
                 rowKey="id"
                 size="small"
                 loading={loading}
-                columns={columns}
+                columns={columnsFor(false)}
                 dataSource={grouped.uncategorized}
                 pagination={false}
               />
@@ -538,6 +583,66 @@ export function OtherPersonnelPage() {
                 options={schools.map((s) => ({ value: s.id, label: s.name }))}
               />
             </Form.Item>
+            {categories.find((item) => item.id === watchedCategoryId)?.code === 'typ' ? (
+              <>
+                <Form.Item name="national_id" label="T.C. Kimlik No">
+                  <Input />
+                </Form.Item>
+                <Form.Item
+                  name="typ_subject"
+                  label="TYP Konusu"
+                  rules={[{ required: true, message: 'TYP konusu seçin' }]}
+                >
+                  <Select
+                    placeholder="Temizlik veya Bahçe Görevlisi"
+                    options={[...TYP_SUBJECT_DEFAULTS, ...extraTypSubjects]
+                      .filter(
+                        (item, index, all) =>
+                          all.findIndex(
+                            (other) => other.toLocaleLowerCase('tr-TR') === item.toLocaleLowerCase('tr-TR'),
+                          ) === index,
+                      )
+                      .map((item) => ({ value: item, label: item }))}
+                    dropdownRender={(menu) => (
+                      <>
+                        {menu}
+                        <Divider style={{ margin: '8px 0' }} />
+                        <Space style={{ padding: '0 8px 4px' }}>
+                          <Input
+                            placeholder="Yeni konu"
+                            value={typSubjectDraft}
+                            onChange={(e) => setTypSubjectDraft(e.target.value)}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          />
+                          <Button
+                            type="link"
+                            onClick={() => {
+                              const next = typSubjectDraft.trim()
+                              if (!next) return
+                              rememberTypSubject(next)
+                              setExtraTypSubjects(readExtraTypSubjects())
+                              staffForm.setFieldValue('typ_subject', next)
+                              setTypSubjectDraft('')
+                            }}
+                          >
+                            Ekle
+                          </Button>
+                        </Space>
+                      </>
+                    )}
+                  />
+                </Form.Item>
+                <Form.Item
+                  name="service_start_date"
+                  label="İşe başlama tarihi"
+                  rules={[{ required: true, message: 'İşe başlama tarihi zorunludur' }]}
+                  extra="Bu tarihten önceki günler puantajda hafta sonu gibi kapalı gelir. TYP personeli maaş değişikliği formuna eklenmez."
+                >
+                  <DatePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
+                </Form.Item>
+              </>
+            ) : (
+              <>
             <Space.Compact block style={{ width: '100%' }}>
               <Form.Item name="personnel_no" label="Sicil No" style={{ flex: 1, marginRight: 8 }}>
                 <Input />
@@ -566,6 +671,8 @@ export function OtherPersonnelPage() {
                   görevlendirme kabul edilir.
                 </Checkbox>
               </Form.Item>
+            )}
+              </>
             )}
           </Form>
         </Modal>
