@@ -290,17 +290,16 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
   '/schedule-builder': {
     title: 'Otomatik Ders Programı',
     summary:
-      'Ders programını matematiksel çözücü (OR-Tools) hazırlar; istekleri isterseniz yapay zekâya Türkçe yazarak kısıta çevirirsiniz.',
+      'Okul saatlerini, ders havuzunu ve öğretmenleri girince program kendisi hazırlanır. İstekleri Türkçe yazabilirsiniz.',
     topics: [
       {
         title: 'Adımlar',
         steps: [
-          'Yeni çalışma oluşturun; gün, günlük ders saati ve öğle arasını ayarlayın.',
-          'Laboratuvar, spor salonu gibi paylaşılan mekanları tanımlayın.',
-          '"Ders Atamaları"nda "Otomatik Doldur" ile atamaları oluşturun, eksik öğretmenleri seçin.',
-          '"Kısıtlar"da istekleri yazın (ör. "Ayşe Hoca cuma gelemiyor") ve önerileri onaylayın.',
-          '"Oluştur"da ön kontrolü yapıp programı oluşturun.',
-          '"Program"da sürükle-bırak ile düzeltin, gerekirse kilitleyip yeniden oluşturun, sonra yayınlayın.',
+          'Okul saatlerinde başlangıç saatini, ders ve teneffüs dakikasını, gerekirse cuma namazı gibi güne özel arayı girin. Pazar günü de seçilebilir.',
+          'Ders havuzunda bir dersin hangi sınıfta kaç saat okutulabileceğini yazın. Bu, her şubeye otomatik ders eklemez.',
+          'Ders ve öğretmen adımında hangi şubede kimin gireceğini seçin.',
+          'İsteklerde örneğin "Ayşe Hoca cuma gelemiyor" yazın.',
+          'Programı oluşturun, ders programında sürükleyerek düzeltin ve yayınlayın.',
         ],
       },
       {
@@ -576,6 +575,10 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       {
         title: 'İşleme alma',
         body: 'Kaydı açın, durumunu (incelemede / çözüldü vb.) güncelleyin.',
+      },
+      {
+        title: 'Dev ve canlı senkronu',
+        body: 'İki ortam yapılandırıldıysa liste birkaç dakikada bir eşitlenir. Senkronize et, karşı ortamdaki yeni kayıtları, durumları ve ekleri hemen alır; sizin yaptığınız değişiklikleri de karşıya yazar.',
       },
     ],
   },

@@ -6,7 +6,6 @@ import {
   Card,
   Col,
   Descriptions,
-  InputNumber,
   Popconfirm,
   Progress,
   Row,
@@ -28,6 +27,7 @@ import {
 } from '../../api/timetable'
 import { getErrorMessage } from '../../api/client'
 import { RUN_STATUS_LABELS, SCORE_LABELS, type CheckResult, type TimetableRun } from '../../types/timetable'
+import { EffortPicker } from './EffortPicker'
 import type { TimetableCtx } from './shared'
 
 interface Props {
@@ -221,8 +221,8 @@ export function SolveTab({ ctx, onShowGrid }: Props) {
             ) : (
               <Space wrap align="end">
                 <div>
-                  <div style={{ fontSize: 12, color: '#6b7280' }}>Süre sınırı (sn)</div>
-                  <InputNumber min={10} max={600} step={30} value={timeLimit} onChange={(v) => setTimeLimit(v || 60)} />
+                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Ne kadar uğraşsın?</div>
+                  <EffortPicker value={timeLimit} onChange={setTimeLimit} />
                 </div>
                 {ctx.canCreate && (
                   <Button

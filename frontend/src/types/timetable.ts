@@ -6,10 +6,31 @@ export interface TimetableWeights {
   soft_constraint: number
 }
 
+export interface DayBreak {
+  day: number
+  after_period: number
+  minutes: number
+}
+
+export interface BellSchedule {
+  start_time: string
+  lesson_minutes: number
+  break_minutes: number
+  day_breaks: DayBreak[]
+}
+
 export interface TimetableSettings {
   time_limit: number
   max_subject_daily: number
   weights: TimetableWeights
+  bell?: BellSchedule
+}
+
+export const DEFAULT_BELL: BellSchedule = {
+  start_time: '08:30',
+  lesson_minutes: 40,
+  break_minutes: 10,
+  day_breaks: [],
 }
 
 export type TimetableProjectStatus = 'taslak' | 'yayinda' | 'arsiv'

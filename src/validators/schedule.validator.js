@@ -1,7 +1,7 @@
 const Joi = require('joi');
 
 const DAY_MIN = 1;
-const DAY_MAX = 6; // 1=Pazartesi ... 6=Cumartesi
+const DAY_MAX = 7; // 1=Pazartesi ... 7=Pazar
 
 const createScheduleEntrySchema = Joi.object({
   tenant_id: Joi.number().integer().required(),

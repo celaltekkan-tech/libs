@@ -21,6 +21,7 @@ const DAY_LABELS = {
   4: 'Perşembe',
   5: 'Cuma',
   6: 'Cumartesi',
+  7: 'Pazar',
 };
 
 function assertTenantAccess(req, row) {
@@ -77,11 +78,11 @@ async function computeHoursWarning({ tenantId, classroomId, subjectId, academicY
     },
   });
 
-  if (scheduled === required.weekly_hours) return null;
+  if (scheduled === 0 || scheduled === required.weekly_hours) return null;
   const subject = await Subject.findByPk(subjectId);
   const diff = scheduled - required.weekly_hours;
   const label = diff > 0 ? `${diff} saat fazla` : `${Math.abs(diff)} saat eksik`;
-  return `${classroom.class_level}/${classroom.section} sınıfında "${subject?.name || ''}" dersi haftalık ${required.weekly_hours} saat olmalı, şu an ${scheduled} saat tanımlı (${label}).`;
+  return `${classroom.class_level}/${classroom.section} şubesinde "${subject?.name || ''}" dersi okutuluyorsa haftalık ${required.weekly_hours} saat olabilir; şu an ${scheduled} saat tanımlı (${label}).`;
 }
 
 async function findClassroomConflict({ tenantId, classroomId, dayOfWeek, periodNo, academicYear, excludeId }) {
@@ -401,17 +402,19 @@ module.exports = {
         scheduledBySubject.set(e.subject_id, (scheduledBySubject.get(e.subject_id) || 0) + 1);
       });
 
-      const data = requirements.map((req_) => {
-        const scheduled = scheduledBySubject.get(req_.subject_id) || 0;
-        const diff = scheduled - req_.weekly_hours;
-        return {
-          subject_id: req_.subject_id,
-          subject_name: req_.Subject?.name || '',
-          required_hours: req_.weekly_hours,
-          scheduled_hours: scheduled,
-          status: diff === 0 ? 'tam' : diff > 0 ? 'fazla' : 'eksik',
-        };
-      });
+      const data = requirements
+        .map((req_) => {
+          const scheduled = scheduledBySubject.get(req_.subject_id) || 0;
+          const diff = scheduled - req_.weekly_hours;
+          return {
+            subject_id: req_.subject_id,
+            subject_name: req_.Subject?.name || '',
+            required_hours: req_.weekly_hours,
+            scheduled_hours: scheduled,
+            status: diff === 0 ? 'tam' : diff > 0 ? 'fazla' : 'eksik',
+          };
+        })
+        .filter((row) => row.scheduled_hours > 0);
 
       res.json({ success: true, data });
     } catch (err) {

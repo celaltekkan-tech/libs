@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Button, Form, Input, InputNumber, List, Modal, Select, Space, Switch, Typography } from 'antd'
+import { App, Button, Form, Input, Modal, Select, Space, Switch, Typography } from 'antd'
 import { SortableTable } from '../components/SortableTable'
 import {
-  ClockCircleOutlined,
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
@@ -14,15 +13,9 @@ import { AppLayout } from '../components/AppLayout'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import { createSubject, deleteSubject, exportSubjects, listSubjects, updateSubject } from '../api/subjects'
-import {
-  createSubjectClassHour,
-  deleteSubjectClassHour,
-  listSubjectClassHours,
-  updateSubjectClassHour,
-} from '../api/subjectClassHours'
 import { getErrorMessage } from '../api/client'
 import { DIFFICULTY_LEVEL_OPTIONS } from '../types/subject'
-import type { Subject, SubjectClassHour, SubjectPayload } from '../types/subject'
+import type { Subject, SubjectPayload } from '../types/subject'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
 import { tablePagination } from '../utils/tablePagination'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
@@ -43,11 +36,6 @@ export function SubjectsPage() {
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkLoading, setBulkLoading] = useState(false)
   const [form] = Form.useForm<SubjectPayload>()
-
-  const [classHoursSubject, setClassHoursSubject] = useState<Subject | null>(null)
-  const [classHours, setClassHours] = useState<SubjectClassHour[]>([])
-  const [classHoursLoading, setClassHoursLoading] = useState(false)
-  const [classHourForm] = Form.useForm<{ class_level: string; weekly_hours: number }>()
 
   const canCreate = hasPermission('schedule.create')
   const canUpdate = hasPermission('schedule.update')
@@ -170,61 +158,6 @@ export function SubjectsPage() {
     }
   }
 
-  const openClassHours = async (row: Subject) => {
-    setClassHoursSubject(row)
-    setClassHoursLoading(true)
-    classHourForm.resetFields()
-    try {
-      setClassHours(await listSubjectClassHours(row.id))
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    } finally {
-      setClassHoursLoading(false)
-    }
-  }
-
-  const onAddClassHour = async (values: { class_level: string; weekly_hours: number }) => {
-    if (!session || !classHoursSubject) return
-    try {
-      await createSubjectClassHour(session.user.tenant_id, { subject_id: classHoursSubject.id, ...values })
-      message.success('Saat tanımlandı')
-      classHourForm.resetFields()
-      setClassHours(await listSubjectClassHours(classHoursSubject.id))
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    }
-  }
-
-  const onUpdateClassHour = async (row: SubjectClassHour, weeklyHours: number) => {
-    if (!classHoursSubject) return
-    try {
-      await updateSubjectClassHour(row.id, weeklyHours)
-      setClassHours(await listSubjectClassHours(classHoursSubject.id))
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    }
-  }
-
-  const onDeleteClassHour = (row: SubjectClassHour) => {
-    if (!classHoursSubject) return
-    modal.confirm({
-      title: 'Sınıf saatini sil',
-      content: `${row.class_level}. sınıf için tanımlı haftalık saati silmek istediğinize emin misiniz?`,
-      okText: 'Sil',
-      okButtonProps: { danger: true },
-      cancelText: 'Vazgeç',
-      onOk: async () => {
-        try {
-          await deleteSubjectClassHour(row.id)
-          message.success('Silindi')
-          setClassHours(await listSubjectClassHours(classHoursSubject.id))
-        } catch (err) {
-          message.error(getErrorMessage(err))
-        }
-      },
-    })
-  }
-
   const columns: ColumnsType<Subject> = [
     { title: 'Ders', dataIndex: 'name' },
     { title: 'Kod', dataIndex: 'code', render: (v: string | null) => v || '—' },
@@ -239,7 +172,6 @@ export function SubjectsPage() {
       width: 170,
       render: (_: unknown, record: Subject) => (
         <Space>
-          <Button size="small" icon={<ClockCircleOutlined />} onClick={() => void openClassHours(record)} title="Sınıf bazlı saatler" />
           {canUpdate && (
             <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)} title="Düzenle" />
           )}
@@ -322,67 +254,6 @@ export function SubjectsPage() {
             <Switch />
           </Form.Item>
         </Form>
-        {editing && (
-          <Typography.Text type="secondary">
-            Sınıf seviyesine göre haftalık ders saatlerini tanımlamak için listede{' '}
-            <ClockCircleOutlined /> simgesini kullanın.
-          </Typography.Text>
-        )}
-      </Modal>
-
-      <Modal
-        title={classHoursSubject ? `${classHoursSubject.name} — Sınıf Bazlı Haftalık Saat` : ''}
-        open={!!classHoursSubject}
-        onCancel={() => setClassHoursSubject(null)}
-        footer={<Button onClick={() => setClassHoursSubject(null)}>Kapat</Button>}
-      >
-        <Typography.Paragraph type="secondary">
-          Bu dersin her sınıf seviyesinde kaç saat okutulacağını tanımlayın (örn. 9. sınıf 6 saat, 12.
-          sınıf 4 saat). Ders Programı ekranında bu saatlerle karşılaştırma yapılır.
-        </Typography.Paragraph>
-        <List
-          loading={classHoursLoading}
-          dataSource={classHours}
-          renderItem={(row) => (
-            <List.Item
-              actions={
-                canDelete
-                  ? [<Button key="del" size="small" danger icon={<DeleteOutlined />} onClick={() => onDeleteClassHour(row)} />]
-                  : []
-              }
-            >
-              <Space>
-                <Typography.Text strong>{row.class_level}. sınıf</Typography.Text>
-                <InputNumber
-                  min={0}
-                  max={60}
-                  disabled={!canUpdate}
-                  defaultValue={row.weekly_hours}
-                  onBlur={(e) => {
-                    const v = Number(e.target.value)
-                    if (v !== row.weekly_hours && !Number.isNaN(v)) void onUpdateClassHour(row, v)
-                  }}
-                />
-                <Typography.Text type="secondary">saat/hafta</Typography.Text>
-              </Space>
-            </List.Item>
-          )}
-        />
-        {canCreate && (
-          <Form form={classHourForm} layout="inline" onFinish={onAddClassHour} style={{ marginTop: 16, flexWrap: 'wrap', gap: 8 }}>
-            <Form.Item name="class_level" rules={[{ required: true, message: 'Sınıf seviyesi zorunludur' }]}>
-              <Input placeholder="Sınıf (örn. 9)" style={{ width: 120 }} />
-            </Form.Item>
-            <Form.Item name="weekly_hours" rules={[{ required: true, message: 'Saat zorunludur' }]}>
-              <InputNumber min={0} max={60} placeholder="Saat" style={{ width: 100 }} />
-            </Form.Item>
-            <Form.Item>
-              <Button htmlType="submit" icon={<PlusOutlined />}>
-                Ekle
-              </Button>
-            </Form.Item>
-          </Form>
-        )}
       </Modal>
 
       <Modal

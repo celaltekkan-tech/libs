@@ -18,11 +18,12 @@ import { listTeachers } from '../api/teachers'
 import { listSubjects } from '../api/subjects'
 import { getErrorMessage } from '../api/client'
 import { DAY_OPTIONS } from '../types/scheduleEntry'
-import type { Classroom } from '../types/classroom'
+import { sortClassrooms, type Classroom } from '../types/classroom'
 import type { Subject } from '../types/subject'
 import type { Teacher } from '../types/teacher'
 import type { TimetableMeta, TimetableProject, TimetableProjectPayload, TimetableRoom } from '../types/timetable'
 import { ProjectSettingsTab } from '../components/timetable/ProjectSettingsTab'
+import { LessonPoolTab } from '../components/timetable/LessonPoolTab'
 import { RoomsTab } from '../components/timetable/RoomsTab'
 import { AssignmentsTab } from '../components/timetable/AssignmentsTab'
 import { ConstraintsTab } from '../components/timetable/ConstraintsTab'
@@ -53,7 +54,7 @@ export function TimetableBuilderPage() {
   const [subjects, setSubjects] = useState<Subject[]>([])
   const [rooms, setRooms] = useState<TimetableRoom[]>([])
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState('assignments')
+  const [tab, setTab] = useState('settings')
   const [createOpen, setCreateOpen] = useState(false)
   const [createForm] = Form.useForm<TimetableProjectPayload>()
 
@@ -86,7 +87,7 @@ export function TimetableBuilderPage() {
         if (cancelled) return
         setMeta(m)
         setProjects(list)
-        setClassrooms(cls)
+        setClassrooms(sortClassrooms(cls))
         setTeachers(tch.sort((a, b) => `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`, 'tr')))
         setSubjects(sbj)
         setRooms(rms)
@@ -163,7 +164,7 @@ export function TimetableBuilderPage() {
       setCreateOpen(false)
       await loadProjects()
       setProjectId(created.id)
-      setTab('assignments')
+      setTab('settings')
     } catch (err) {
       message.error(getErrorMessage(err))
     }
@@ -196,7 +197,7 @@ export function TimetableBuilderPage() {
             Otomatik Ders Programı
           </Typography.Title>
           <Typography.Text type="secondary">
-            Programı OR-Tools çözücüsü hazırlar: çakışmasız, haftalık saatler tam, boşluklar en aza indirilmiş.
+            Sırayla ilerleyin: okul saatleri, ders havuzu, hangi derse kim girecek, istekler, sonra programı oluşturun.
           </Typography.Text>
         </div>
         <Space wrap>
@@ -263,22 +264,23 @@ export function TimetableBuilderPage() {
             onChange={setTab}
             destroyOnHidden
             items={[
-              { key: 'settings', label: 'Ayarlar', children: <ProjectSettingsTab ctx={ctx} /> },
-              { key: 'rooms', label: `Mekanlar (${rooms.length})`, children: <RoomsTab ctx={ctx} /> },
+              { key: 'settings', label: '1. Okul saatleri', children: <ProjectSettingsTab ctx={ctx} /> },
+              { key: 'pool', label: '2. Ders havuzu', children: <LessonPoolTab ctx={ctx} /> },
               {
                 key: 'assignments',
-                label: `Ders Atamaları (${project?.counts?.assignments ?? 0})`,
+                label: `3. Ders ve öğretmen (${project?.counts?.assignments ?? 0})`,
                 children: <AssignmentsTab ctx={ctx} />,
               },
+              { key: 'rooms', label: `Özel derslik (${rooms.length})`, children: <RoomsTab ctx={ctx} /> },
               {
                 key: 'constraints',
-                label: `Kısıtlar (${project?.counts?.constraints ?? 0})`,
+                label: `4. İstekler (${project?.counts?.constraints ?? 0})`,
                 children: <ConstraintsTab ctx={ctx} />,
               },
-              { key: 'solve', label: 'Oluştur', children: <SolveTab ctx={ctx} onShowGrid={() => setTab('grid')} /> },
+              { key: 'solve', label: '5. Programı oluştur', children: <SolveTab ctx={ctx} onShowGrid={() => setTab('grid')} /> },
               {
                 key: 'grid',
-                label: `Program${project?.counts?.lessons ? ` (${project.counts.lessons})` : ''}`,
+                label: `6. Ders programı${project?.counts?.lessons ? ` (${project.counts.lessons})` : ''}`,
                 children: <TimetableGridTab ctx={ctx} />,
               },
             ]}

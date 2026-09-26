@@ -165,10 +165,9 @@ export function AssignmentsTab({ ctx }: { ctx: TimetableCtx }) {
   return (
     <>
       <Typography.Paragraph type="secondary">
-        Her şubenin hangi dersi hangi öğretmenden, haftada kaç saat alacağını buradan belirleyin. Blok düzeni
-        (ör. <code>2+2+1</code>) dersin günlere nasıl bölüneceğidir; boş bırakılırsa 2'li bloklar kullanılır.
-        Aynı "senkron grup" adını verdiğiniz dersler aynı saatlere yerleşir (seçmeli dersler, birleştirilmiş
-        beden eğitimi vb.).
+        Hangi şubede hangi dersi kimin okutacağını buradan seçin. Ders havuzundaki saat her şubeye kendiliğinden
+        yazılmaz; yalnız o şubede gerçekten okutulan dersi ekleyin. "Mevcut programdan doldur", okulda hâlihazırda
+        işlenen dersleri buraya taşır.
       </Typography.Paragraph>
 
       {missingTeacher > 0 && (
@@ -195,7 +194,7 @@ export function AssignmentsTab({ ctx }: { ctx: TimetableCtx }) {
           <Space wrap style={{ marginBottom: 12 }}>
             {ctx.canCreate && (
               <Button type="primary" icon={<ThunderboltOutlined />} onClick={onGenerate}>
-                Otomatik Doldur
+                Mevcut programdan doldur
               </Button>
             )}
             {ctx.canCreate && (

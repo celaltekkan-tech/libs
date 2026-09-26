@@ -428,8 +428,9 @@ module.exports = {
     }
   },
 
-  // Şubelerin seviyesine göre "Ders Saatleri" tanımlarından atama üretir;
-  // öğretmeni mevcut ders programından (ScheduleEntry) tahmin eder.
+  // Mevcut ders programındaki dersleri atamaya çevirir.
+  // Ders havuzundaki saat, o ders o şubede varsa üst sınır olarak kullanılır;
+  // havuzdaki ders her şubeye yazılmaz.
   async generateAssignments(req, res, next) {
     try {
       const project = await loadProject(req);
@@ -463,29 +464,29 @@ module.exports = {
         return [...cur.teachers.entries()].sort((a, b) => b[1] - a[1])[0][0];
       };
 
-      const hoursByLevel = new Map();
+      const hoursByLevelSubject = new Map();
       for (const h of classHours) {
         if (!h.weekly_hours) continue;
-        const list = hoursByLevel.get(String(h.class_level)) || [];
-        list.push(h);
-        hoursByLevel.set(String(h.class_level), list);
+        hoursByLevelSubject.set(`${h.class_level}:${h.subject_id}`, h.weekly_hours);
       }
 
       const existingKeys = new Set(existing.map((a) => `${a.classroom_id}:${a.subject_id}`));
       const rows = [];
-      const planned = new Set();
-      for (const c of classrooms) {
-        for (const h of hoursByLevel.get(String(c.class_level)) || []) {
-          const key = `${c.id}:${h.subject_id}`;
-          planned.add(key);
-          rows.push({ key, classroom_id: c.id, subject_id: h.subject_id, weekly_hours: h.weekly_hours, teacher_id: topTeacher(key) });
-        }
-      }
-      // Ders saati tanımı olmayan ama programda geçen dersler.
+      // Ders havuzu "okutulabileceği" saattir; her şubeye yazılmaz.
+      // Yalnızca bu okulun mevcut ders programında gerçekten olan dersler alınır.
       for (const [key, cur] of fromSchedule.entries()) {
-        if (planned.has(key)) continue;
         const [classroomId, subjectId] = key.split(':').map(Number);
-        rows.push({ key, classroom_id: classroomId, subject_id: subjectId, weekly_hours: cur.hours, teacher_id: topTeacher(key) });
+        const classroom = classrooms.find((c) => c.id === classroomId);
+        const poolHours = classroom
+          ? hoursByLevelSubject.get(`${classroom.class_level}:${subjectId}`)
+          : null;
+        rows.push({
+          key,
+          classroom_id: classroomId,
+          subject_id: subjectId,
+          weekly_hours: poolHours || cur.hours,
+          teacher_id: topTeacher(key),
+        });
       }
 
       let created = 0;
