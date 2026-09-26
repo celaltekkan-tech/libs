@@ -3,6 +3,7 @@
 const XLSX = require('xlsx');
 
 const IMPORTABLE_FIELDS = [
+  { key: 'row_no', label: 'Sıra No', required: false },
   { key: 'student_number', label: 'Öğrenci No', required: true },
   { key: 'national_id', label: 'T.C. Kimlik No', required: false },
   { key: 'first_name', label: 'Ad', required: true },
@@ -34,6 +35,13 @@ const IMPORT_HEADER_MAP = {
   'öğrenci numarası': 'student_number',
   'ogrenci numarasi': 'student_number',
   'okul no': 'student_number',
+  's.no': 'row_no',
+  's. no': 'row_no',
+  's no': 'row_no',
+  'sıra no': 'row_no',
+  'sira no': 'row_no',
+  'sıra': 'row_no',
+  'sira': 'row_no',
   adı: 'first_name',
   adi: 'first_name',
   ad: 'first_name',

@@ -9,7 +9,7 @@ export interface DateRangeFilter {
   to: string
 }
 
-export type ListFilterValue = string | number | boolean | DateRangeFilter | undefined
+export type ListFilterValue = string | number | boolean | DateRangeFilter | Array<string | number | boolean> | undefined
 
 export function isDateRangeFilter(value: ListFilterValue): value is DateRangeFilter {
   return Boolean(value && typeof value === 'object' && 'from' in value && 'to' in value)
@@ -17,12 +17,14 @@ export function isDateRangeFilter(value: ListFilterValue): value is DateRangeFil
 
 export function isActiveFilterValue(value: ListFilterValue): boolean {
   if (value == null || value === '') return false
+  if (Array.isArray(value)) return value.length > 0
   if (isDateRangeFilter(value)) return Boolean(value.from && value.to)
   return true
 }
 
 export function matchesListFilter(recordValue: string, selected: ListFilterValue): boolean {
   if (!isActiveFilterValue(selected)) return true
+  if (Array.isArray(selected)) return selected.some((item) => recordValue === String(item))
   if (isDateRangeFilter(selected)) {
     if (!recordValue) return false
     return recordValue >= selected.from && recordValue <= selected.to
@@ -36,6 +38,7 @@ interface DynamicListFiltersProps<T extends string> {
   values: Partial<Record<T, ListFilterValue>>
   optionsByKey: Partial<Record<T, Array<{ value: string | number | boolean; label: string }>>>
   onChange: (key: T, value: ListFilterValue) => void
+  multiple?: boolean
 }
 
 function rangeValue(value: ListFilterValue): [Dayjs, Dayjs] | null {
@@ -52,6 +55,7 @@ export function DynamicListFilters<T extends string>({
   values,
   optionsByKey,
   onChange,
+  multiple = false,
 }: DynamicListFiltersProps<T>) {
   return (
     <>
@@ -79,17 +83,21 @@ export function DynamicListFilters<T extends string>({
             />
           )
         }
+        const current = values[field.key]
+        const multiValue = Array.isArray(current) ? current : current != null && current !== '' ? [current] : []
         return (
           <Select
             key={field.key}
             allowClear
             showSearch
+            mode={multiple ? 'multiple' : undefined}
+            maxTagCount="responsive"
             optionFilterProp="label"
             filterOption={trSelectFilter}
             placeholder={field.label}
-            style={{ minWidth: 160, width: 180 }}
+            style={{ minWidth: 160, width: multiple ? 240 : 180 }}
             options={optionsByKey[field.key]}
-            value={values[field.key] as string | number | undefined}
+            value={multiple ? (multiValue as Array<string | number>) : (current as string | number | undefined)}
             onChange={(next) => onChange(field.key, next)}
           />
         )

@@ -3,6 +3,7 @@
 const { Classroom, Teacher, School, Student } = require('../models');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
+const { sortClassrooms } = require('../utils/classOrder');
 
 function assertTenantAccess(req, row) {
   if (req.user && req.user.tenant_id && row.tenant_id !== req.user.tenant_id) return false;
@@ -94,15 +95,13 @@ module.exports = {
       if (req.query.is_active === 'true') where.is_active = true;
       if (req.query.is_active === 'false') where.is_active = false;
 
-      const classrooms = await Classroom.findAll({
-        where,
-        include: [teacherInclude, schoolInclude],
-        order: [
-          ['class_level', 'ASC'],
-          ['section', 'ASC'],
-        ],
-        limit: 1000,
-      });
+      const classrooms = sortClassrooms(
+        await Classroom.findAll({
+          where,
+          include: [teacherInclude, schoolInclude],
+          limit: 1000,
+        }),
+      );
       res.json({ success: true, data: classrooms });
     } catch (err) {
       next(err);
@@ -267,15 +266,13 @@ module.exports = {
       if (filters?.school_id) where.school_id = Number(filters.school_id);
       if (typeof filters?.is_active === 'boolean') where.is_active = filters.is_active;
 
-      let classrooms = await Classroom.findAll({
-        where,
-        include: [teacherInclude, schoolInclude],
-        order: [
-          ['class_level', 'ASC'],
-          ['section', 'ASC'],
-        ],
-        limit: 5000,
-      });
+      let classrooms = sortClassrooms(
+        await Classroom.findAll({
+          where,
+          include: [teacherInclude, schoolInclude],
+          limit: 5000,
+        }),
+      );
 
       if (filters?.q) {
         classrooms = classrooms.filter((row) => matchesClassroomSearch(row, filters.q));

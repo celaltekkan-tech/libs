@@ -240,6 +240,25 @@ function clampDateOnly(year, month, day) {
   return `${year}-${String(month).padStart(2, '0')}-${String(clamped).padStart(2, '0')}`;
 }
 
+function daysBetweenIso(fromIso, toIso) {
+  const start = new Date(`${fromIso}T00:00:00`);
+  const end = new Date(`${toIso}T00:00:00`);
+  return Math.round((end.getTime() - start.getTime()) / 86400000);
+}
+
+/** Bugün veya daha önceki son yıl dönümü. Taban tarihten önceyse yok sayılır. */
+function lastAnniversary(baseIso, todayIso) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(baseIso || '');
+  if (!match || !todayIso) return null;
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const year = Number(todayIso.slice(0, 4));
+  let candidate = clampDateOnly(year, month, day);
+  if (candidate > todayIso) candidate = clampDateOnly(year - 1, month, day);
+  if (candidate < baseIso) return null;
+  return candidate;
+}
+
 /** Göreve ilk başlama (veya kademe) tarihinin, bugünden sonraki ilk yıl dönümü. */
 function nextAnniversary(baseIso, from = new Date()) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(baseIso || '');
@@ -544,11 +563,16 @@ module.exports = {
         // Kademe tarihi yoksa göreve ilk başlama tarihi terfi tarihidir; yıl dönümü esas alınır.
         const promotionBase = toDateOnly(t.degree_rank_date) || toDateOnly(t.first_duty_date);
         if (promotionBase) {
+          const todayIso = toDateOnly(today);
           const nextIso = nextAnniversary(promotionBase, today);
-          nextDate = nextIso ? new Date(`${nextIso}T00:00:00`) : null;
-          if (nextDate) {
-            const todayIso = toDateOnly(today);
-            daysRemaining = Math.round((new Date(`${nextIso}T00:00:00`).getTime() - new Date(`${todayIso}T00:00:00`).getTime()) / 86400000);
+          const missed = lastAnniversary(promotionBase, todayIso);
+          const overdueDays = missed && missed > promotionBase ? daysBetweenIso(missed, todayIso) : 0;
+          if (overdueDays > 0 && overdueDays <= 90) {
+            daysRemaining = -overdueDays;
+            nextDate = new Date(`${missed}T00:00:00`);
+          } else if (nextIso) {
+            nextDate = new Date(`${nextIso}T00:00:00`);
+            daysRemaining = daysBetweenIso(todayIso, nextIso);
           }
           inCurrentPeriod = Boolean(anniversaryInPeriod(promotionBase, period));
         }
@@ -605,6 +629,7 @@ module.exports = {
                 return row.in_current_period || next <= period.endExclusive;
               })
       ).sort((a, b) => {
+        if (Boolean(a.at_ceiling) !== Boolean(b.at_ceiling)) return a.at_ceiling ? 1 : -1;
         if (isDue(a) !== isDue(b)) return isDue(a) ? -1 : 1;
         return (a.days_remaining ?? Infinity) - (b.days_remaining ?? Infinity);
       });

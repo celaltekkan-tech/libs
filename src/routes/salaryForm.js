@@ -9,21 +9,21 @@ const permission = require('../middlewares/permission');
 
 const moduleGuard = requireModule('teachers');
 
-router.get('/draft', auth, moduleGuard, permission('norm_positions.read'), ctrl.getDraft);
+router.get('/draft', auth, moduleGuard, permission.any(['norm_positions.read', 'teachers.read']), ctrl.getDraft);
 router.put(
   '/draft',
   auth,
   moduleGuard,
-  permission('norm_positions.update'),
+  permission.any(['norm_positions.update', 'teachers.update']),
   validate(upsertSalaryFormDraftSchema),
   ctrl.upsertDraft
 );
-router.get('/export', auth, moduleGuard, permission('norm_positions.read'), ctrl.export);
+router.get('/export', auth, moduleGuard, permission.any(['norm_positions.read', 'teachers.read']), ctrl.export);
 router.post(
   '/draft/append',
   auth,
   moduleGuard,
-  permission('norm_positions.update'),
+  permission.any(['norm_positions.update', 'teachers.update']),
   validate(appendSalaryFormRowSchema),
   ctrl.appendDraftRow
 );

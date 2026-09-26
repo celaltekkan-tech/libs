@@ -4,6 +4,7 @@ const { Op } = require('sequelize');
 const { Teacher, PromotionHistory, School, sequelize } = require('../models');
 const audit = require('../services/auditService');
 const { fillPromotionForm, fillSalaryChangeForm } = require('../services/promotionFormService');
+const { resolvePrincipalName } = require('../services/schoolPrincipalService');
 const { getSalaryPeriodRange } = require('../utils/salaryPeriod');
 const { advanceDegreeRank, addYears, eightYearProgress, nextKariyerTitle } = require('../utils/promotionEngine');
 
@@ -82,6 +83,58 @@ module.exports = {
         entityType: 'teacher_promotion',
         entityId: teacher.id,
         summary: `Terfi/kademe ilerlemesi uygulandı: ${teacher.first_name} ${teacher.last_name} (${history.previous_degree || '—'}/${history.previous_rank || '—'} → ${new_degree}/${new_rank})`,
+      });
+
+      res.status(201).json({ success: true, data: { teacher, history } });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  /** Sistem dışında yapılmış terfiyi derece/kademe değiştirmeden takvime işler. */
+  async acknowledgeExternalPromotion(req, res, next) {
+    try {
+      const teacher = await Teacher.findByPk(req.params.id);
+      if (!teacher) return res.status(404).json({ success: false, message: 'Personel bulunamadı' });
+      if (!assertTenantAccess(req, teacher)) {
+        return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
+      }
+
+      const appliedDate = req.validatedBody.degree_rank_date;
+      const history = await sequelize.transaction(async (transaction) => {
+        const created = await PromotionHistory.create(
+          {
+            tenant_id: teacher.tenant_id,
+            teacher_id: teacher.id,
+            previous_degree: teacher.degree,
+            previous_rank: teacher.rank,
+            previous_degree_rank_date: teacher.degree_rank_date,
+            new_degree: teacher.degree,
+            new_rank: teacher.rank,
+            new_degree_rank_date: appliedDate,
+            note: 'Sistem dışında uygulandı',
+            type: 'harici',
+            override_reason: 'Terfi sistem dışında yapılmış olarak işaretlendi. Derece ve kademe değiştirilmedi.',
+            is_permanent: true,
+            created_by: req.user.user_id || null,
+          },
+          { transaction },
+        );
+        await teacher.update(
+          {
+            degree_rank_date: appliedDate,
+            degree_rank_anchor_date: appliedDate,
+          },
+          { transaction },
+        );
+        return created;
+      });
+
+      await audit.log(req, {
+        action: 'update',
+        entityType: 'teacher_promotion',
+        entityId: teacher.id,
+        summary: `Terfi sistem dışında uygulandı olarak işaretlendi: ${teacher.first_name} ${teacher.last_name}`,
       });
 
       res.status(201).json({ success: true, data: { teacher, history } });
@@ -214,7 +267,10 @@ module.exports = {
         return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
       }
 
-      const buffer = await fillPromotionForm(history, history.Teacher);
+      const principalName = await resolvePrincipalName(history.tenant_id, history.Teacher.school_id, {
+        fallback: true,
+      });
+      const buffer = await fillPromotionForm(history, history.Teacher, { principalName });
 
       await audit.log(req, {
         action: 'export',
@@ -258,11 +314,17 @@ module.exports = {
       const entries = histories.filter((h) => h.Teacher).map((h) => ({ history: h, teacher: h.Teacher }));
       const institutionName =
         entries[0]?.teacher.School?.name || entries[0]?.teacher.working_institution || null;
+      const principalName = await resolvePrincipalName(
+        tenantId,
+        entries[0]?.teacher.school_id || entries[0]?.teacher.School?.id || null,
+        { fallback: true },
+      );
 
       const { buffer, truncated } = await fillSalaryChangeForm(entries, {
         month,
         year,
         institutionName,
+        principalName,
       });
 
       await audit.log(req, {
