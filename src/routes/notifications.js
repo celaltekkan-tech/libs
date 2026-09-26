@@ -7,6 +7,7 @@ const auth = require('../middlewares/auth');
 const platformAdmin = require('../middlewares/platformAdmin');
 
 router.get('/mine', auth, ctrl.listMine);
+router.delete('/mine', auth, ctrl.clearMine);
 router.get('/unread-count', auth, ctrl.unreadCount);
 router.get('/sent', auth, platformAdmin, ctrl.listSent);
 router.get('/recipient-options', auth, platformAdmin, ctrl.recipientOptions);

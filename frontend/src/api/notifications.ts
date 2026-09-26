@@ -27,6 +27,11 @@ export async function markAllNotificationsRead(): Promise<void> {
   await client.put('/api/notifications/read-all')
 }
 
+export async function clearMyNotifications(): Promise<number> {
+  const { data } = await client.delete<Envelope<{ deleted: number }>>('/api/notifications/mine')
+  return data.data.deleted
+}
+
 export async function createNotification(
   payload: CreateNotificationPayload,
 ): Promise<{ count: number }> {
