@@ -43,6 +43,14 @@ export interface SmsLicense {
   sms_remaining: number | null
 }
 
+export interface AiLicense {
+  id: number
+  plan: string
+  starts_at: string
+  ends_at: string | null
+  ai_daily_limit: number
+}
+
 export interface SessionPayload {
   user: User
   roles: string[]
@@ -53,6 +61,7 @@ export interface SessionPayload {
   license_status: LicenseStatus
   license: ActiveLicense | null
   sms_license?: SmsLicense | null
+  ai_license?: AiLicense | null
   modules: string[]
   tenant_two_factor_enabled?: boolean
   tenant_sms_login_enabled?: boolean

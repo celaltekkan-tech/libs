@@ -16,6 +16,7 @@ export type LicenseModule =
   | 'guidance'
 
 export type LicensePlanKind = 'main' | 'addon'
+export type AddonCategory = 'sms' | 'ai'
 
 export interface LicensePlanDefinition {
   name: string
@@ -23,6 +24,8 @@ export interface LicensePlanDefinition {
   features: string[]
   modules: LicenseModule[]
   kind?: LicensePlanKind
+  /** Eklenti kategorisi; yeni eklenti yalnızca aynı kategorideki öncekini değiştirir */
+  category?: AddonCategory
   /** users modülü kota; null = sınırsız, 0 veya yok = planda yok */
   userLimit?: number | null
   /** okul kotası; null = sınırsız */
@@ -92,6 +95,7 @@ export const ADDON_LICENSE_PLANS: LicensePlanDefinition[] = [
       'Kota dolunca SMS gönderimi durur',
     ],
     modules: [],
+    category: 'sms',
     smsQuota: 3000,
   },
   {
@@ -107,7 +111,21 @@ export const ADDON_LICENSE_PLANS: LicensePlanDefinition[] = [
       'Kota dolunca SMS gönderimi durur',
     ],
     modules: [],
+    category: 'sms',
     smsQuota: 10000,
+  },
+  {
+    name: 'Yapay Zekâ',
+    kind: 'addon',
+    category: 'ai',
+    summary: 'Ana lisansa ek yapay zekâ özellikleri.',
+    features: [
+      'Ana lisansı ve SMS eklentisini iptal etmez; yanına eklenir',
+      'Otomatik ders programında istekleri Türkçe yazıp kısıta çevirme',
+      'Önerilen kısıtlar kullanıcı onayı olmadan eklenmez',
+      'Kiracı başına günlük istek sınırı uygulanır',
+    ],
+    modules: [],
   },
 ]
 
@@ -139,6 +157,9 @@ export function getLicensePlan(name: string): LicensePlanDefinition | undefined 
   if (normalized === 'sms') {
     return ADDON_LICENSE_PLANS.find((plan) => plan.name === 'SMS 3000')
   }
+  if (normalized === 'ai' || normalized === 'yapay zeka') {
+    return ADDON_LICENSE_PLANS.find((plan) => plan.category === 'ai')
+  }
   return ALL_LICENSE_PLANS.find((plan) => plan.name.toLocaleLowerCase('tr-TR') === normalized)
 }
 
@@ -146,6 +167,16 @@ export function isAddonPlan(planName?: string | null): boolean {
   if (!planName) return false
   const def = getLicensePlan(planName)
   return def?.kind === 'addon'
+}
+
+export function isSmsPlan(planName?: string | null): boolean {
+  if (!planName) return false
+  return getLicensePlan(planName)?.category === 'sms'
+}
+
+export function isAiPlan(planName?: string | null): boolean {
+  if (!planName) return false
+  return getLicensePlan(planName)?.category === 'ai'
 }
 
 /** Premium (ve varsa mevcut Kurumsal) kiracı okul kodunu kendisi belirler. */

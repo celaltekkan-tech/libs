@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Collapse, DatePicker, Form, Input, List, Modal, Select, Space, Tag, Tooltip, Typography } from 'antd'
+import { App, Button, Collapse, DatePicker, Form, Input, InputNumber, List, Modal, Select, Space, Tag, Tooltip, Typography } from 'antd'
 import { SortableTable } from '../../components/SortableTable'
-import { CloseCircleOutlined, InfoCircleOutlined, PlusOutlined } from '@ant-design/icons'
+import { CloseCircleOutlined, EditOutlined, InfoCircleOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { AppLayout } from '../../components/AppLayout'
-import { cancelLicense, createLicense, listLicenses } from '../../api/licenses'
+import { cancelLicense, createLicense, listLicenses, updateLicenseAiLimit } from '../../api/licenses'
 import { listTenants } from '../../api/tenants'
 import { getErrorMessage } from '../../api/client'
 import {
@@ -14,7 +14,8 @@ import {
   LICENSE_PLANS,
   MODULE_LABELS,
   getLicensePlan,
-  isAddonPlan,
+  isAiPlan,
+  isSmsPlan,
 } from '../../constants/licensePlans'
 import type { License, LicenseStatus } from '../../types/license'
 import type { TenantListItem } from '../../types/tenant'
@@ -30,6 +31,7 @@ interface LicenseFormValues {
   plan: string
   range?: [Dayjs, Dayjs | null] | null
   notes?: string
+  ai_daily_limit?: number | null
 }
 
 export function LicensesPage() {
@@ -40,6 +42,9 @@ export function LicensesPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [form] = Form.useForm<LicenseFormValues>()
+  const [aiLimitEditing, setAiLimitEditing] = useState<License | null>(null)
+  const [aiLimitValue, setAiLimitValue] = useState<number | null>(null)
+  const [aiLimitSaving, setAiLimitSaving] = useState(false)
   const selectedPlanName = Form.useWatch('plan', form)
   const selectedPlan = selectedPlanName ? getLicensePlan(selectedPlanName) : undefined
   const selectedIsAddon = selectedPlan?.kind === 'addon'
@@ -71,6 +76,7 @@ export function LicensesPage() {
         starts_at: starts ? starts.toISOString() : undefined,
         ends_at: ends ? ends.toISOString() : null,
         notes: values.notes,
+        ai_daily_limit: isAiPlan(values.plan) ? values.ai_daily_limit ?? null : undefined,
       })
       message.success('Lisans tanımlandı')
       setModalOpen(false)
@@ -80,6 +86,26 @@ export function LicensesPage() {
       message.error(getErrorMessage(err))
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const openAiLimit = (license: License) => {
+    setAiLimitEditing(license)
+    setAiLimitValue(license.ai_daily_limit ?? null)
+  }
+
+  const saveAiLimit = async () => {
+    if (!aiLimitEditing) return
+    setAiLimitSaving(true)
+    try {
+      await updateLicenseAiLimit(aiLimitEditing.id, aiLimitValue)
+      message.success('Günlük sınır güncellendi')
+      setAiLimitEditing(null)
+      void load()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setAiLimitSaving(false)
     }
   }
 
@@ -126,9 +152,29 @@ export function LicensesPage() {
       },
     },
     {
-      title: 'SMS kotası',
+      title: 'Kota',
       render: (_: unknown, record) => {
-        if (!isAddonPlan(record.plan)) return <Typography.Text type="secondary">—</Typography.Text>
+        if (isAiPlan(record.plan)) {
+          const limit = record.ai_effective_limit ?? 0
+          const label =
+            limit === 0
+              ? `Sınırsız · bugün ${record.ai_used_today ?? 0}`
+              : `Bugün ${record.ai_used_today ?? 0} / ${limit}`
+          return (
+            <Space size={4}>
+              <Tooltip title={record.ai_daily_limit == null ? 'Sistem varsayılanı' : 'Lisansa özel sınır'}>
+                <span>
+                  {label}
+                  {record.ai_daily_limit == null && <Typography.Text type="secondary"> (varsayılan)</Typography.Text>}
+                </span>
+              </Tooltip>
+              {record.status === 'active' && (
+                <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openAiLimit(record)} />
+              )}
+            </Space>
+          )
+        }
+        if (!isSmsPlan(record.plan)) return <Typography.Text type="secondary">—</Typography.Text>
         const quota = record.sms_quota
         if (quota == null) return 'Sınırsız'
         const used = record.sms_used ?? 0
@@ -284,10 +330,25 @@ export function LicensesPage() {
                   : selectedPlan.name === 'Standart'
                     ? `${selectedPlan.userLimit} (öğretmen/rehber öğretmen hariç)`
                     : selectedPlan.userLimit}
-              . Yeni ana lisans mevcut ana lisansı iptal eder; SMS eklentisi kalır.
+              . Yeni ana lisans mevcut ana lisansı iptal eder; eklentiler (SMS, yapay zekâ) kalır.
             </Typography.Paragraph>
           )}
-          {selectedIsAddon && (
+          {selectedIsAddon && selectedPlan?.category === 'ai' && (
+            <Typography.Paragraph type="secondary" style={{ marginTop: -12, fontSize: 13 }}>
+              {selectedPlan.summary} Ana lisansı ve SMS eklentisini iptal etmez; hesabın aktif bir ana lisansı
+              olmalıdır. Lisans süresince kiracının kullanıcıları yapay zekâ özelliklerini kullanabilir.
+            </Typography.Paragraph>
+          )}
+          {selectedIsAddon && selectedPlan?.category === 'ai' && (
+            <Form.Item
+              name="ai_daily_limit"
+              label="Günlük istek sınırı"
+              extra="Boş bırakılırsa sistem varsayılanı kullanılır. 0 = sınırsız. Sonradan listeden değiştirilebilir."
+            >
+              <InputNumber min={0} max={100000} style={{ width: 200 }} placeholder="Varsayılan" />
+            </Form.Item>
+          )}
+          {selectedIsAddon && selectedPlan?.category !== 'ai' && (
             <Typography.Paragraph type="secondary" style={{ marginTop: -12, fontSize: 13 }}>
               {selectedPlan?.summary} Kota:{' '}
               {selectedPlan?.smsQuota == null ? 'sınırsız' : selectedPlan.smsQuota.toLocaleString('tr-TR')} SMS.
@@ -307,6 +368,31 @@ export function LicensesPage() {
             <Input.TextArea rows={3} maxLength={1000} placeholder="Opsiyonel not" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        open={Boolean(aiLimitEditing)}
+        title={`Günlük yapay zekâ sınırı: ${aiLimitEditing?.Tenant?.name || ''}`}
+        onCancel={() => setAiLimitEditing(null)}
+        onOk={saveAiLimit}
+        confirmLoading={aiLimitSaving}
+        okText="Kaydet"
+        cancelText="Vazgeç"
+        destroyOnHidden
+      >
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <InputNumber
+            min={0}
+            max={100000}
+            value={aiLimitValue}
+            onChange={(v) => setAiLimitValue(v ?? null)}
+            placeholder="Varsayılan"
+            style={{ width: 200 }}
+          />
+          <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+            Boş = sistem varsayılanı, 0 = sınırsız. Değişiklik hemen geçerli olur; bugünkü kullanım sıfırlanmaz.
+          </Typography.Text>
+        </Space>
       </Modal>
     </AppLayout>
   )

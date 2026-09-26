@@ -4,6 +4,7 @@ const { app, connectDb } = require('./app');
 const { processWorkTaskReminders } = require('./services/workTaskReminderService');
 const { refreshStudentAges } = require('./services/studentAgeService');
 const { startBackupCron } = require('./services/backupService');
+const { resumeActiveRuns } = require('./services/timetableRunService');
 
 const PORT = process.env.PORT || 4000;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -64,5 +65,6 @@ function startStudentAgeCron() {
   startWorkTaskReminderCron();
   startStudentAgeCron();
   await startBackupCron();
+  await resumeActiveRuns();
   app.listen(PORT, HOST, () => console.log(`Server listening ${HOST}:${PORT}`));
 })();

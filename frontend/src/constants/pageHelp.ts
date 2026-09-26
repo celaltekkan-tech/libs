@@ -287,6 +287,28 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       },
     ],
   },
+  '/schedule-builder': {
+    title: 'Otomatik Ders Programı',
+    summary:
+      'Ders programını matematiksel çözücü (OR-Tools) hazırlar; istekleri isterseniz yapay zekâya Türkçe yazarak kısıta çevirirsiniz.',
+    topics: [
+      {
+        title: 'Adımlar',
+        steps: [
+          'Yeni çalışma oluşturun; gün, günlük ders saati ve öğle arasını ayarlayın.',
+          'Laboratuvar, spor salonu gibi paylaşılan mekanları tanımlayın.',
+          '"Ders Atamaları"nda "Otomatik Doldur" ile atamaları oluşturun, eksik öğretmenleri seçin.',
+          '"Kısıtlar"da istekleri yazın (ör. "Ayşe Hoca cuma gelemiyor") ve önerileri onaylayın.',
+          '"Oluştur"da ön kontrolü yapıp programı oluşturun.',
+          '"Program"da sürükle-bırak ile düzeltin, gerekirse kilitleyip yeniden oluşturun, sonra yayınlayın.',
+        ],
+      },
+      {
+        title: 'Kesin ve esnek kurallar',
+        body: 'Kesin kurallar asla ihlal edilmez; çelişirlerse çözücü hangilerinin çeliştiğini söyler. Esnek kurallara önem puanına göre mümkün olduğunca uyulur.',
+      },
+    ],
+  },
   '/exams': {
     title: 'Sınav Programı Hazırlama',
     summary: 'Ortak sınav ve sorumluluk sınavı programını derslere göre takvime yerleştirirsiniz.',
@@ -537,6 +559,10 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
     title: 'Lisans Yönetimi',
     summary: 'Tenant lisanslarını tanımlar, plan ve süre bilgisini yönetirsiniz.',
     topics: [
+      {
+        title: 'Listeyi daraltma',
+        body: 'Tablodaki arama kutusu tenant adı veya hesap numarasına göre lisansları süzer.',
+      },
       {
         title: 'Lisans tanımlama',
         steps: ['Tenant seçin.', 'Plan ve tarihleri girin.', 'Kaydedin; önceki aktif lisans iptal edilebilir.'],

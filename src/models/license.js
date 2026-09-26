@@ -15,6 +15,8 @@ module.exports = (sequelize, DataTypes) => {
       notes: { type: DataTypes.TEXT, allowNull: true },
       sms_quota: { type: DataTypes.INTEGER, allowNull: true },
       sms_used: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+      // Yapay Zekâ eklentisi günlük istek sınırı; null = sistem varsayılanı, 0 = sınırsız
+      ai_daily_limit: { type: DataTypes.INTEGER, allowNull: true },
     },
     {
       tableName: 'Licenses',

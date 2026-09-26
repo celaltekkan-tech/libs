@@ -18,7 +18,7 @@ import {
 } from '../../api/tenants'
 import { listLicenses } from '../../api/licenses'
 import { getErrorMessage } from '../../api/client'
-import { isAddonPlan } from '../../constants/licensePlans'
+import { isAddonPlan, isAiPlan, isSmsPlan } from '../../constants/licensePlans'
 import type { Tenant, TenantSchool, TenantUser, UpdateTenantUserPayload } from '../../types/tenant'
 import type { License } from '../../types/license'
 import { MOBILE_PHONE_RULE, requiredMobilePhoneRule } from '../../utils/phone'
@@ -78,7 +78,8 @@ export function TenantDetailPage() {
   }, [tenantId, message, contactForm])
 
   const activeLicense = licenses.find((license) => license.status === 'active' && !isAddonPlan(license.plan))
-  const activeSmsLicense = licenses.find((license) => license.status === 'active' && isAddonPlan(license.plan))
+  const activeSmsLicense = licenses.find((license) => license.status === 'active' && isSmsPlan(license.plan))
+  const activeAiLicense = licenses.find((license) => license.status === 'active' && isAiPlan(license.plan))
 
   useEffect(() => {
     if (Number.isFinite(tenantId)) void load()
@@ -432,6 +433,27 @@ export function TenantDetailPage() {
                       </Descriptions>
                     ) : (
                       <Tag>SMS lisansı yok</Tag>
+                    )}
+                    <Typography.Paragraph strong style={{ marginTop: 16, marginBottom: 8 }}>
+                      Yapay zekâ eklentisi
+                    </Typography.Paragraph>
+                    {activeAiLicense ? (
+                      <Descriptions column={1} size="small">
+                        <Descriptions.Item label="Plan">{activeAiLicense.plan}</Descriptions.Item>
+                        <Descriptions.Item label="Günlük sınır">
+                          {activeAiLicense.ai_effective_limit === 0
+                            ? 'Sınırsız'
+                            : `${activeAiLicense.ai_used_today ?? 0} / ${activeAiLicense.ai_effective_limit ?? '—'} (bugün)`}
+                          {activeAiLicense.ai_daily_limit == null && ' · varsayılan'}
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Bitiş">
+                          {activeAiLicense.ends_at
+                            ? new Date(activeAiLicense.ends_at).toLocaleDateString('tr-TR')
+                            : 'Süresiz'}
+                        </Descriptions.Item>
+                      </Descriptions>
+                    ) : (
+                      <Tag>Yapay zekâ lisansı yok</Tag>
                     )}
                   </Card>
                 ),

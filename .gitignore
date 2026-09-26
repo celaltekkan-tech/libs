@@ -16,3 +16,7 @@ Thumbs.db
 # Gerçek kişisel veri içeren örnek/kaynak evraklar (TC kimlik no vb.) — commit edilmemeli
 docs/gelen/
 docs/*.zip
+
+# Solver (Python) yerel ortamı
+solver/.venv/
+__pycache__/

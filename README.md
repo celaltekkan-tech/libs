@@ -28,6 +28,20 @@ npm run dev:all
 Sağlık kontrolü: http://localhost:4000/health  
 Panel: http://localhost:5173
 
+Otomatik ders programı çözücüsü (isteğe bağlı, yalnızca "Otomatik Ders Programı" sayfası için):
+
+```bash
+cd solver
+python -m venv .venv && .venv/Scripts/pip install -r requirements.txt   # Linux/mac: .venv/bin/pip
+.venv/Scripts/python -m uvicorn app:app --port 8000
+# backend .env: SOLVER_URL=http://127.0.0.1:8000
+```
+
+Docker'da `solver` servisi otomatik kalkar (iç ağ, `http://solver:8000`). Programı Google
+OR-Tools (CP-SAT) üretir; `GEMINI_API_KEY` tanımlıysa kullanıcı istekleri serbest metinden
+kısıta çevrilir (Gemini programı üretmez, yalnızca kısıt önerir, kullanıcı onaylar).
+Solver'ı elle denemek için: `cd solver && python tests/run_sample.py 20 60`.
+
 | Sorun | Çözüm |
 |---|---|
 | Girişte 404 | 3000 portu başka bir uygulamaya ait olabilir. Bu proje **4000** kullanır. `npm run dev` çıktısında `Server listening 4000` görünmeli; ardından paneli yeniden başlatın. |
