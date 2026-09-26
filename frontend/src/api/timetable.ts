@@ -141,9 +141,21 @@ export async function deleteTimetableConstraint(id: number): Promise<void> {
 export async function aiParseConstraints(
   projectId: number,
   text: string,
-): Promise<{ proposals: AiProposal[]; unresolved: string[]; usage?: { used: number; limit: number } }> {
+): Promise<{
+      proposals: AiProposal[]
+      unresolved: string[]
+      rejected?: boolean
+      message?: string
+      usage?: { used: number; limit: number }
+    }> {
   const { data } = await client.post<
-    Envelope<{ proposals: AiProposal[]; unresolved: string[]; usage?: { used: number; limit: number } }>
+    Envelope<{
+      proposals: AiProposal[]
+      unresolved: string[]
+      rejected?: boolean
+      message?: string
+      usage?: { used: number; limit: number }
+    }>
   >(
     `${BASE}/projects/${projectId}/ai/parse`,
     { text },

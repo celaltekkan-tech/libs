@@ -35,6 +35,7 @@ export function ConstraintsTab({ ctx }: { ctx: TimetableCtx }) {
   const [parsing, setParsing] = useState(false)
   const [proposals, setProposals] = useState<ProposalRow[]>([])
   const [unresolved, setUnresolved] = useState<string[]>([])
+  const [rejected, setRejected] = useState<string | null>(null)
   const [lastPrompt, setLastPrompt] = useState('')
   const [usage, setUsage] = useState(ctx.meta.ai_usage)
   const [formOpen, setFormOpen] = useState(false)
@@ -61,12 +62,17 @@ export function ConstraintsTab({ ctx }: { ctx: TimetableCtx }) {
     setParsing(true)
     setProposals([])
     setUnresolved([])
+    setRejected(null)
     try {
       const res = await aiParseConstraints(project.id, text.trim())
+      if (res.usage) setUsage(res.usage)
+      if (res.rejected) {
+        setRejected(res.message || 'Bu istek ders programıyla ilgili değil.')
+        return
+      }
       setProposals(res.proposals.map((p, i) => ({ ...p, key: i, checked: true })))
       setUnresolved(res.unresolved)
       setLastPrompt(text.trim())
-      if (res.usage) setUsage(res.usage)
       if (!res.proposals.length && !res.unresolved.length) message.info('Metinden kısıt çıkarılamadı')
     } catch (err) {
       message.error(getErrorMessage(err))
@@ -182,6 +188,7 @@ export function ConstraintsTab({ ctx }: { ctx: TimetableCtx }) {
               ))}
             </Space>
 
+            {rejected && <Alert style={{ marginTop: 16 }} type="warning" showIcon message={rejected} />}
             {(proposals.length > 0 || unresolved.length > 0) && (
               <div style={{ marginTop: 16 }}>
                 {proposals.length > 0 && (
