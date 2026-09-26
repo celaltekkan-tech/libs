@@ -267,9 +267,14 @@ function serializeAttachment(row) {
     stored_name: row.stored_name,
     mime_type: row.mime_type,
     size_bytes: row.size_bytes,
+    has_file: fileExists(row.stored_name),
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
+}
+
+function remoteOffersFile(remote) {
+  return remote.has_file !== false;
 }
 
 async function writeTimestamps(table, publicId, createdAt, updatedAt) {
@@ -462,7 +467,11 @@ async function applyAttachment(remote) {
 
   const local = await FeedbackAttachment.findOne({ where: { public_id: remote.public_id } });
   if (local && !isNewer(remote.updated_at, local.updated_at)) {
-    return { status: 'skip', missing: !fileExists(local.stored_name), publicId: local.public_id };
+    return {
+      status: 'skip',
+      missing: remoteOffersFile(remote) && !fileExists(local.stored_name),
+      publicId: local.public_id,
+    };
   }
 
   const storedName = local ? local.stored_name : await storedNameFor(remote);
@@ -494,7 +503,7 @@ async function applyAttachment(remote) {
 
   return {
     status: 'applied',
-    missing: !fileExists(storedName),
+    missing: remoteOffersFile(remote) && !fileExists(storedName),
     publicId: remote.public_id,
   };
 }
@@ -590,7 +599,8 @@ async function peerFetch(urlPath, options = {}) {
     } catch {
       // gövde JSON değilse durum kodu yeterli
     }
-    throw httpError(response.status === 401 ? 401 : 502, message);
+    const status = response.status === 401 || response.status === 404 ? response.status : 502;
+    throw httpError(status, message);
   }
   return response;
 }
@@ -646,8 +656,18 @@ async function downloadMissingFiles(publicIds) {
     if (!isUuid(publicId)) continue;
     const row = await FeedbackAttachment.findOne({ where: { public_id: publicId } });
     if (!row || fileExists(row.stored_name)) continue;
-    const response = await peerFetch(`/api/feedback/sync/files/${publicId}`);
+    let response;
+    try {
+      response = await peerFetch(`/api/feedback/sync/files/${publicId}`);
+    } catch (err) {
+      if (err.status === 404) {
+        console.warn(`[feedback-sync] ek dosyası karşı tarafta yok, geçildi: ${publicId}`);
+        continue;
+      }
+      throw err;
+    }
     const bytes = Buffer.from(await response.arrayBuffer());
+    if (!bytes.length) continue;
     ensureUploadDir();
     fs.writeFileSync(absolutePath(row.stored_name), bytes);
     count += 1;
@@ -815,7 +835,10 @@ async function rememberFeedbackDeletion(publicId, transaction) {
 async function sendSyncFile(publicId, res) {
   if (!isUuid(publicId)) throw httpError(400, 'Geçersiz kimlik');
   const row = await FeedbackAttachment.findOne({ where: { public_id: publicId } });
-  if (!row || !fileExists(row.stored_name)) throw httpError(404, 'Dosya bulunamadı');
+  if (!row || !fileExists(row.stored_name)) {
+    res.status(404).json({ success: false, message: 'Dosya bulunamadı' });
+    return;
+  }
   res.setHeader('Content-Type', row.mime_type || 'application/octet-stream');
   res.sendFile(absolutePath(row.stored_name));
 }
