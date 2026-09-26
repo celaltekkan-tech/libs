@@ -1,5 +1,5 @@
 import client from './client'
-import type { BackupFile, BackupRunResult, BackupSettings } from '../types/backup'
+import type { BackupFile, BackupLog, BackupRunResult, BackupSettings } from '../types/backup'
 
 interface Envelope<T> {
   success: true
@@ -61,4 +61,9 @@ export async function importBackup(file: File): Promise<BackupFile> {
 
 export async function deleteBackup(filename: string): Promise<void> {
   await client.delete(`/api/backups/${encodeURIComponent(filename)}`)
+}
+
+export async function listBackupLogs(params: { limit?: number; action?: string; status?: string } = {}): Promise<BackupLog[]> {
+  const { data } = await client.get<Envelope<BackupLog[]>>('/api/backups/logs', { params })
+  return data.data
 }

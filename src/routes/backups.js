@@ -52,6 +52,7 @@ function handleImportError(err, req, res, next) {
 router.get('/settings', auth, platformAdmin, ctrl.getSettings);
 router.put('/settings', auth, platformAdmin, validate(updateBackupSettingsSchema), ctrl.updateSettings);
 router.get('/', auth, platformAdmin, ctrl.list);
+router.get('/logs', auth, platformAdmin, ctrl.logs);
 router.post('/run', auth, platformAdmin, ctrl.run);
 router.post(
   '/import',

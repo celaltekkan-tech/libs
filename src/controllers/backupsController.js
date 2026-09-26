@@ -12,7 +12,7 @@ module.exports = {
 
   async updateSettings(req, res, next) {
     try {
-      const data = await backupService.updateSettings(req.validatedBody, req.user.user_id);
+      const data = await backupService.updateSettings(req.validatedBody, req.user);
       res.json({ success: true, data });
     } catch (err) {
       next(err);
@@ -28,9 +28,23 @@ module.exports = {
     }
   },
 
+  async logs(req, res, next) {
+    try {
+      const { limit, action, status } = req.query;
+      const data = await backupService.listLogs({
+        limit,
+        action: typeof action === 'string' && action ? action : undefined,
+        status: typeof status === 'string' && status ? status : undefined,
+      });
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async run(req, res, next) {
     try {
-      const data = await backupService.runBackup('manual');
+      const data = await backupService.runBackup('manual', req.user);
       res.json({ success: true, data });
     } catch (err) {
       next(err);
@@ -41,7 +55,11 @@ module.exports = {
     try {
       const { filePath, filename } = await backupService.resolveBackupFile(req.params.filename);
       res.download(filePath, filename, (err) => {
-        if (err && !res.headersSent) next(err);
+        if (err) {
+          if (!res.headersSent) next(err);
+          return;
+        }
+        void backupService.logDownload(filename, req.user);
       });
     } catch (err) {
       next(err);
@@ -56,7 +74,7 @@ module.exports = {
         err.code = 'FILE_REQUIRED';
         throw err;
       }
-      const data = await backupService.importBackupFile(req.file.path, req.file.originalname);
+      const data = await backupService.importBackupFile(req.file.path, req.file.originalname, req.user);
       res.json({ success: true, data });
     } catch (err) {
       next(err);
@@ -65,7 +83,7 @@ module.exports = {
 
   async restore(req, res, next) {
     try {
-      const data = await backupService.restoreBackup(req.params.filename);
+      const data = await backupService.restoreBackup(req.params.filename, req.user);
       res.json({ success: true, data });
     } catch (err) {
       next(err);
@@ -74,7 +92,7 @@ module.exports = {
 
   async remove(req, res, next) {
     try {
-      await backupService.deleteBackupFile(req.params.filename);
+      await backupService.deleteBackupFile(req.params.filename, req.user);
       res.json({ success: true });
     } catch (err) {
       next(err);

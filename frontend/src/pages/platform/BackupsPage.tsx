@@ -21,6 +21,7 @@ import type { BackupFile, BackupSettings } from '../../types/backup'
 import { tablePagination } from '../../utils/tablePagination'
 import { TypedPhraseConfirmModal } from '../../components/TypedPhraseConfirmModal'
 import { useBulkTypedDelete } from '../../hooks/useBulkTypedDelete'
+import { BackupLogsCard } from './BackupLogsCard'
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -58,6 +59,7 @@ export function BackupsPage() {
   const [settings, setSettings] = useState<BackupSettings | null>(null)
   const [backups, setBackups] = useState<BackupFile[]>([])
   const [loading, setLoading] = useState(true)
+  const [logsRefreshKey, setLogsRefreshKey] = useState(0)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -70,6 +72,7 @@ export function BackupsPage() {
         retention_days: nextSettings.retention_days,
       })
       setBackups(files)
+      setLogsRefreshKey((k) => k + 1)
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
@@ -245,10 +248,23 @@ export function BackupsPage() {
         </Typography.Title>
         <Typography.Paragraph type="secondary">
           Yedekler her gün belirlediğiniz saatte, seçtiğiniz klasöre alınır. Saklama süresini aşan
-          dosyalar bir sonraki yedeklemede silinir. Yedek dosyasını indirebilir veya .sql.gz dosyası
+          zamanlanmış yedekler bir sonraki yedeklemede silinir (en yeni 3 tanesi her zaman saklanır); manuel
+          alınan ve yüklenen yedekler otomatik silinmez. Yedek dosyasını indirebilir veya .sql.gz dosyası
           yükleyebilirsiniz. Geri yükleme mevcut veritabanının üzerine yazar.
         </Typography.Paragraph>
 
+        {settings?.dir_warning && (
+          <Alert type="error" showIcon style={{ marginBottom: 16, maxWidth: 640 }} message="Yedek klasörü kalıcı değil" description={settings.dir_warning} />
+        )}
+        {settings && !settings.cron_enabled && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16, maxWidth: 640 }}
+            message="Uygulama içi zamanlanmış yedekleme kapalı (BACKUP_CRON_ENABLED=false)"
+            description="Otomatik yedek yalnızca sunucudaki host cron script'i (scripts/db-backup.sh) çalışıyorsa alınır; çalışmaları aşağıdaki geçmişte 'Host cron' olarak görünür."
+          />
+        )}
         <Card style={{ marginBottom: 24, maxWidth: 640 }}>
           <Form form={form} layout="vertical" onFinish={onSaveSettings}>
             <Form.Item
@@ -344,6 +360,7 @@ export function BackupsPage() {
           pagination={tablePagination(20)}
           scroll={{ x: 'max-content' }}
         />
+        <BackupLogsCard refreshKey={logsRefreshKey} />
       </div>
       <TypedPhraseConfirmModal
         open={bulkOpen}
