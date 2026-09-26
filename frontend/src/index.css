@@ -124,6 +124,38 @@ body {
   color: var(--app-login-subtitle) !important;
 }
 
+.login-captcha-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.login-captcha-row .login-captcha-field.ant-form-item {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 12px;
+}
+
+.login-captcha-image {
+  width: 128px;
+  height: 40px;
+  flex: none;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #f7f9fc;
+  border: 1px solid #e4eaf2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-captcha-image img {
+  display: block;
+  width: 128px;
+  height: 40px;
+  user-select: none;
+}
+
 .login-hint {
   margin: 20px 0 0;
   color: var(--app-muted);
@@ -695,6 +727,51 @@ body {
 /* Okunmamış varken her 20 sn kısa sallanma */
 .notification-bell.has-unread {
   animation: notification-bell-shake 20s ease-in-out infinite;
+}
+
+.profile-2fa-qr-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.profile-2fa-qr {
+  display: block;
+  border-radius: 8px;
+  outline: 3px solid transparent;
+  outline-offset: 3px;
+}
+
+.profile-2fa-qr-pulse {
+  animation: profile-2fa-qr-blink 1.8s ease;
+}
+
+@keyframes profile-2fa-qr-blink {
+  0%,
+  100% {
+    outline-color: transparent;
+  }
+  12%,
+  22% {
+    outline-color: #1d4e89;
+  }
+  32% {
+    outline-color: transparent;
+  }
+  42%,
+  52% {
+    outline-color: #1d4e89;
+  }
+  62% {
+    outline-color: transparent;
+  }
+  72%,
+  82% {
+    outline-color: #1d4e89;
+  }
+  92% {
+    outline-color: transparent;
+  }
 }
 
 @keyframes notification-bell-shake {

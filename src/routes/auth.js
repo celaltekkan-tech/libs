@@ -34,6 +34,7 @@ router.post(
 router.post('/teacher-register/verify', validate(teacherRegisterVerifySchema), teacherRegisterCtrl.verify);
 
 router.post('/register', validate(registerSchema), ctrl.register);
+router.get('/captcha', ctrl.captcha);
 router.post('/login', validate(loginSchema), ctrl.login);
 router.post('/verify-2fa', validate(verify2faSchema), ctrl.verify2fa);
 router.post('/verify-sms', validate(verifySmsSchema), ctrl.verifySms);

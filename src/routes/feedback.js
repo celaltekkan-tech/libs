@@ -8,6 +8,7 @@ const {
   updateFeedbackSchema,
   cancelFeedbackSchema,
   addFeedbackUpdateSchema,
+  updateFeedbackSyncSettingsSchema,
 } = require('../validators/feedback.validator');
 const auth = require('../middlewares/auth');
 const platformAdmin = require('../middlewares/platformAdmin');
@@ -52,6 +53,13 @@ router.put(
 
 // Platform yöneticisi: durum ve elle tetikleme
 router.get('/sync/status', auth, platformAdmin, ctrl.syncStatus);
+router.put(
+  '/sync/settings',
+  auth,
+  platformAdmin,
+  validate(updateFeedbackSyncSettingsSchema),
+  ctrl.updateSyncSettings
+);
 router.post('/sync/run', auth, platformAdmin, ctrl.syncRun);
 
 // Giriş yapmış her kullanıcı kendi hesabı adına geri bildirim gönderebilir (opsiyonel dosya)

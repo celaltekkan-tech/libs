@@ -2,6 +2,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { Spin } from 'antd'
 import { useAuth } from './AuthContext'
 import { LicenseExpiredPage } from '../pages/LicenseExpiredPage'
+import { RememberedLoginWarning } from '../components/RememberedLoginWarning'
 
 export function ProtectedRoute() {
   const { session, ready } = useAuth()
@@ -19,7 +20,12 @@ export function ProtectedRoute() {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
   }
 
-  return <Outlet />
+  return (
+    <>
+      <RememberedLoginWarning />
+      <Outlet />
+    </>
+  )
 }
 
 export function PlatformAdminRoute() {

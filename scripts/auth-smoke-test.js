@@ -36,12 +36,55 @@ async function call(method, path, { token, body } = {}) {
   return { status: res.status, body: json };
 }
 
+function captchaCodeFromSvg(svg) {
+  const parts = [];
+  const re = /<text\b[^>]*>([^<])<\/text>/g;
+  let match;
+  while ((match = re.exec(String(svg || '')))) parts.push(match[1]);
+  return parts.join('');
+}
+
+async function withCaptcha(body) {
+  const captcha = await call('GET', '/api/auth/captcha');
+  return {
+    captcha,
+    body: {
+      ...body,
+      captcha_id: captcha.body?.data?.id,
+      captcha_code: captchaCodeFromSvg(captcha.body?.data?.svg),
+    },
+  };
+}
+
 (async () => {
   const health = await call('GET', '/health');
   check('Health endpoint', health.status === 200, `status ${health.status}`);
 
+  const captcha = await call('GET', '/api/auth/captcha');
+  check(
+    'Captcha gorseli donuyor',
+    captcha.status === 200 && Boolean(captcha.body?.data?.id) && captchaCodeFromSvg(captcha.body?.data?.svg).length >= 4,
+    `status ${captcha.status}`
+  );
+
+  const missingCaptcha = await call('POST', '/api/auth/login', {
+    body: { email: EMAIL, password: PASSWORD },
+  });
+  check('Captchasiz login 400', missingCaptcha.status === 400, `status ${missingCaptcha.status}`);
+
+  const badCaptcha = await withCaptcha({ email: EMAIL, password: PASSWORD });
+  const badCaptchaLogin = await call('POST', '/api/auth/login', {
+    body: { ...badCaptcha.body, captcha_code: 'XXXX' },
+  });
+  check(
+    'Hatali captcha 400',
+    badCaptchaLogin.status === 400 && badCaptchaLogin.body?.code === 'CAPTCHA_INVALID',
+    `status ${badCaptchaLogin.status}, code ${badCaptchaLogin.body?.code}`
+  );
+
+  const badLoginPayload = await withCaptcha({ email: EMAIL, password: 'yanlis_sifre_123' });
   const badLogin = await call('POST', '/api/auth/login', {
-    body: { email: EMAIL, password: 'yanlis_sifre_123' },
+    body: badLoginPayload.body,
   });
   check(
     'Hatali sifre 401 donuyor',
@@ -58,8 +101,9 @@ async function call(method, path, { token, body } = {}) {
     `status ${invalidEmail.status}`
   );
 
+  const loginPayload = await withCaptcha({ email: EMAIL, password: PASSWORD });
   const login = await call('POST', '/api/auth/login', {
-    body: { email: EMAIL, password: PASSWORD },
+    body: loginPayload.body,
   });
   check('Login basarili', login.status === 200, `status ${login.status}`);
 

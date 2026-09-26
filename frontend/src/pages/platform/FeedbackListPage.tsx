@@ -12,6 +12,7 @@ import {
   Select,
   Space,
   Spin,
+  Switch,
   Tag,
   Tooltip,
   Typography,
@@ -38,6 +39,7 @@ import {
   listFeedback,
   runFeedbackSync,
   updateFeedback,
+  updateFeedbackSyncSettings,
   viewFeedbackAttachment,
 } from '../../api/feedback'
 import { listTenants } from '../../api/tenants'
@@ -76,6 +78,7 @@ export function FeedbackListPage() {
   const [replySubmitting, setReplySubmitting] = useState(false)
   const [syncStatus, setSyncStatus] = useState<FeedbackSyncStatus | null>(null)
   const [syncing, setSyncing] = useState(false)
+  const [savingAutoSync, setSavingAutoSync] = useState(false)
 
   const refreshSyncStatus = useCallback(async () => {
     try {
@@ -141,6 +144,7 @@ export function FeedbackListPage() {
         last_success_at: result.ok ? new Date().toISOString() : prev?.last_success_at ?? null,
         last_error: result.ok ? null : result.error || 'Senkron başarısız',
         last_summary: result.last_summary ?? prev?.last_summary ?? null,
+        auto_sync_enabled: result.auto_sync_enabled ?? prev?.auto_sync_enabled ?? true,
       }))
       if (result.ok) {
         message.success('Geri bildirimler senkronize edildi')
@@ -153,6 +157,18 @@ export function FeedbackListPage() {
       message.error(getErrorMessage(err))
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const toggleAutoSync = async (checked: boolean) => {
+    setSavingAutoSync(true)
+    try {
+      setSyncStatus(await updateFeedbackSyncSettings({ auto_sync_enabled: checked }))
+      message.success(checked ? 'Otomatik senkron açıldı' : 'Otomatik senkron kapatıldı')
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSavingAutoSync(false)
     }
   }
 
@@ -243,6 +259,11 @@ export function FeedbackListPage() {
               {syncStatus?.last_success_at
                 ? ` Son senkron: ${new Date(syncStatus.last_success_at).toLocaleString('tr-TR')}.`
                 : ''}
+              {syncStatus?.enabled
+                ? syncStatus.auto_sync_enabled
+                  ? ' Otomatik senkron açık.'
+                  : ' Otomatik senkron kapalı; yalnızca elle çalışır.'
+                : ''}
             </Typography.Text>
             {syncStatus?.last_error ? (
               <div>
@@ -278,6 +299,25 @@ export function FeedbackListPage() {
                 />
               </Space>
               <Space>
+                <Tooltip
+                  title={
+                    syncStatus && !syncStatus.enabled
+                      ? 'Karşı ortam adresi ve paylaşılan anahtar tanımlı değil'
+                      : 'Kapalıyken zamanlanmış eşitleme durur. Elle senkron çalışmaya devam eder.'
+                  }
+                >
+                  <Space size={8}>
+                    <Typography.Text>Otomatik senkron</Typography.Text>
+                    <Switch
+                      checked={syncStatus?.auto_sync_enabled !== false}
+                      checkedChildren="Açık"
+                      unCheckedChildren="Kapalı"
+                      loading={savingAutoSync}
+                      disabled={syncStatus == null || !syncStatus.enabled}
+                      onChange={(checked) => void toggleAutoSync(checked)}
+                    />
+                  </Space>
+                </Tooltip>
                 <Tooltip
                   title={
                     syncStatus && !syncStatus.enabled

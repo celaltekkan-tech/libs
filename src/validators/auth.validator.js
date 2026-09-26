@@ -79,6 +79,15 @@ const loginSchema = Joi.object({
   password: Joi.string().required().messages({
     'string.empty': 'Şifre zorunludur',
   }),
+  captcha_id: Joi.string().hex().length(32).required().messages({
+    'any.required': 'Görsel doğrulama kodu zorunludur',
+    'string.empty': 'Görsel doğrulama kodu zorunludur',
+    'string.length': 'Görsel doğrulama yenilenmeli',
+  }),
+  captcha_code: Joi.string().trim().min(4).max(8).required().messages({
+    'string.empty': 'Görsel doğrulama kodu zorunludur',
+    'string.min': 'Görsel doğrulama kodu eksik',
+  }),
 });
 
 const verify2faSchema = Joi.object({

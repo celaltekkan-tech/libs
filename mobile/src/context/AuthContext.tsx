@@ -11,7 +11,7 @@ interface AuthContextValue {
   user: SessionUser | null;
   permissions: string[];
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, captchaId: string, captchaCode: string) => Promise<void>;
   applySession: (session: AuthSession) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -62,8 +62,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [logout]);
 
   const login = useCallback(
-    async (email: string, password: string) => {
-      const session = await loginRequest(email, password);
+    async (email: string, password: string, captchaId: string, captchaCode: string) => {
+      const session = await loginRequest(email, password, captchaId, captchaCode);
       await applySession(session);
     },
     [applySession],

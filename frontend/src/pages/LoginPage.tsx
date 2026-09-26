@@ -1,20 +1,26 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Alert, Button, Form, Input, Typography } from 'antd'
+import { Alert, Button, Checkbox, Form, Input, Typography } from 'antd'
 import {
   ArrowLeftOutlined,
   LockOutlined,
   MailOutlined,
   MessageOutlined,
   MoonOutlined,
+  ReloadOutlined,
   SafetyCertificateOutlined,
   SunOutlined,
 } from '@ant-design/icons'
 import { useAuth } from '../auth/AuthContext'
 import { useThemeMode } from '../theme/ThemeContext'
 import { ApiError, getErrorMessage } from '../api/client'
-import { resendSms } from '../api/auth'
+import { fetchCaptcha, resendSms } from '../api/auth'
 import { readLastSchoolBrand } from '../utils/lastSchoolBrand'
+import {
+  armRememberedLoginWarning,
+  readRememberedLogin,
+  writeRememberedLogin,
+} from '../utils/rememberedLogin'
 import {
   isLoginChallenge2fa,
   isLoginChallengeSms,
@@ -46,8 +52,45 @@ export function LoginPage() {
     LoginChallengeSms,
     'phone_hint' | 'requests_remaining' | 'max_requests'
   > | null>(null)
+  const remembered = useMemo(() => readRememberedLogin(), [])
+  const [remember, setRemember] = useState(Boolean(remembered))
+  const [captchaId, setCaptchaId] = useState<string | null>(null)
+  const [captchaSvg, setCaptchaSvg] = useState<string | null>(null)
+  const [captchaLoading, setCaptchaLoading] = useState(false)
+  const captchaEase = useRef(0)
 
   const from = (location.state as { from?: string } | null)?.from || '/'
+
+  const loadCaptcha = async (ease: number) => {
+    setCaptchaLoading(true)
+    try {
+      const next = await fetchCaptcha(ease)
+      setCaptchaId(next.id)
+      setCaptchaSvg(next.svg)
+      form.setFieldValue('captcha_code', '')
+    } catch (err) {
+      setCaptchaId(null)
+      setCaptchaSvg(null)
+      setError(getErrorMessage(err))
+    } finally {
+      setCaptchaLoading(false)
+    }
+  }
+
+  const refreshCaptcha = () => {
+    captchaEase.current = Math.min(2, captchaEase.current + 1)
+    return loadCaptcha(captchaEase.current)
+  }
+
+  useEffect(() => {
+    if (remembered) {
+      form.setFieldsValue({ email: remembered.email, password: remembered.password })
+    }
+    captchaEase.current = 0
+    void loadCaptcha(0)
+    // Yalnızca ilk açılışta kayıtlı bilgileri ve görseli yükle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function navigateAfterLogin(session: SessionPayload) {
     let target = from || '/'
@@ -70,15 +113,31 @@ export function LoginPage() {
     twoFactorForm.resetFields()
   }
 
+  function persistRememberChoice(email: string, password: string, accepted: boolean) {
+    if (!remember) {
+      writeRememberedLogin(null)
+      return
+    }
+    if (accepted) writeRememberedLogin({ email, password })
+  }
+
   async function onFinish(values: LoginFormValues) {
     setError(null)
     setInfo(null)
+    if (!captchaId) {
+      setError('Görsel doğrulama yüklenemedi. Yenileyip tekrar deneyin.')
+      return
+    }
     setSubmitting(true)
     try {
+      const email = values.email.trim()
       const result = await login({
-        email: values.email.trim(),
+        email,
         password: values.password,
+        captcha_id: captchaId,
+        captcha_code: values.captcha_code.trim(),
       })
+      persistRememberChoice(email, values.password, true)
       if (isLoginChallenge2fa(result)) {
         setChallengeMode('totp')
         setTempToken(result.temp_token)
@@ -91,6 +150,10 @@ export function LoginPage() {
         setInfo(`Doğrulama kodu ${result.phone_hint} numarasına gönderildi.`)
         return
       }
+      const usesSecondFactor =
+        Boolean(result.user.totp_enabled) ||
+        Boolean(result.tenant_sms_login_enabled && !result.is_platform_admin)
+      armRememberedLoginWarning(!usesSecondFactor)
       navigateAfterLogin(result)
     } catch (err) {
       if (err instanceof ApiError && err.fields?.length) {
@@ -98,6 +161,7 @@ export function LoginPage() {
       } else {
         setError(getErrorMessage(err))
       }
+      void loadCaptcha(captchaEase.current)
     } finally {
       setSubmitting(false)
     }
@@ -113,6 +177,7 @@ export function LoginPage() {
         challengeMode === 'sms'
           ? await completeSms(tempToken, values.code.trim())
           : await complete2fa(tempToken, values.code.trim())
+      armRememberedLoginWarning(false)
       navigateAfterLogin(session)
     } catch (err) {
       setError(getErrorMessage(err))
@@ -285,6 +350,59 @@ export function LoginPage() {
                 placeholder="Şifreniz"
                 autoComplete="current-password"
               />
+            </Form.Item>
+
+            <div className="login-captcha-row">
+              <div className="login-captcha-image">
+                {captchaSvg ? (
+                  <img
+                    src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(captchaSvg)}`}
+                    alt="Görsel doğrulama kodu"
+                    draggable={false}
+                  />
+                ) : (
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {captchaLoading ? '…' : '—'}
+                  </Typography.Text>
+                )}
+              </div>
+              <Button
+                type="text"
+                icon={<ReloadOutlined />}
+                loading={captchaLoading}
+                onClick={() => void refreshCaptcha()}
+                aria-label="Görsel doğrulama kodunu yenile"
+                title="Görseli yenile"
+                style={{ height: 40, width: 40 }}
+              />
+              <Form.Item
+                className="login-captcha-field"
+                name="captcha_code"
+                rules={[{ required: true, message: 'Görsel doğrulama kodu zorunludur' }]}
+              >
+                <Input
+                  size="large"
+                  prefix={<SafetyCertificateOutlined />}
+                  placeholder="Görseldeki kod"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  maxLength={8}
+                />
+              </Form.Item>
+            </div>
+
+            <Form.Item style={{ marginBottom: 12 }}>
+              <Checkbox
+                checked={remember}
+                onChange={(event) => {
+                  const checked = event.target.checked
+                  setRemember(checked)
+                  if (!checked) writeRememberedLogin(null)
+                }}
+              >
+                Kullanıcı adımı ve şifremi hatırla
+              </Checkbox>
             </Form.Item>
 
             <Button type="primary" htmlType="submit" size="large" block loading={submitting}>
