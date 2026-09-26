@@ -659,6 +659,15 @@ module.exports = {
         usage.used -= 1;
         throw err;
       }
+      if (result.rejected) {
+        await audit.log(req, {
+          action: 'create',
+          entityType: 'timetable_ai',
+          entityId: project.id,
+          summary: 'Ders programı dışı yapay zekâ isteği reddedildi',
+          meta: { text: req.validatedBody.text.slice(0, 500) },
+        });
+      }
       res.json({ success: true, data: { ...result, usage } });
     } catch (err) {
       sendError(res, next, err);
