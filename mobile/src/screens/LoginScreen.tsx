@@ -1,10 +1,24 @@
-import { useMemo, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { Image } from 'expo-image';
+import * as SecureStore from 'expo-secure-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 import { useServerConfig } from '../context/ServerConfigContext';
 import { useTheme } from '../context/ThemeContext';
+import { fetchCaptcha } from '../api/auth';
 import { getApiBaseUrl, getErrorMessage } from '../api/client';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { getAppVersionLabel } from '../update/appVersion';
@@ -12,6 +26,20 @@ import type { AuthStackParamList } from '../navigation/types';
 import type { ThemeColors } from '../theme/colors';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
+
+const REMEMBER_KEY = 'okul.rememberedLogin';
+
+async function readRememberedLogin(): Promise<{ email: string; password: string } | null> {
+  try {
+    const raw = await SecureStore.getItemAsync(REMEMBER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { email?: string; password?: string };
+    if (!parsed.email || !parsed.password) return null;
+    return { email: parsed.email, password: parsed.password };
+  } catch {
+    return null;
+  }
+}
 
 // Kayıtlı öğretmen e-posta + şifre ile girer. Yeni kayıt Register ekranındadır.
 export function LoginScreen({ navigation }: Props) {
@@ -22,20 +50,75 @@ export function LoginScreen({ navigation }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [remember, setRemember] = useState(false);
+  const [captchaId, setCaptchaId] = useState<string | null>(null);
+  const [captchaSvg, setCaptchaSvg] = useState<string | null>(null);
+  const [captchaCode, setCaptchaCode] = useState('');
+  const [captchaLoading, setCaptchaLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const captchaEase = useRef(0);
+
+  const loadCaptcha = async (ease: number) => {
+    setCaptchaLoading(true);
+    try {
+      const next = await fetchCaptcha(ease);
+      setCaptchaId(next.id);
+      setCaptchaSvg(next.svg);
+      setCaptchaCode('');
+    } catch (err) {
+      setCaptchaId(null);
+      setCaptchaSvg(null);
+      setError(getErrorMessage(err));
+    } finally {
+      setCaptchaLoading(false);
+    }
+  };
+
+  const refreshCaptcha = () => {
+    captchaEase.current = Math.min(2, captchaEase.current + 1);
+    return loadCaptcha(captchaEase.current);
+  };
+
+  useEffect(() => {
+    void (async () => {
+      const saved = await readRememberedLogin();
+      if (saved) {
+        setEmail(saved.email);
+        setPassword(saved.password);
+        setRemember(true);
+      }
+    })();
+    captchaEase.current = 0;
+    void loadCaptcha(0);
+  }, []);
 
   const onSubmit = async () => {
     if (!email.trim() || !password) {
       setError('E-posta ve şifre gerekli');
       return;
     }
+    if (!captchaId || !captchaCode.trim()) {
+      setError('Görsel doğrulama kodu gerekli');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
-      await login(email.trim(), password);
+      await login(email.trim(), password, captchaId, captchaCode.trim());
+      try {
+        if (remember) {
+          await SecureStore.setItemAsync(REMEMBER_KEY, JSON.stringify({ email: email.trim(), password }));
+        } else {
+          await SecureStore.deleteItemAsync(REMEMBER_KEY);
+        }
+      } catch {
+        // Kimlik saklama hatası başarılı girişi kesmesin.
+      }
+      Alert.alert('Girişiniz güvenli değil', '2FA veya SMS doğrulaması kullanın.');
     } catch (err) {
       setError(getErrorMessage(err));
+      void loadCaptcha(captchaEase.current);
     } finally {
       setSubmitting(false);
     }
@@ -66,6 +149,44 @@ export function LoginScreen({ navigation }: Props) {
         value={password}
         onChangeText={setPassword}
       />
+
+      <View style={styles.captchaRow}>
+        <View style={[styles.captchaImage, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
+          {captchaSvg ? (
+            <Image
+              source={{ uri: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(captchaSvg)}` }}
+              style={styles.captchaImg}
+              contentFit="contain"
+              accessibilityLabel="Görsel doğrulama kodu"
+            />
+          ) : (
+            <Text style={{ color: colors.textMuted }}>{captchaLoading ? '…' : '—'}</Text>
+          )}
+        </View>
+        <TouchableOpacity style={styles.refreshButton} onPress={() => void refreshCaptcha()} disabled={captchaLoading}>
+          <Text style={styles.refreshText}>{captchaLoading ? '…' : 'Yenile'}</Text>
+        </TouchableOpacity>
+        <TextInput
+          style={[styles.input, styles.captchaInput]}
+          placeholder="Görseldeki kod"
+          placeholderTextColor={colors.textMuted}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          value={captchaCode}
+          onChangeText={setCaptchaCode}
+        />
+      </View>
+
+      <View style={styles.rememberRow}>
+        <Switch
+          value={remember}
+          onValueChange={(checked) => {
+            setRemember(checked);
+            if (!checked) void SecureStore.deleteItemAsync(REMEMBER_KEY).catch(() => undefined);
+          }}
+        />
+        <Text style={styles.rememberText}>Kullanıcı adımı ve şifremi hatırla</Text>
+      </View>
 
       {error && <Text style={styles.error}>{error}</Text>}
 
@@ -102,6 +223,26 @@ function makeStyles(colors: ThemeColors) {
       marginBottom: 12,
       fontSize: 16,
     },
+    captchaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 },
+    captchaImage: {
+      width: 112,
+      height: 40,
+      borderWidth: 1,
+      borderRadius: 6,
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    captchaImg: { width: 112, height: 40 },
+    captchaInput: { flex: 1, marginBottom: 0 },
+    refreshButton: {
+      borderRadius: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 8,
+    },
+    refreshText: { color: colors.headerLink, fontWeight: '600' },
+    rememberRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+    rememberText: { color: colors.text, flex: 1 },
     button: {
       backgroundColor: colors.primary,
       borderRadius: 8,

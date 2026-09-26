@@ -10,6 +10,7 @@ module.exports = (sequelize, DataTypes) => {
       last_success_at: { type: DataTypes.DATE, allowNull: true },
       last_error: { type: DataTypes.TEXT, allowNull: true },
       last_summary: { type: DataTypes.JSONB, allowNull: true },
+      auto_sync_enabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
     },
     {
       tableName: 'FeedbackSyncStates',

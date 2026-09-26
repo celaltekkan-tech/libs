@@ -74,6 +74,13 @@ export async function downloadFeedbackAttachment(
   downloadBlob(blob, filename)
 }
 
+export async function updateFeedbackSyncSettings(payload: {
+  auto_sync_enabled: boolean
+}): Promise<FeedbackSyncStatus> {
+  const { data } = await client.put<Envelope<FeedbackSyncStatus>>('/api/feedback/sync/settings', payload)
+  return data.data
+}
+
 export async function getFeedbackSyncStatus(): Promise<FeedbackSyncStatus> {
   const { data } = await client.get<Envelope<FeedbackSyncStatus>>('/api/feedback/sync/status')
   return data.data

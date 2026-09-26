@@ -16,6 +16,13 @@ interface Envelope<T> {
   message?: string
 }
 
+export async function fetchCaptcha(ease = 0): Promise<{ id: string; svg: string }> {
+  const { data } = await client.get<Envelope<{ id: string; svg: string }>>('/api/auth/captcha', {
+    params: { ease },
+  })
+  return data.data
+}
+
 export async function login(values: LoginFormValues): Promise<LoginResult> {
   const { data } = await client.post<Envelope<LoginResult>>('/api/auth/login', values)
   if ('requires_2fa' in data.data && data.data.requires_2fa) {

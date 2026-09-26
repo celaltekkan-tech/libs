@@ -63,6 +63,7 @@ function ThemedApp() {
     <ConfigProvider
       locale={trTR}
       theme={theme}
+      modal={{ mask: { closable: false } }}
       popupOverflow="scroll"
       getPopupContainer={(node) => {
         if (node) {

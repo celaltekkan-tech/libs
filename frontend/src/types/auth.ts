@@ -121,4 +121,6 @@ export interface ApiErrorBody {
 export interface LoginFormValues {
   email: string
   password: string
+  captcha_id: string
+  captcha_code: string
 }

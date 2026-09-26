@@ -54,6 +54,7 @@ export interface FeedbackSyncStatus {
   enabled: boolean
   env: string
   peer_configured: boolean
+  auto_sync_enabled: boolean
   last_run_at: string | null
   last_success_at: string | null
   last_error: string | null

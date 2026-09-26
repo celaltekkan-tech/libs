@@ -8,6 +8,7 @@ const smsLoginService = require('../services/smsLoginService');
 const loginLockout = require('../services/loginLockoutService');
 const licenseService = require('../services/licenseService');
 const presence = require('../services/presenceService');
+const captcha = require('../services/captchaService');
 
 const BCRYPT_ROUNDS = 10;
 const PENDING_2FA_EXPIRES = '5m';
@@ -129,6 +130,11 @@ async function rejectInvalidCredentials(res, user) {
 }
 
 module.exports = {
+  captcha(req, res) {
+    const created = captcha.createCaptcha(req.query.ease);
+    return res.json({ success: true, data: created });
+  },
+
   async register(req, res, next) {
     try {
       if (!publicRegisterEnabled) {
@@ -185,7 +191,14 @@ module.exports = {
 
   async login(req, res, next) {
     try {
-      const { email, password } = req.validatedBody || req.body;
+      const { email, password, captcha_id, captcha_code } = req.validatedBody || req.body;
+      if (!captcha.verifyCaptcha(captcha_id, captcha_code)) {
+        return res.status(400).json({
+          success: false,
+          code: 'CAPTCHA_INVALID',
+          message: 'Görsel doğrulama kodu hatalı veya süresi doldu. Yenileyip tekrar deneyin.',
+        });
+      }
 
       const user = await User.scope('withTotp').findOne({
         where: { email: String(email).toLowerCase().trim() },

@@ -28,11 +28,16 @@ const addFeedbackUpdateSchema = Joi.object({
   body: Joi.string().trim().min(3).max(10000).required(),
 });
 
+const updateFeedbackSyncSettingsSchema = Joi.object({
+  auto_sync_enabled: Joi.boolean().required(),
+});
+
 module.exports = {
   createFeedbackSchema,
   updateFeedbackSchema,
   cancelFeedbackSchema,
   addFeedbackUpdateSchema,
+  updateFeedbackSyncSettingsSchema,
   FEEDBACK_STATUSES,
   PENDING_FEEDBACK_STATUSES,
   OPEN_FEEDBACK_STATUSES,

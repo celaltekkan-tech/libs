@@ -13,8 +13,9 @@ import {
   Typography,
   Button,
 } from 'antd'
-import { MoonOutlined, SunOutlined } from '@ant-design/icons'
+import { MoonOutlined, QuestionCircleOutlined, SunOutlined } from '@ant-design/icons'
 import { AppLayout } from '../components/AppLayout'
+import { TwoFactorGuideModal } from '../components/TwoFactorGuideModal'
 import { SortableDashboard } from '../components/SortableDashboard'
 import { useAuth } from '../auth/AuthContext'
 import { useThemeMode } from '../theme/ThemeContext'
@@ -67,6 +68,8 @@ export function ProfilePage() {
   const [userTotpEnabled, setUserTotpEnabled] = useState(Boolean(session?.user.totp_enabled))
   const [setupData, setSetupData] = useState<TwoFactorSetup | null>(null)
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null)
+  const [guideOpen, setGuideOpen] = useState(false)
+  const [qrPulse, setQrPulse] = useState(0)
   const [profileForm] = Form.useForm<ProfileForm>()
   const [passwordForm] = Form.useForm<PasswordForm>()
   const [confirm2faForm] = Form.useForm<Confirm2faForm>()
@@ -165,6 +168,37 @@ export function ProfilePage() {
     }
   }
 
+  const SKIP_2FA_GUIDE = 'okul.skip2faGuide'
+
+  function request2faSetup() {
+    if (localStorage.getItem(SKIP_2FA_GUIDE) === '1') {
+      void onStart2faSetup()
+      return
+    }
+    setGuideOpen(true)
+  }
+
+  function pulseQr() {
+    window.setTimeout(() => setQrPulse((n) => n + 1), 280)
+  }
+
+  function dismissGuide() {
+    setGuideOpen(false)
+    if (setupData) pulseQr()
+  }
+
+  function closeGuideAndStart(rememberSkip: boolean) {
+    if (rememberSkip) localStorage.setItem(SKIP_2FA_GUIDE, '1')
+    setGuideOpen(false)
+    if (setupData) {
+      pulseQr()
+      return
+    }
+    void onStart2faSetup().then((started) => {
+      if (started) pulseQr()
+    })
+  }
+
   const onStart2faSetup = async () => {
     setTwoFactorLoading(true)
     try {
@@ -172,8 +206,10 @@ export function ProfilePage() {
       setSetupData(data)
       setBackupCodes(null)
       confirm2faForm.resetFields()
+      return true
     } catch (err) {
       message.error(getErrorMessage(err))
+      return false
     } finally {
       setTwoFactorLoading(false)
     }
@@ -496,18 +532,24 @@ export function ProfilePage() {
                           : 'Google Authenticator veya benzeri bir uygulama ile girişlerde ek kod isteyin.'}
                       </Typography.Paragraph>
                       {!setupData ? (
-                        <Button type="primary" loading={twoFactorLoading} onClick={() => void onStart2faSetup()}>
+                        <Button type="primary" loading={twoFactorLoading} onClick={request2faSetup}>
                           2FA kurulumunu başlat
                         </Button>
                       ) : (
                         <>
-                          <img
-                            src={setupData.qr_data_url}
-                            alt="2FA QR kodu"
-                            width={180}
-                            height={180}
-                            style={{ borderRadius: 8 }}
-                          />
+                          <div className="profile-2fa-qr-row">
+                            <img
+                              key={qrPulse}
+                              className={qrPulse > 0 ? 'profile-2fa-qr profile-2fa-qr-pulse' : 'profile-2fa-qr'}
+                              src={setupData.qr_data_url}
+                              alt="2FA QR kodu"
+                              width={180}
+                              height={180}
+                            />
+                            <Button icon={<QuestionCircleOutlined />} onClick={() => setGuideOpen(true)}>
+                              Kurulum kılavuzu
+                            </Button>
+                          </div>
                           <Typography.Text type="secondary">
                             Manuel anahtar: <code>{setupData.secret}</code>
                           </Typography.Text>
@@ -531,6 +573,12 @@ export function ProfilePage() {
               ),
             },
           ]}
+        />
+        <TwoFactorGuideModal
+          open={guideOpen}
+          onClose={dismissGuide}
+          onKnow={() => closeGuideAndStart(true)}
+          onContinue={() => closeGuideAndStart(false)}
         />
       </div>
     </AppLayout>

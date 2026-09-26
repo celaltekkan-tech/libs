@@ -815,7 +815,24 @@ async function getSyncStatus() {
     last_success_at: state ? state.last_success_at : null,
     last_error: state ? state.last_error : null,
     last_summary: state ? state.last_summary : null,
+    auto_sync_enabled: state ? state.auto_sync_enabled !== false : true,
   };
+}
+
+async function autoSyncEnabled() {
+  try {
+    const state = await getState();
+    return state.auto_sync_enabled !== false;
+  } catch (err) {
+    console.error('[feedback-sync] auto sync setting:', err.message);
+    return false;
+  }
+}
+
+async function setAutoSyncEnabled(enabled) {
+  const state = await getState();
+  await state.update({ auto_sync_enabled: Boolean(enabled) });
+  return getSyncStatus();
 }
 
 async function rememberFeedbackDeletion(publicId, transaction) {
@@ -870,11 +887,15 @@ function startFeedbackSyncCron() {
   cron.schedule(
     expr,
     () => {
-      runFeedbackSync().catch((err) => console.error('[feedback-sync]', err.message));
+      autoSyncEnabled()
+        .then((on) => (on ? runFeedbackSync() : null))
+        .catch((err) => console.error('[feedback-sync]', err.message));
     },
     { timezone: 'Europe/Istanbul' }
   );
-  console.log(`Feedback sync cron scheduled: ${expr} (${currentEnvName()} -> ${peerBase()})`);
+  console.log(
+    `Feedback sync cron scheduled: ${expr} (${currentEnvName()} -> ${peerBase()}, auto sync follows admin setting)`
+  );
 }
 
 module.exports = {
@@ -884,6 +905,7 @@ module.exports = {
   importChanges,
   runFeedbackSync,
   getSyncStatus,
+  setAutoSyncEnabled,
   rememberFeedbackDeletion,
   sendSyncFile,
   receiveSyncFile,

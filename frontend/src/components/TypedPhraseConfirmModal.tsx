@@ -46,7 +46,6 @@ export function TypedPhraseConfirmModal({
       onCancel={onCancel}
       onOk={() => void onConfirm()}
       destroyOnHidden
-      maskClosable={!loading}
       closable={!loading}
       cancelButtonProps={{ disabled: loading }}
     >

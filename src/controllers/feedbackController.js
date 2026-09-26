@@ -26,6 +26,7 @@ const {
   currentEnvName,
   rememberFeedbackDeletion,
   getSyncStatus,
+  setAutoSyncEnabled,
   runFeedbackSync,
   exportChanges,
   importChanges,
@@ -402,6 +403,15 @@ module.exports = {
   async syncRun(req, res, next) {
     try {
       res.json({ success: true, data: await runFeedbackSync() });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async updateSyncSettings(req, res, next) {
+    try {
+      const { auto_sync_enabled } = req.validatedBody || req.body;
+      res.json({ success: true, data: await setAutoSyncEnabled(auto_sync_enabled) });
     } catch (err) {
       next(err);
     }

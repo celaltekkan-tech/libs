@@ -54,8 +54,25 @@ function sessionFromPayload(payload: LoginResponseData): AuthSession {
   };
 }
 
-export async function login(email: string, password: string): Promise<AuthSession> {
-  const { data } = await client.post<Envelope<LoginResponseData>>('/api/auth/login', { email, password });
+export async function fetchCaptcha(ease = 0): Promise<{ id: string; svg: string }> {
+  const { data } = await client.get<Envelope<{ id: string; svg: string }>>('/api/auth/captcha', {
+    params: { ease },
+  });
+  return data.data;
+}
+
+export async function login(
+  email: string,
+  password: string,
+  captchaId: string,
+  captchaCode: string,
+): Promise<AuthSession> {
+  const { data } = await client.post<Envelope<LoginResponseData>>('/api/auth/login', {
+    email,
+    password,
+    captcha_id: captchaId,
+    captcha_code: captchaCode,
+  });
   return sessionFromPayload(data.data);
 }
 
