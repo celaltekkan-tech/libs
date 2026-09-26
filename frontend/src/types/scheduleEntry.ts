@@ -5,6 +5,7 @@ export const DAY_OPTIONS = [
   { value: 4, label: 'Perşembe' },
   { value: 5, label: 'Cuma' },
   { value: 6, label: 'Cumartesi' },
+  { value: 7, label: 'Pazar' },
 ]
 
 export const DAY_LABELS: Record<number, string> = Object.fromEntries(

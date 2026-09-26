@@ -96,6 +96,15 @@ export async function fetchUpcomingPromotions(
   return data.data
 }
 
+export async function acknowledgeExternalPromotion(
+  teacherId: number,
+  degreeRankDate: string,
+): Promise<void> {
+  await client.post(`/api/teachers/${teacherId}/promotions/acknowledge`, {
+    degree_rank_date: degreeRankDate,
+  })
+}
+
 export async function applyPromotion(
   teacherId: number,
   payload: ApplyPromotionPayload,

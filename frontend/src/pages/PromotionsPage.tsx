@@ -24,6 +24,7 @@ import { SortableTable } from '../components/SortableTable'
 import { useAuth } from '../auth/AuthContext'
 import { useActiveSchool } from '../auth/ActiveSchoolContext'
 import {
+  acknowledgeExternalPromotion,
   applyPromotion,
   downloadPromotionForm,
   fetchSchoolPrincipal,
@@ -31,6 +32,7 @@ import {
   listTeachers,
   reportEightYearCheck,
 } from '../api/teachers'
+import { SalaryFormDraftModal } from '../components/SalaryFormDraftModal'
 import type { UpcomingPromotion } from '../api/teachers'
 import { getErrorMessage } from '../api/client'
 import type {
@@ -93,7 +95,7 @@ function applyModalTitle(type: PromotionType, row?: UpcomingPromotion) {
 }
 
 export function PromotionsPage() {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const { hasPermission } = useAuth()
   const { activeSchoolId } = useActiveSchool()
   const canUpdate = hasPermission('teachers.update')
@@ -108,6 +110,7 @@ export function PromotionsPage() {
   const [expandedKeys, setExpandedKeys] = useState<number[]>([])
   const [principalName, setPrincipalName] = useState<string | null>(null)
   const [periodMonth, setPeriodMonth] = useState<dayjs.Dayjs | null>(null)
+  const [salaryFormOpen, setSalaryFormOpen] = useState(false)
 
   const [applyTarget, setApplyTarget] = useState<{ row: UpcomingPromotion; type: PromotionType } | null>(null)
   const [applySubmitting, setApplySubmitting] = useState(false)
@@ -173,6 +176,9 @@ export function PromotionsPage() {
         r.teacher_name.toLocaleLowerCase('tr-TR').includes(q) ||
         (r.personnel_no || '').toLocaleLowerCase('tr-TR').includes(q)
       )
+    }).sort((a, b) => {
+      if (Boolean(a.at_ceiling) !== Boolean(b.at_ceiling)) return a.at_ceiling ? 1 : -1
+      return (a.days_remaining ?? 99999) - (b.days_remaining ?? 99999)
     })
   }, [rows, searchQuery, typeFilter, onlyDue, period, activeSchoolId, teachersById])
 
@@ -259,6 +265,25 @@ export function PromotionsPage() {
     }
   }
 
+  const markAppliedOutside = (row: UpcomingPromotion) => {
+    if (!row.next_promotion_date) return
+    modal.confirm({
+      title: 'Terfi uygulandı olarak işaretlensin mi?',
+      content: 'Derece ve kademe değişmez. Süre, sistem dışında yapıldığı için yeniden ileri sayılır.',
+      okText: 'Terfi uygulandı',
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        try {
+          await acknowledgeExternalPromotion(row.teacher_id, row.next_promotion_date as string)
+          message.success('Terfi uygulandı olarak işaretlendi')
+          void load()
+        } catch (err) {
+          message.error(getErrorMessage(err))
+        }
+      },
+    })
+  }
+
   const toggleExpand = (teacherId: number) => {
     setExpandedKeys((prev) =>
       prev.includes(teacherId) ? prev.filter((id) => id !== teacherId) : [...prev, teacherId],
@@ -269,6 +294,7 @@ export function PromotionsPage() {
     {
       title: 'Ad Soyad',
       dataIndex: 'teacher_name',
+      sorter: false,
       render: (v: string, r) => (
         <Typography.Link onClick={() => toggleExpand(r.teacher_id)}>{v}</Typography.Link>
       ),
@@ -276,6 +302,7 @@ export function PromotionsPage() {
     {
       title: 'Tür',
       dataIndex: 'personnel_type',
+      sorter: false,
       render: (v: string) => (v === 'ogretmen' ? <Tag color="blue">Öğretmen</Tag> : <Tag color="purple">Memur</Tag>),
     },
     {
@@ -287,8 +314,8 @@ export function PromotionsPage() {
         </Space>
       ),
     },
-    { title: 'Kariyer', dataIndex: 'kariyer', render: (v: string | null) => v || '—' },
-    { title: 'Kademe Tarihi', dataIndex: 'degree_rank_date', render: (v: string | null) => (v ? dayjs(v).format('DD.MM.YYYY') : '—') },
+    { title: 'Kariyer', dataIndex: 'kariyer', sorter: false, render: (v: string | null) => v || '—' },
+    { title: 'Kademe Tarihi', dataIndex: 'degree_rank_date', sorter: false, render: (v: string | null) => (v ? dayjs(v).format('DD.MM.YYYY') : '—') },
     {
       title: 'Sıradaki Yıllık Terfi',
       render: (_: unknown, r: UpcomingPromotion) => {
@@ -301,8 +328,8 @@ export function PromotionsPage() {
         return (
           <Space>
             <span>{shown.format('DD.MM.YYYY')}</span>
-            {!inPeriod && r.days_remaining != null && (
-              <Tag color={r.days_remaining <= 30 ? 'red' : r.in_current_period ? 'orange' : 'blue'}>
+            {r.days_remaining != null && (
+              <Tag color={r.days_remaining < 0 ? 'red' : r.days_remaining <= 30 ? 'red' : r.in_current_period ? 'orange' : 'blue'}>
                 {r.days_remaining} gün
               </Tag>
             )}
@@ -316,9 +343,14 @@ export function PromotionsPage() {
             title: 'İşlemler',
             render: (_: unknown, r: UpcomingPromotion) => (
               <Space wrap size="small">
-                {!r.at_ceiling && (
+                {!r.at_ceiling && (r.days_remaining == null || r.days_remaining >= 0) && (
                   <Button size="small" onClick={() => openApply(r, 'yillik')}>
                     Terfiyi Uygula
+                  </Button>
+                )}
+                {!r.at_ceiling && r.days_remaining != null && r.days_remaining < 0 && (
+                  <Button size="small" type="primary" onClick={() => markAppliedOutside(r)}>
+                    Terfi uygulandı
                   </Button>
                 )}
                 {!r.at_ceiling && r.eight_year_due && (
@@ -349,6 +381,7 @@ export function PromotionsPage() {
         <Typography.Title level={3} style={{ margin: 0 }}>
           Terfi Takibi
         </Typography.Title>
+        <Button onClick={() => setSalaryFormOpen(true)}>Maaş Değişikliği Bildirim Formu</Button>
       </Space>
 
       <FilterBar>
@@ -563,6 +596,7 @@ export function PromotionsPage() {
           </Form.Item>
         </Form>
       </Modal>
+      <SalaryFormDraftModal open={salaryFormOpen} onClose={() => setSalaryFormOpen(false)} canSave={canUpdate} />
     </AppLayout>
   )
 }

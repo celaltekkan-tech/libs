@@ -825,6 +825,46 @@ Notlar:
 - `dev` branch'inde çalışırken sunucu hiçbir şekilde etkilenmez; sadece `master`'a
   merge/push edildiğinde bir sonraki cron taramasında (en fazla 5 dk içinde) pull edilir.
 
+### Geri bildirim senkronu (dev ↔ prod)
+
+Geri bildirimler her ortamın kendi veritabanındadır. Senkron, kayıtları `public_id`
+ile eşler; hesap ve kullanıcı numaraları farklı olsa da kurum adı ve e-posta
+karşı tarafta varsa yerel hesaba bağlanır. Durum, yazışma, ek dosya ve silme
+iki yöne gider. Aynı kayıt iki tarafta da değiştiyse **daha yeni `updated_at`
+kazanır**. İki sunucunun saati yakın olmalıdır; karşılaştırma bu zamana bakar.
+
+Her iki `.env` dosyasında aynı gizli anahtar, farklı ortam adı ve karşı tarafın
+API adresi tanımlanır:
+
+```bash
+# Geliştirme makinesi
+FEEDBACK_SYNC_ENV=dev
+FEEDBACK_SYNC_PEER_URL=https://api.oids.com.tr
+FEEDBACK_SYNC_SECRET=uzun-rastgele-anahtar
+
+# Canlı sunucu
+FEEDBACK_SYNC_ENV=prod
+FEEDBACK_SYNC_PEER_URL=https://api-dev.example.com
+FEEDBACK_SYNC_SECRET=uzun-rastgele-anahtar
+```
+
+`FEEDBACK_SYNC_PEER_URL` karşı tarafın dışarıdan erişilen API köküdür (sonda `/` yok).
+Geliştirme makinesi canlıya ulaşır ama canlı, geliştirme makinesine ulaşamazsa
+canlıda `FEEDBACK_SYNC_PEER_URL` boş bırakılır. Canlı yalnızca istekleri
+karşılar (`FEEDBACK_SYNC_SECRET` ve `FEEDBACK_SYNC_ENV` yine gerekir); çekme ve
+yazma geliştirme tarafının zamanlayıcısında olur. İki sunucu da birbirine
+ulaşabiliyorsa ikisi de aynı işi yapar, ikinci çalıştırma aynı kayıtları
+yeniden yazmaz.
+
+Uygulama ayarlıysa her 5 dakikada bir dener (`FEEDBACK_SYNC_CRON`). Kapatmak
+için `FEEDBACK_SYNC_ENABLED=false`. Platform yöneticisi **Geri Bildirimler**
+ekranından da **Senkronize et** diyebilir. Migration `20260926000005` her iki
+veritabanında da uygulanmış olmalıdır (backend açılışında otomatik).
+
+Ek dosyalar ayrıca indirilir; bir kayıtta en fazla 5 dosya ve dosya başına 5 MB
+sınırı geçerlidir. Karşı tarafta aynı e-posta yoksa kayıt yine listelenir,
+yazar adı anlık kopyadan gösterilir.
+
 ### Veritabanı Yedekleme
 
 Uygulama `pg_dump` ile sıkıştırılmış (`.sql.gz`) yedek alır. **Platform Yönetimi → Yedekleme** ekranından:

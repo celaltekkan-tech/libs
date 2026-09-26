@@ -15,10 +15,19 @@ const applyPromotionSchema = Joi.object({
   is_permanent: Joi.boolean().default(true),
 });
 
+const acknowledgePromotionSchema = Joi.object({
+  degree_rank_date: Joi.date().iso().required(),
+});
+
 const reportEightYearCheckSchema = Joi.object({
   has_penalty: Joi.boolean().required(),
   penalty_date: Joi.date().iso().when('has_penalty', { is: true, then: Joi.required(), otherwise: Joi.allow(null) }),
   note: Joi.string().trim().allow('', null).max(500),
 });
 
-module.exports = { applyPromotionSchema, reportEightYearCheckSchema, PROMOTION_TYPES };
+module.exports = {
+  applyPromotionSchema,
+  acknowledgePromotionSchema,
+  reportEightYearCheckSchema,
+  PROMOTION_TYPES,
+};

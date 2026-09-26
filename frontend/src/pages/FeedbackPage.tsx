@@ -317,7 +317,9 @@ export function FeedbackPage() {
                         #{item.id}
                       </Typography.Text>
                       {' · '}
-                      {item.User?.full_name ? `${item.User.full_name} — ` : ''}
+                      {item.User?.full_name || item.author_name
+                        ? `${item.User?.full_name || item.author_name} — `
+                        : ''}
                       {new Date(item.created_at).toLocaleString('tr-TR')}
                       {item.page_title || item.page_path ? ` · ${item.page_title || item.page_path}` : ''}
                     </Typography.Text>

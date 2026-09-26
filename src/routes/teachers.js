@@ -10,7 +10,11 @@ const {
   exportTeacherSchema,
   importMebbisCommitSchema,
 } = require('../validators/teacher.validator');
-const { applyPromotionSchema, reportEightYearCheckSchema } = require('../validators/promotionHistory.validator');
+const {
+  applyPromotionSchema,
+  acknowledgePromotionSchema,
+  reportEightYearCheckSchema,
+} = require('../validators/promotionHistory.validator');
 const auth = require('../middlewares/auth');
 const requireModule = require('../middlewares/moduleGuard');
 const permission = require('../middlewares/permission');
@@ -29,7 +33,7 @@ router.get(
   '/promotions/salary-form/export',
   auth,
   moduleGuard,
-  permission('norm_positions.read'),
+  permission.any(['norm_positions.read', 'teachers.read']),
   promotionsCtrl.exportSalaryForm,
 );
 router.get(
@@ -59,6 +63,14 @@ router.post(
 router.get('/:id', auth, moduleGuard, permission('teachers.read'), ctrl.get);
 router.get('/:id/document', auth, moduleGuard, permission('teachers.read'), ctrl.document);
 router.get('/:id/promotions', auth, moduleGuard, permission('teachers.read'), promotionsCtrl.listHistory);
+router.post(
+  '/:id/promotions/acknowledge',
+  auth,
+  moduleGuard,
+  permission('teachers.update'),
+  validate(acknowledgePromotionSchema),
+  promotionsCtrl.acknowledgeExternalPromotion,
+);
 router.post(
   '/:id/promotions',
   auth,

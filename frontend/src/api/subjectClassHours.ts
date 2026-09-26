@@ -6,9 +6,9 @@ interface Envelope<T> {
   data: T
 }
 
-export async function listSubjectClassHours(subjectId: number): Promise<SubjectClassHour[]> {
+export async function listSubjectClassHours(subjectId?: number): Promise<SubjectClassHour[]> {
   const { data } = await client.get<Envelope<SubjectClassHour[]>>('/api/subject-class-hours', {
-    params: { subject_id: subjectId },
+    params: subjectId ? { subject_id: subjectId } : undefined,
   })
   return data.data
 }

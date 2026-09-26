@@ -15,11 +15,59 @@ const MONTH_NAMES_TR = [
 
 function formatDateTR(value) {
   if (!value) return '';
+  if (typeof value === 'string') {
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value.trim());
+    if (match) return `${match[3]}.${match[2]}.${match[1]}`;
+  }
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return '';
+  const iso = d.toISOString();
+  if (iso.endsWith('T00:00:00.000Z')) {
+    const [year, month, day] = iso.slice(0, 10).split('-');
+    return `${day}.${month}.${year}`;
+  }
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   return `${dd}.${mm}.${d.getFullYear()}`;
+}
+
+function shiftCell(addr, cutRow, count) {
+  const match = /^([A-Z]+)(\d+)$/.exec(addr || '');
+  if (!match) return null;
+  const row = Number(match[2]);
+  if (row >= cutRow && row < cutRow + count) return null;
+  const next = row >= cutRow + count ? row - count : row;
+  return `${match[1]}${next}`;
+}
+
+function shiftMerge(range, cutRow, count) {
+  const parts = String(range).split(':').map((addr) => shiftCell(addr, cutRow, count));
+  if (parts.some((part) => !part)) return null;
+  return parts.join(':');
+}
+
+/** Şablondaki gizli/boş 7-13. satır bandını kaldırır; personel satırı başlığın hemen altına gelir. */
+function collapsePromotionBlankRows(ws) {
+  const cutRow = 7;
+  const count = 7;
+  const merges = [...(ws.model.merges || [])];
+  merges.forEach((range) => {
+    try {
+      ws.unMergeCells(range);
+    } catch {
+      // birleşik alan zaten çözülmüş olabilir
+    }
+  });
+  ws.spliceRows(cutRow, count);
+  merges.forEach((range) => {
+    const next = shiftMerge(range, cutRow, count);
+    if (!next) return;
+    try {
+      ws.mergeCells(next);
+    } catch {
+      // çakışan birleşim varsa satır yine de dolu kalsın
+    }
+  });
 }
 
 function writeMapped(ws, cell, value) {
@@ -91,11 +139,12 @@ function clearSalaryFormSampleData(ws, mapping) {
   });
 }
 
-async function fillPromotionForm(history, teacher) {
+async function fillPromotionForm(history, teacher, options = {}) {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.readFile(PROMOTION_FORM_TEMPLATE);
   const ws = wb.worksheets[0];
   const { cells } = promotionFormMapping;
+  collapsePromotionBlankRows(ws);
 
   const values = {
     promotion_date: formatDateTR(history.new_degree_rank_date),
@@ -109,20 +158,22 @@ async function fillPromotionForm(history, teacher) {
     title_branch: teacher.title_branch || '',
     working_institution: teacher.working_institution || '',
     previous_degree: history.previous_degree || '',
-    pension_degree: teacher.pension_degree || '',
+    pension_degree: history.previous_degree || '',
     previous_rank: history.previous_rank || '',
     previous_degree_rank_date: formatDateTR(history.previous_degree_rank_date),
     new_degree: history.new_degree || '',
-    pension_degree_new: teacher.pension_degree || '',
+    pension_degree_new: history.new_degree || '',
     new_rank: history.new_rank || '',
     new_degree_rank_date: formatDateTR(history.new_degree_rank_date),
     note: history.note || '',
-    school_principal: teacher.school_principal || '',
+    school_principal: options.principalName || teacher.school_principal || '',
   };
 
   Object.entries(cells || {}).forEach(([field, cell]) => {
     if (cell == null) return;
-    writeMapped(ws, cell, values[field]);
+    const shifted = shiftCell(cell, 7, 7);
+    if (!shifted) return;
+    writeMapped(ws, shifted, values[field]);
   });
 
   return wb.xlsx.writeBuffer();
@@ -150,6 +201,7 @@ function buildSalaryFormModel(promotionEntries, options) {
     form_date: draft.form_date || formatDateTR(new Date()),
     principal:
       draft.principal ||
+      options.principalName ||
       promotionEntries.find((e) => e.teacher.school_principal)?.teacher.school_principal ||
       '',
   };

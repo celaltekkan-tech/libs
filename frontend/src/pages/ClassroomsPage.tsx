@@ -18,7 +18,7 @@ import { listTeachers } from '../api/teachers'
 import { listSchools } from '../api/schools'
 import { getErrorMessage } from '../api/client'
 import type { Classroom, ClassroomPayload } from '../types/classroom'
-import { classroomLabel } from '../types/classroom'
+import { classroomLabel, compareClassrooms, sortClassrooms } from '../types/classroom'
 import type { Teacher } from '../types/teacher'
 import type { School } from '../types/school'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
@@ -72,22 +72,24 @@ export function ClassroomsPage() {
 
   const filteredRows = useMemo(() => {
     const q = searchQuery.trim().toLocaleLowerCase('tr-TR')
-    if (!q) return rows
-    return rows.filter((row) => {
-      const label = classroomLabel(row).toLocaleLowerCase('tr-TR')
-      const teacherName = row.Teacher
-        ? `${row.Teacher.first_name} ${row.Teacher.last_name}`.toLocaleLowerCase('tr-TR')
-        : ''
-      const schoolName = (row.School?.name || '').toLocaleLowerCase('tr-TR')
-      return (
-        label.includes(q) ||
-        row.class_level.toLocaleLowerCase('tr-TR').includes(q) ||
-        row.section.toLocaleLowerCase('tr-TR').includes(q) ||
-        (row.academic_year || '').toLocaleLowerCase('tr-TR').includes(q) ||
-        teacherName.includes(q) ||
-        schoolName.includes(q)
-      )
-    })
+    const source = !q
+      ? rows
+      : rows.filter((row) => {
+          const label = classroomLabel(row).toLocaleLowerCase('tr-TR')
+          const teacherName = row.Teacher
+            ? `${row.Teacher.first_name} ${row.Teacher.last_name}`.toLocaleLowerCase('tr-TR')
+            : ''
+          const schoolName = (row.School?.name || '').toLocaleLowerCase('tr-TR')
+          return (
+            label.includes(q) ||
+            row.class_level.toLocaleLowerCase('tr-TR').includes(q) ||
+            row.section.toLocaleLowerCase('tr-TR').includes(q) ||
+            (row.academic_year || '').toLocaleLowerCase('tr-TR').includes(q) ||
+            teacherName.includes(q) ||
+            schoolName.includes(q)
+          )
+        })
+    return sortClassrooms(source)
   }, [rows, searchQuery])
 
   const openCreate = () => {
@@ -196,7 +198,7 @@ export function ClassroomsPage() {
   const columns: ColumnsType<Classroom> = [
     {
       title: 'Sınıf / Şube',
-      sorter: sorterBy((r: Classroom) => classroomLabel(r)),
+      sorter: (a: Classroom, b: Classroom) => compareClassrooms(a, b),
       sortDirections: [...SORT_AZ],
       render: (_: unknown, record) => classroomLabel(record),
     },

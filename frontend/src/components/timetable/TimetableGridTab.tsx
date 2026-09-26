@@ -17,6 +17,7 @@ import {
 } from '../../api/timetable'
 import { getErrorMessage } from '../../api/client'
 import { DAY_LABELS } from '../../types/scheduleEntry'
+import { periodClock } from './bell'
 import type { TimetableLesson } from '../../types/timetable'
 import { shortClassroom, subjectBorder, subjectColor, teacherFullName, type TimetableCtx } from './shared'
 
@@ -336,9 +337,9 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: `48px repeat(${project.days.length}, minmax(130px, 1fr))`,
+            gridTemplateColumns: `64px repeat(${project.days.length}, minmax(130px, 1fr))`,
             gap: 4,
-            minWidth: 48 + project.days.length * 134,
+            minWidth: 64 + project.days.length * 134,
           }}
           aria-busy={loading}
         >
@@ -364,8 +365,11 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
                   öğle arası
                 </div>
               )}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, color: '#6b7280' }}>
-                {p}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontWeight: 600, color: '#6b7280' }}>
+                <span>{p}</span>
+                <span style={{ fontSize: 10, fontWeight: 400 }}>
+                  {periodClock(project.settings.bell, project.days[0] || 1, p, project.lunch_after)}
+                </span>
               </div>
               {project.days.map((d) => {
                 const key = `${d}:${p}`

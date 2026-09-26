@@ -160,9 +160,7 @@ export function ConstraintsTab({ ctx }: { ctx: TimetableCtx }) {
         ) : (
           <>
             <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
-              İstekleri Türkçe yazın. Yapay zekâ bunları kısıta çevirir; siz onaylamadan hiçbir şey eklenmez. Programı
-              yapay zekâ değil, matematiksel çözücü hazırlar. Gemini'ye yalnızca öğretmen adı/branşı, şube ve ders
-              adları gönderilir.
+              İsteğinizi düz Türkçe yazın. Örneğin "Ayşe Hoca cuma günü gelemiyor". Öneri siz onaylamadan eklenmez.
             </Typography.Paragraph>
             <Input.TextArea
               rows={4}

@@ -38,7 +38,7 @@ import type { ExportTemplate } from '../api/exportTemplates'
 import { listClassrooms } from '../api/classrooms'
 import { getErrorMessage } from '../api/client'
 import type { Classroom } from '../types/classroom'
-import { classroomLabel } from '../types/classroom'
+import { classroomLabel, compareClassrooms, sortClassrooms } from '../types/classroom'
 import type {
   BoardingStatus,
   PhotoRosterImportRow,
@@ -60,7 +60,7 @@ import {
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
 import { tablePagination } from '../utils/tablePagination'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
-import { personNameSorter, SORT_AZ } from '../utils/tableSort'
+import type { SorterResult } from 'antd/es/table/interface'
 import { NATIONAL_ID_RULE, digitsOnlyNationalId } from '../utils/nationalId'
 import { uniqueSelectOptions } from '../utils/uniqueSelectOptions'
 import { DynamicListFilters, isActiveFilterValue, matchesListFilter, type ListFilterValue } from '../components/DynamicListFilters'
@@ -226,6 +226,9 @@ export function StudentsPage() {
   const photoPreviewRef = useRef<string | null>(null)
   const photoLoadGen = useRef(0)
   const [form] = Form.useForm<StudentFormValues>()
+  const [listPage, setListPage] = useState(1)
+  const [listPageSize, setListPageSize] = useState(20)
+  const [columnSort, setColumnSort] = useState<{ key: string; order: 'ascend' | 'descend' } | null>(null)
 
   const replacePhotoPreview = useCallback((url: string | null) => {
     if (photoPreviewRef.current) URL.revokeObjectURL(photoPreviewRef.current)
@@ -322,12 +325,12 @@ export function StudentsPage() {
 
   const classroomOptions = useMemo(
     () =>
-      classrooms
-        .filter((c) => activeSchoolId == null || c.school_id === activeSchoolId || c.school_id == null)
-        .map((c) => ({
-          value: c.id,
-          label: classroomLabel(c),
-        })),
+      sortClassrooms(
+        classrooms.filter((c) => activeSchoolId == null || c.school_id === activeSchoolId || c.school_id == null),
+      ).map((c) => ({
+        value: c.id,
+        label: classroomLabel(c),
+      })),
     [classrooms, activeSchoolId],
   )
 
@@ -354,7 +357,7 @@ export function StudentsPage() {
 
   const filteredStudents = useMemo(() => {
     const q = searchQuery.trim().toLocaleLowerCase('tr-TR')
-    return students.filter((s) => {
+    const list = students.filter((s) => {
       for (const key of STUDENT_FILTER_FIELDS) {
         const selected = filterValues[key]
         if (!isActiveFilterValue(selected)) continue
@@ -372,7 +375,20 @@ export function StudentsPage() {
         (s.national_id || '').toLocaleLowerCase('tr-TR').includes(q)
       )
     })
-  }, [students, searchQuery, filterValues])
+    list.sort((a, b) => {
+      const byClass = compareClassrooms(a, b)
+      if (byClass) return byClass
+      const dir = columnSort?.order === 'descend' ? -1 : 1
+      if (columnSort?.key === 'name') {
+        return dir * `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`, 'tr')
+      }
+      if (columnSort?.key === 'age') {
+        return dir * ((studentAge(a) ?? -1) - (studentAge(b) ?? -1))
+      }
+      return String(a.student_number || '').localeCompare(String(b.student_number || ''), 'tr', { numeric: true })
+    })
+    return list
+  }, [students, searchQuery, filterValues, columnSort])
 
   const hasActiveFilters = Boolean(
     search.trim() || STUDENT_FILTER_FIELDS.some((key) => isActiveFilterValue(filterValues[key])),
@@ -789,11 +805,26 @@ export function StudentsPage() {
   const canDelete = hasPermission('students.delete')
 
   const columns: ColumnsType<Student> = [
-    { title: 'Öğrenci No', dataIndex: 'student_number', render: (v: string | null) => v || '—' },
+    {
+      title: 'Sıra No',
+      key: 'sira',
+      width: 80,
+      sorter: false,
+      render: (_: unknown, __: Student, index: number) => (listPage - 1) * listPageSize + index + 1,
+    },
+    {
+      title: 'Öğrenci No',
+      key: 'number',
+      dataIndex: 'student_number',
+      sorter: () => 0,
+      sortOrder: columnSort?.key === 'number' ? columnSort.order : null,
+      render: (v: string | null) => v || '—',
+    },
     {
       title: 'Ad soyad',
-      sorter: personNameSorter(),
-      sortDirections: [...SORT_AZ],
+      key: 'name',
+      sorter: () => 0,
+      sortOrder: columnSort?.key === 'name' ? columnSort.order : null,
       render: (_: unknown, record) => `${record.first_name} ${record.last_name}`,
     },
     { title: 'T.C.', dataIndex: 'national_id', render: (v: string | null) => v || '—' },
@@ -809,9 +840,11 @@ export function StudentsPage() {
     },
     {
       title: 'Yaşı',
+      key: 'age',
       dataIndex: 'yasi',
       width: 80,
-      sorter: (a, b) => (studentAge(a) ?? -1) - (studentAge(b) ?? -1),
+      sorter: () => 0,
+      sortOrder: columnSort?.key === 'age' ? columnSort.order : null,
       render: (_: unknown, record) => studentAge(record) ?? '—',
     },
     {
@@ -882,15 +915,22 @@ export function StudentsPage() {
             prefix={<SearchOutlined />}
             placeholder="Ad, soyad, öğrenci no veya T.C. ile ara..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setListPage(1)
+            }}
             style={{ width: 320 }}
           />
           <DynamicListFilters
+            multiple
             fields={STUDENT_FILTER_OPTIONS}
             isVisible={isVisible}
             values={filterValues}
             optionsByKey={filterOptionsByKey}
-            onChange={(key, value) => setFilterValues((current) => ({ ...current, [key]: value }))}
+            onChange={(key, value) => {
+              setListPage(1)
+              setFilterValues((current) => ({ ...current, [key]: value }))
+            }}
           />
           <FilterFieldsPicker
             options={STUDENT_FILTER_OPTIONS}
@@ -919,7 +959,18 @@ export function StudentsPage() {
           loading={loading}
           columns={columns}
           dataSource={filteredStudents}
-          pagination={tablePagination(20)}
+          pagination={{
+            ...tablePagination(listPageSize),
+            current: listPage,
+            pageSize: listPageSize,
+          }}
+          onChange={(pagination, _filters, sorter) => {
+            setListPage(pagination.current || 1)
+            setListPageSize(pagination.pageSize || 20)
+            const active = (Array.isArray(sorter) ? sorter[0] : sorter) as SorterResult<Student>
+            if (!active?.order || !active.columnKey || active.columnKey === 'sira') setColumnSort(null)
+            else setColumnSort({ key: String(active.columnKey), order: active.order })
+          }}
           scroll={{ x: 'max-content' }}
         />
       </div>

@@ -12,10 +12,8 @@ function unauthenticated(res) {
  * İzin kontrolü yapan middleware.
  * @param {string|string[]} requiredPermissions - Gerekli izin anahtar(lar)ı
  */
-module.exports = (requiredPermissions) => {
-  const required = Array.isArray(requiredPermissions)
-    ? requiredPermissions
-    : [requiredPermissions];
+function permissionMiddleware(requiredPermissions, mode) {
+  const required = Array.isArray(requiredPermissions) ? requiredPermissions : [requiredPermissions];
 
   return async (req, res, next) => {
     try {
@@ -40,8 +38,9 @@ module.exports = (requiredPermissions) => {
 
       req.access = access;
 
-      const hasAll = required.every((perm) => access.permissions.includes(perm));
-      if (!hasAll) {
+      const matched = required.filter((perm) => access.permissions.includes(perm));
+      const allowed = mode === 'any' ? matched.length > 0 : matched.length === required.length;
+      if (!allowed) {
         return res.status(403).json({
           success: false,
           code: 'PERMISSION_DENIED',
@@ -55,7 +54,10 @@ module.exports = (requiredPermissions) => {
       return next(err);
     }
   };
-};
+}
+
+module.exports = (requiredPermissions) => permissionMiddleware(requiredPermissions, 'all');
+module.exports.any = (requiredPermissions) => permissionMiddleware(requiredPermissions, 'any');
 
 /**
  * Rol kontrolü yapan middleware. Hem global rol (admin, supervisor) hem de

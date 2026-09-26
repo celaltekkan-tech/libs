@@ -22,6 +22,16 @@ const {
   serializeAttachment,
   inlineDisposition,
 } = require('../services/feedbackUpload');
+const {
+  currentEnvName,
+  rememberFeedbackDeletion,
+  getSyncStatus,
+  runFeedbackSync,
+  exportChanges,
+  importChanges,
+  sendSyncFile,
+  receiveSyncFile,
+} = require('../services/feedbackSyncService');
 
 const attachmentInclude = {
   model: FeedbackAttachment,
@@ -32,7 +42,7 @@ const attachmentInclude = {
 const updatesInclude = {
   model: FeedbackUpdate,
   as: 'Updates',
-  attributes: ['id', 'body', 'is_from_platform', 'user_id', 'created_at'],
+  attributes: ['id', 'body', 'is_from_platform', 'user_id', 'author_name', 'created_at'],
   include: [{ model: User, attributes: ['id', 'full_name'] }],
   separate: true,
   order: [['created_at', 'ASC']],
@@ -82,6 +92,10 @@ module.exports = {
     const uploaded = Array.isArray(req.files) ? req.files : [];
     try {
       const payload = req.validatedBody || req.body;
+      const actor = await User.findByPk(req.user.user_id, {
+        attributes: ['id', 'full_name', 'email'],
+        include: [{ model: Tenant, attributes: ['name'] }],
+      });
       const feedback = await sequelize.transaction(async (transaction) => {
         const created = await Feedback.create(
           {
@@ -90,6 +104,10 @@ module.exports = {
             message: payload.message,
             page_path: payload.page_path || null,
             page_title: payload.page_title || null,
+            origin_env: currentEnvName(),
+            author_name: actor?.full_name || null,
+            author_email: actor?.email || null,
+            tenant_name: actor?.Tenant?.name || null,
           },
           { transaction }
         );
@@ -211,7 +229,7 @@ module.exports = {
       if (!feedback) return res.status(404).json({ success: false, message: 'Bulunamadı' });
 
       const user = await User.findByPk(req.user.user_id, {
-        attributes: ['id', 'is_platform_admin', 'tenant_id', 'is_active'],
+        attributes: ['id', 'full_name', 'is_platform_admin', 'tenant_id', 'is_active'],
       });
       if (!user || !user.is_active) {
         return res.status(401).json({ success: false, message: 'Yetkilendirme gerekli' });
@@ -246,6 +264,7 @@ module.exports = {
         user_id: user.id,
         body,
         is_from_platform: isPlatform,
+        author_name: user.full_name || null,
       });
 
       if (!isPlatform) {
@@ -327,7 +346,10 @@ module.exports = {
       if (!feedback) return res.status(404).json({ success: false, message: 'Bulunamadı' });
 
       const storedNames = (feedback.Attachments || []).map((a) => a.stored_name);
-      await feedback.destroy();
+      await sequelize.transaction(async (transaction) => {
+        await rememberFeedbackDeletion(feedback.public_id, transaction);
+        await feedback.destroy({ transaction });
+      });
       storedNames.forEach((name) => removeStoredFile(name));
       res.json({ success: true });
     } catch (err) {
@@ -364,6 +386,55 @@ module.exports = {
       return res.sendFile(filePath, (err) => {
         if (err && !res.headersSent) next(err);
       });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async syncStatus(req, res, next) {
+    try {
+      res.json({ success: true, data: await getSyncStatus() });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async syncRun(req, res, next) {
+    try {
+      res.json({ success: true, data: await runFeedbackSync() });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async syncExport(req, res, next) {
+    try {
+      res.json({ success: true, data: await exportChanges(req.body || {}) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async syncImport(req, res, next) {
+    try {
+      res.json({ success: true, data: await importChanges(req.body || {}) });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async syncDownloadFile(req, res, next) {
+    try {
+      await sendSyncFile(req.params.publicId, res);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async syncUploadFile(req, res, next) {
+    try {
+      await receiveSyncFile(req.params.publicId, req.body);
+      res.json({ success: true });
     } catch (err) {
       next(err);
     }

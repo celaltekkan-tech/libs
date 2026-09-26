@@ -1,5 +1,5 @@
 import client from './client'
-import type { Feedback, FeedbackListParams, FeedbackStatus } from '../types/feedback'
+import type { Feedback, FeedbackListParams, FeedbackStatus, FeedbackSyncStatus } from '../types/feedback'
 import { downloadBlob } from '../utils/download'
 
 interface Envelope<T> {
@@ -72,6 +72,20 @@ export async function downloadFeedbackAttachment(
 ): Promise<void> {
   const blob = await fetchFeedbackAttachmentBlob(attachmentId)
   downloadBlob(blob, filename)
+}
+
+export async function getFeedbackSyncStatus(): Promise<FeedbackSyncStatus> {
+  const { data } = await client.get<Envelope<FeedbackSyncStatus>>('/api/feedback/sync/status')
+  return data.data
+}
+
+export async function runFeedbackSync(): Promise<FeedbackSyncStatus & { ok?: boolean; error?: string }> {
+  const { data } = await client.post<Envelope<FeedbackSyncStatus & { ok?: boolean; error?: string }>>(
+    '/api/feedback/sync/run',
+    {},
+    { timeout: 120000 },
+  )
+  return data.data
 }
 
 export async function viewFeedbackAttachment(

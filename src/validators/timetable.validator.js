@@ -9,16 +9,28 @@ const weights = Joi.object({
   hard_subject_late: Joi.number().integer().min(0).max(1000),
   soft_constraint: Joi.number().integer().min(0).max(1000),
 });
+const dayBreak = Joi.object({
+  day: Joi.number().integer().min(1).max(7).required(),
+  after_period: Joi.number().integer().min(1).max(12).required(),
+  minutes: Joi.number().integer().min(0).max(120).required(),
+});
+const bell = Joi.object({
+  start_time: Joi.string().pattern(/^\d{2}:\d{2}$/),
+  lesson_minutes: Joi.number().integer().min(20).max(120),
+  break_minutes: Joi.number().integer().min(0).max(60),
+  day_breaks: Joi.array().items(dayBreak).max(14),
+});
 const settings = Joi.object({
   time_limit: Joi.number().integer().min(10).max(600),
   max_subject_daily: Joi.number().integer().min(1).max(8),
   weights,
+  bell,
 });
 
 const projectBase = {
   name: Joi.string().trim().max(150),
   academic_year: Joi.string().allow('', null).max(20),
-  days: Joi.array().items(Joi.number().integer().min(1).max(6)).min(1).max(6).unique(),
+  days: Joi.array().items(Joi.number().integer().min(1).max(7)).min(1).max(7).unique(),
   periods_per_day: Joi.number().integer().min(1).max(12),
   lunch_after: Joi.number().integer().min(1).max(11).allow(null),
   settings,
@@ -83,7 +95,7 @@ const aiParseSchema = Joi.object({ text: Joi.string().trim().min(3).max(2000).re
 
 const startRunSchema = Joi.object({ time_limit: Joi.number().integer().min(10).max(600) });
 const moveLessonSchema = Joi.object({
-  day_of_week: Joi.number().integer().min(1).max(6).required(),
+  day_of_week: Joi.number().integer().min(1).max(7).required(),
   period_no: Joi.number().integer().min(1).max(12).required(),
   force: Joi.boolean().default(false),
 });

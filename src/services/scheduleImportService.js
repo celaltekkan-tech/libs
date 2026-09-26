@@ -88,6 +88,8 @@ const DAY_NAME_TO_NUMBER = {
   cum: 5,
   cumartesi: 6,
   cmt: 6,
+  pazar: 7,
+  paz: 7,
 };
 
 function previewScheduleWorkbook(buffer, options = {}) {
@@ -101,10 +103,10 @@ function previewScheduleWorkbook(buffer, options = {}) {
 
 function parseDayOfWeek(value) {
   if (value == null || value === '') return null;
-  if (typeof value === 'number' && value >= 1 && value <= 6) return value;
+  if (typeof value === 'number' && value >= 1 && value <= 7) return value;
   const raw = String(value).trim();
   const asNum = Number(raw);
-  if (Number.isInteger(asNum) && asNum >= 1 && asNum <= 6) return asNum;
+  if (Number.isInteger(asNum) && asNum >= 1 && asNum <= 7) return asNum;
   const normalized = normalizeHeader(raw)
     .replace(/\./g, '')
     .replace(/\s+/g, ' ');
