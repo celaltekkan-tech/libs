@@ -6,3 +6,6 @@ npm-debug.log*
 dist
 web-build
 *.log
+.env
+.env.*
+!.env.example
