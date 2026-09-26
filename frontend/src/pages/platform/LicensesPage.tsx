@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { App, Button, Collapse, DatePicker, Form, Input, InputNumber, List, Modal, Select, Space, Tag, Tooltip, Typography } from 'antd'
 import { SortableTable } from '../../components/SortableTable'
-import { CloseCircleOutlined, EditOutlined, InfoCircleOutlined, PlusOutlined } from '@ant-design/icons'
+import { CloseCircleOutlined, EditOutlined, InfoCircleOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { AppLayout } from '../../components/AppLayout'
@@ -38,6 +38,8 @@ export function LicensesPage() {
   const { message, modal } = App.useApp()
   const [licenses, setLicenses] = useState<License[]>([])
   const [tenants, setTenants] = useState<TenantListItem[]>([])
+  const [tenantSearch, setTenantSearch] = useState('')
+  const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -65,6 +67,15 @@ export function LicensesPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const filteredLicenses = useMemo(() => {
+    const query = tenantSearch.trim().toLocaleLowerCase('tr-TR')
+    if (!query) return licenses
+    return licenses.filter((license) => {
+      const name = (license.Tenant?.name || '').toLocaleLowerCase('tr-TR')
+      return name.includes(query) || String(license.tenant_id).includes(query)
+    })
+  }, [licenses, tenantSearch])
 
   const onFinish = async (values: LicenseFormValues) => {
     setSubmitting(true)
@@ -267,7 +278,18 @@ export function LicensesPage() {
           ]}
         />
 
-        <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 16 }}>
+        <Space wrap style={{ width: '100%', justifyContent: 'space-between', marginBottom: 16 }}>
+          <Input
+            allowClear
+            prefix={<SearchOutlined />}
+            placeholder="Tenant ara..."
+            value={tenantSearch}
+            onChange={(e) => {
+              setTenantSearch(e.target.value)
+              setPage(1)
+            }}
+            style={{ width: 280 }}
+          />
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
             Yeni Lisans
           </Button>
@@ -277,8 +299,8 @@ export function LicensesPage() {
           rowKey="id"
           loading={loading}
           columns={columns}
-          dataSource={licenses}
-          pagination={tablePagination(20)}
+          dataSource={filteredLicenses}
+          pagination={{ ...tablePagination(20), current: page, onChange: (next) => setPage(next) }}
           scroll={{ x: 'max-content' }}
         />
       </div>
