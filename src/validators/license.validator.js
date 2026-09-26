@@ -7,6 +7,11 @@ const createLicenseSchema = Joi.object({
   ends_at: Joi.date().allow(null).optional(),
   notes: Joi.string().allow('', null).max(1000).optional(),
   sms_quota: Joi.number().integer().min(1).max(10000000).allow(null).optional(),
+  ai_daily_limit: Joi.number().integer().min(0).max(100000).allow(null).optional(),
 });
 
-module.exports = { createLicenseSchema };
+const updateAiLimitSchema = Joi.object({
+  ai_daily_limit: Joi.number().integer().min(0).max(100000).allow(null).required(),
+});
+
+module.exports = { createLicenseSchema, updateAiLimitSchema };

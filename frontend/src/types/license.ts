@@ -12,6 +12,11 @@ export interface License {
   sms_quota?: number | null
   sms_used?: number
   sms_remaining?: number | null
+  /** Yapay Zekâ eklentisi: lisansa özel günlük sınır; null = sistem varsayılanı, 0 = sınırsız */
+  ai_daily_limit?: number | null
+  /** Geçerli sınır (varsayılan çözülmüş hali) */
+  ai_effective_limit?: number
+  ai_used_today?: number
   created_at: string
   updated_at: string
   Tenant?: { id: number; name: string } | null
@@ -24,4 +29,5 @@ export interface CreateLicensePayload {
   ends_at?: string | null
   notes?: string
   sms_quota?: number | null
+  ai_daily_limit?: number | null
 }

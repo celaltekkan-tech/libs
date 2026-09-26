@@ -78,6 +78,9 @@ export function StudentLookupScreen({ navigation }: Props) {
           <TouchableOpacity onPress={() => navigation.navigate('ChangePassword')}>
             <Text style={styles.headerLink}>Şifre</Text>
           </TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate('About')}>
+            <Text style={styles.headerLink}>Hakkında</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => void logout()}>
             <Text style={styles.logout}>Çıkış</Text>
           </TouchableOpacity>

@@ -81,17 +81,27 @@ function getSchoolLimitForPlan(planName) {
 const SCHOOL_CODE_ASSIGN_PLANS = new Set(['Premium', 'Kurumsal']);
 
 // Ana lisansa ek paketler. Modül açmaz; getActiveLicense bunları yok sayar.
+// category: aynı kategorideki yeni eklenti yalnızca öncekini değiştirir
+// (SMS eklentisi yapay zekâ eklentisini iptal etmez, tersi de).
 // smsQuota: o lisans kaydının kotası. Süre bitince kalan kredi 0 olur;
 // yeni SMS lisansı sms_used=0 ile başlar (devreden kredi yok).
 const ADDON_PLANS = {
-  'SMS 3000': { kind: 'addon', smsQuota: 3000 },
-  'SMS 10000': { kind: 'addon', smsQuota: 10000 },
+  'SMS 3000': { kind: 'addon', category: 'sms', smsQuota: 3000 },
+  'SMS 10000': { kind: 'addon', category: 'sms', smsQuota: 10000 },
+  // Yapay zekâ özellikleri (şimdilik: ders programında serbest metinle kısıt yazma).
+  'Yapay Zekâ': { kind: 'addon', category: 'ai' },
+};
+
+const ADDON_ALIASES = {
+  sms: 'SMS 3000',
+  ai: 'Yapay Zekâ',
+  'yapay zeka': 'Yapay Zekâ',
 };
 
 function resolveAddonPlanKey(planName) {
   if (!planName) return null;
   const normalized = String(planName).toLocaleLowerCase('tr-TR');
-  if (normalized === 'sms') return 'SMS 3000';
+  if (ADDON_ALIASES[normalized]) return ADDON_ALIASES[normalized];
   return Object.keys(ADDON_PLANS).find((name) => name.toLocaleLowerCase('tr-TR') === normalized) || null;
 }
 
@@ -99,14 +109,24 @@ function isAddonPlan(planName) {
   return Boolean(resolveAddonPlanKey(planName));
 }
 
+/** 'main' (ana lisans) | 'sms' | 'ai' */
+function getPlanCategory(planName) {
+  const key = resolveAddonPlanKey(planName);
+  return key ? ADDON_PLANS[key].category : 'main';
+}
+
 function isSmsPlan(planName) {
-  return Boolean(resolveAddonPlanKey(planName));
+  return getPlanCategory(planName) === 'sms';
+}
+
+function isAiPlan(planName) {
+  return getPlanCategory(planName) === 'ai';
 }
 
 function getSmsQuotaForPlan(planName) {
   const key = resolveAddonPlanKey(planName);
   if (!key) return null;
-  return ADDON_PLANS[key].smsQuota;
+  return ADDON_PLANS[key].smsQuota ?? null;
 }
 
 function canAssignSchoolCode(planName) {
@@ -129,5 +149,7 @@ module.exports = {
   isUnlimitedAccountRole,
   isAddonPlan,
   isSmsPlan,
+  isAiPlan,
+  getPlanCategory,
   getSmsQuotaForPlan,
 };

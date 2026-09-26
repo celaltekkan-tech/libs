@@ -11,3 +11,6 @@ frontend
 docs
 coverage
 *.log
+solver
+landing
+mobile

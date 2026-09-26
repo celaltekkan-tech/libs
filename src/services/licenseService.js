@@ -1,6 +1,6 @@
 const { License } = require('../models');
 const { Op } = require('sequelize');
-const { isAddonPlan, isSmsPlan, getSmsQuotaForPlan } = require('../config/licensePlans');
+const { isAddonPlan, isSmsPlan, isAiPlan, getSmsQuotaForPlan } = require('../config/licensePlans');
 
 class SmsLicenseError extends Error {
   constructor(code, message, status, details = {}) {
@@ -51,6 +51,41 @@ async function getActiveLicense(tenantId) {
 async function getActiveSmsLicense(tenantId) {
   const rows = await findActiveLicenses(tenantId);
   return rows.find((row) => isSmsPlan(row.plan)) || null;
+}
+
+async function getActiveAiLicense(tenantId) {
+  if (!tenantId) return null;
+  const rows = await findActiveLicenses(tenantId);
+  return rows.find((row) => isAiPlan(row.plan)) || null;
+}
+
+async function getAiLicenseState(tenantId) {
+  const license = await getActiveAiLicense(tenantId);
+  if (!license) return null;
+  return {
+    id: license.id,
+    plan: license.plan,
+    starts_at: license.starts_at,
+    ends_at: license.ends_at,
+    ai_daily_limit: aiUsage().resolveLimit(license),
+  };
+}
+
+// Döngüsel require'ı önlemek için geç yüklenir (aiUsageService models'e bağlı).
+function aiUsage() {
+  return require('./aiUsageService');
+}
+
+/** Yapay Zekâ lisanslarına geçerli günlük sınırı ve bugünkü kullanımı ekler. */
+async function attachAiUsage(licenses) {
+  for (const license of licenses) {
+    if (!isAiPlan(license.plan)) continue;
+    const limit = aiUsage().resolveLimit(license);
+    const { used } = await aiUsage().getUsage(license.tenant_id, limit);
+    license.setDataValue('ai_effective_limit', limit);
+    license.setDataValue('ai_used_today', license.status === 'active' ? used : 0);
+  }
+  return licenses;
 }
 
 function serializeSmsLicense(license) {
@@ -130,6 +165,9 @@ module.exports = {
   getActiveLicense,
   getActiveSmsLicense,
   getSmsLicenseState,
+  getActiveAiLicense,
+  getAiLicenseState,
+  attachAiUsage,
   attachSmsUsage,
   assertCanSendSms,
   consumeSmsCredits,

@@ -1,6 +1,6 @@
 const { License, Tenant } = require('../models');
 const { Op } = require('sequelize');
-const { isAddonPlan, isSmsPlan, getSmsQuotaForPlan } = require('../config/licensePlans');
+const { isAddonPlan, isSmsPlan, isAiPlan, getSmsQuotaForPlan, getPlanCategory } = require('../config/licensePlans');
 const licenseService = require('../services/licenseService');
 
 function resolveSmsQuota(plan) {
@@ -22,6 +22,7 @@ module.exports = {
       });
 
       await licenseService.attachSmsUsage(licenses);
+      await licenseService.attachAiUsage(licenses);
       res.json({ success: true, data: licenses });
     } catch (err) {
       next(err);
@@ -35,13 +36,14 @@ module.exports = {
       });
       if (!license) return res.status(404).json({ success: false, message: 'Lisans bulunamadı' });
       await licenseService.attachSmsUsage([license]);
+      await licenseService.attachAiUsage([license]);
       res.json({ success: true, data: license });
     } catch (err) {
       next(err);
     }
   },
 
-  // Ana lisans yalnızca diğer ana lisansı iptal eder; SMS eklentisi yanına eklenir.
+  // Yeni lisans yalnızca aynı kategorideki aktif lisansı iptal eder (ana / SMS / yapay zekâ).
   async create(req, res, next) {
     const payload = req.validatedBody || req.body;
     const transaction = await License.sequelize.transaction();
@@ -69,7 +71,7 @@ module.exports = {
           return res.status(409).json({
             success: false,
             code: 'MAIN_LICENSE_REQUIRED',
-            message: 'SMS lisansı vermek için hesabın aktif bir ana lisansı olmalıdır.',
+            message: 'Eklenti lisansı vermek için hesabın aktif bir ana lisansı olmalıdır.',
           });
         }
       }
@@ -78,8 +80,9 @@ module.exports = {
         where: { tenant_id: payload.tenant_id, status: 'active' },
         transaction,
       });
+      const category = getPlanCategory(payload.plan);
       const idsToCancel = activesToReplace
-        .filter((row) => isAddonPlan(row.plan) === creatingAddon)
+        .filter((row) => getPlanCategory(row.plan) === category)
         .map((row) => row.id);
 
       if (idsToCancel.length > 0) {
@@ -98,6 +101,7 @@ module.exports = {
           notes: payload.notes || null,
           sms_quota: resolveSmsQuota(payload.plan),
           sms_used: 0,
+          ai_daily_limit: isAiPlan(payload.plan) ? payload.ai_daily_limit ?? null : null,
           status: 'active',
         },
         { transaction }
@@ -107,6 +111,21 @@ module.exports = {
       res.status(201).json({ success: true, data: license });
     } catch (err) {
       await transaction.rollback();
+      next(err);
+    }
+  },
+
+  async updateAiLimit(req, res, next) {
+    try {
+      const license = await License.findByPk(req.params.id);
+      if (!license) return res.status(404).json({ success: false, message: 'Lisans bulunamadı' });
+      if (!isAiPlan(license.plan)) {
+        return res.status(400).json({ success: false, message: 'Günlük sınır yalnızca Yapay Zekâ eklentisinde tanımlanır' });
+      }
+      await license.update({ ai_daily_limit: req.validatedBody.ai_daily_limit });
+      await licenseService.attachAiUsage([license]);
+      res.json({ success: true, data: license });
+    } catch (err) {
       next(err);
     }
   },

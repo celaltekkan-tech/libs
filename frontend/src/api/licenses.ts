@@ -19,6 +19,11 @@ export async function createLicense(payload: CreateLicensePayload): Promise<Lice
   return data.data
 }
 
+export async function updateLicenseAiLimit(id: number, aiDailyLimit: number | null): Promise<License> {
+  const { data } = await client.put<Envelope<License>>(`/api/licenses/${id}/ai-limit`, { ai_daily_limit: aiDailyLimit })
+  return data.data
+}
+
 export async function cancelLicense(id: number): Promise<License> {
   const { data } = await client.put<Envelope<License>>(`/api/licenses/${id}/cancel`)
   return data.data

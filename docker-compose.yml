@@ -36,9 +36,27 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      solver:
+        condition: service_started
     networks:
       - internal
       - proxy
+
+  # OR-Tools ders programı çözücüsü; yalnızca iç ağdan (backend) erişilir.
+  solver:
+    build:
+      context: ./solver
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      SOLVER_MAX_JOBS: ${SOLVER_MAX_JOBS:-1}
+      SOLVER_WORKERS: ${SOLVER_WORKERS:-4}
+    deploy:
+      resources:
+        limits:
+          memory: ${SOLVER_MEMORY_LIMIT:-2g}
+    networks:
+      - internal
 
   frontend:
     build:

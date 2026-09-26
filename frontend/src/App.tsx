@@ -25,6 +25,7 @@ import { ClassroomsPage } from './pages/ClassroomsPage'
 import { UsersPage } from './pages/UsersPage'
 import { AuditLogsPage } from './pages/AuditLogsPage'
 import { SchedulePage } from './pages/SchedulePage'
+import { TimetableBuilderPage } from './pages/TimetableBuilderPage'
 import { SubjectsPage } from './pages/SubjectsPage'
 import { LeavesPage } from './pages/LeavesPage'
 import { NormPositionsPage } from './pages/NormPositionsPage'
@@ -136,6 +137,7 @@ function ThemedApp() {
                   </Route>
                   <Route element={<ModuleRoute module="schedule" />}>
                     <Route path="/schedule" element={<SchedulePage />} />
+                    <Route path="/schedule-builder" element={<TimetableBuilderPage />} />
                     <Route path="/subjects" element={<SubjectsPage />} />
                   </Route>
                   <Route element={<ModuleRoute module="leaves" />}>

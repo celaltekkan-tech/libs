@@ -10,4 +10,6 @@ export type RootStackParamList = {
   ReasonSelect: { student: Student };
   MyNotes: undefined;
   ChangePassword: undefined;
+  Notifications: undefined;
+  About: undefined;
 };
