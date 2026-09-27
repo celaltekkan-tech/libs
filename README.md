@@ -940,6 +940,37 @@ ayarlanır. Aynı ekrandan **Şimdi yedek al** ve **Geri yükle** çalışır. S
 
 Docker'da yedekler host'taki `BACKUP_HOST_DIR` (varsayılan `./backups`) klasörüne yazılır; paneldeki yol container içinde `/app/backups` olur. Geliştirmede Windows için `PG_DUMP_PATH` / `PSQL_PATH` gerekebilir.
 
+Her başarılı veritabanı yedeği, sıkıştırılmış haliyle AES-256-GCM ile şifrelenip Google Drive klasörüne de kopyalanabilir. Yerel dosya panelden geri yükleme için `.sql.gz` olarak durur; Drive’daki kopya `.sql.gz.enc` olur.
+
+Zamanlanmış cron (paneldeki günlük saat) ve **Şimdi yedek al** aynı yüklemeyi yapar. Drive’a gidemezse yerel yedek yine alınır; hata Yedekleme Geçmişi’nde **Google Drive** satırı olarak görünür. Drive’daki eski zamanlanmış yedekler, paneldeki saklama süresiyle silinir; en yeni 3 tanesi kalır.
+
+`.env` içine şunları yazın. `BACKUP_ENCRYPTION_PASSWORD` yedek dosyasının şifresidir, Google hesap şifresi değildir. En az 8 karakter olmalıdır.
+
+```bash
+BACKUP_ENCRYPTION_PASSWORD=uzun-bir-yedek-sifresi
+GOOGLE_DRIVE_FOLDER_ID=drive-klasor-id
+GOOGLE_DRIVE_CLIENT_ID=
+GOOGLE_DRIVE_CLIENT_SECRET=
+GOOGLE_DRIVE_REFRESH_TOKEN=
+```
+
+Refresh token için Google Cloud’da Drive API açık bir **Masaüstü** OAuth istemcisi oluşturun, yönlendirme URI’sine `http://127.0.0.1:53682/callback` ekleyin, istemci kimliğini `.env`’e yazıp şunu çalıştırın:
+
+```bash
+node scripts/google-drive-auth.js
+```
+
+Çıkan `GOOGLE_DRIVE_REFRESH_TOKEN` değerini `.env`’e ekleyip uygulamayı yeniden başlatın. Yedekleme sayfasında “Google Drive kopyası açık” uyarısı görünür.
+
+Drive’dan indirilen dosyayı çözmek için:
+
+```bash
+node scripts/decrypt-backup.js yedek.sql.gz.enc yedek.sql.gz
+gunzip -c yedek.sql.gz | docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME"
+```
+
+Workspace paylaşılan sürücüsünde servis hesabı kullanacaksanız refresh token yerine `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` (dosya yolu veya JSON) yeterlidir. Klasör, servis hesabının e-postasıyla düzenleyici olarak paylaşılmalıdır. Kişisel Gmail’de servis hesabının depolama kotası yoktur; normal hesap için OAuth yolu gerekir. İkisi birden doluysa OAuth kullanılır.
+
 Notlar:
 - Zamanlama uygulama içindedir; ayrı bir host crontab satırı gerekmez. Eski `scripts/db-backup.sh` cron'u varsa çift yedek alınmaması için kaldırın.
 - Aynı anda iki yedekleme/geri yükleme çakışmasın diye kilitlenir.

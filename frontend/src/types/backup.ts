@@ -7,6 +7,10 @@ export interface BackupSettings {
   last_run_message: string | null
   cron_enabled: boolean
   dir_warning: string | null
+  drive_upload?: {
+    enabled: boolean
+    message: string | null
+  }
 }
 
 export interface BackupFile {
@@ -20,7 +24,7 @@ export interface BackupRunResult {
   backup_dir: string
 }
 
-export type BackupLogAction = 'backup' | 'prune' | 'delete' | 'import' | 'restore' | 'download' | 'config'
+export type BackupLogAction = 'backup' | 'prune' | 'delete' | 'import' | 'restore' | 'download' | 'config' | 'drive'
 export type BackupLogStatus = 'running' | 'success' | 'error' | 'skipped' | 'warning'
 
 export interface BackupLog {

@@ -14,6 +14,7 @@ const ACTION_LABEL: Record<BackupLogAction, string> = {
   restore: 'Geri yükleme',
   download: 'İndirme',
   config: 'Ayar / Sistem',
+  drive: 'Google Drive',
 }
 
 const STATUS_TAG: Record<BackupLogStatus, { color: string; text: string }> = {

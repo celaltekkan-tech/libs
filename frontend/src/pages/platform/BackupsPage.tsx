@@ -247,14 +247,24 @@ export function BackupsPage() {
           Yedekleme
         </Typography.Title>
         <Typography.Paragraph type="secondary">
-          Yedekler her gün belirlediğiniz saatte, seçtiğiniz klasöre alınır. Saklama süresini aşan
-          zamanlanmış yedekler bir sonraki yedeklemede silinir (en yeni 3 tanesi her zaman saklanır); manuel
-          alınan ve yüklenen yedekler otomatik silinmez. Yedek dosyasını indirebilir veya .sql.gz dosyası
-          yükleyebilirsiniz. Geri yükleme mevcut veritabanının üzerine yazar.
+          Yedekler her gün belirlediğiniz saatte, seçtiğiniz klasöre sıkıştırılmış (.sql.gz) alınır.
+          Saklama süresini aşan zamanlanmış yedekler bir sonraki yedeklemede silinir (en yeni 3 tanesi her
+          zaman saklanır); manuel alınan ve yüklenen yedekler otomatik silinmez. .env içinde şifre ve Google
+          Drive bilgisi varsa aynı dosya şifrelenip Drive klasörüne de yüklenir. Yedek dosyasını indirebilir
+          veya .sql.gz dosyası yükleyebilirsiniz. Geri yükleme mevcut veritabanının üzerine yazar.
         </Typography.Paragraph>
 
         {settings?.dir_warning && (
           <Alert type="error" showIcon style={{ marginBottom: 16, maxWidth: 640 }} message="Yedek klasörü kalıcı değil" description={settings.dir_warning} />
+        )}
+        {settings?.drive_upload?.message && (
+          <Alert
+            type={settings.drive_upload.enabled ? 'info' : 'warning'}
+            showIcon
+            style={{ marginBottom: 16, maxWidth: 640 }}
+            message={settings.drive_upload.enabled ? 'Google Drive kopyası açık' : 'Google Drive kopyası kapalı'}
+            description={settings.drive_upload.message}
+          />
         )}
         {settings && !settings.cron_enabled && (
           <Alert
