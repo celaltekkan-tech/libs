@@ -43,9 +43,37 @@ async function findActiveLicenses(tenantId, options = {}) {
  * Tenant'ın şu anda geçerli ana lisansını döner (SMS eklentisi hariç).
  * Yoksa null — tenant lisanssız/süresi dolmuş kabul edilir.
  */
-async function getActiveLicense(tenantId) {
-  const rows = await findActiveLicenses(tenantId);
+async function getActiveLicense(tenantId, options = {}) {
+  const rows = await findActiveLicenses(tenantId, options);
   return rows.find((row) => !isAddonPlan(row.plan)) || null;
+}
+
+/** Tenants.plan kolonunu aktif ana lisansla eşitler (liste gösterimi için). */
+async function syncTenantPlan(tenantId, options = {}) {
+  const { Tenant } = require('../models');
+  const main = await getActiveLicense(tenantId, options);
+  await Tenant.update(
+    { plan: main ? main.plan : null },
+    { where: { id: tenantId }, transaction: options.transaction }
+  );
+}
+
+/** tenant_id → aktif ana lisans planı. Eklentiler ve süresi bitmiş lisanslar dahil değil. */
+async function getActiveMainPlanMap() {
+  const rows = await License.findAll({
+    where: {
+      status: 'active',
+      [Op.or]: [{ ends_at: null }, { ends_at: { [Op.gte]: new Date() } }],
+    },
+    attributes: ['tenant_id', 'plan', 'created_at'],
+    order: [['created_at', 'DESC']],
+  });
+  const map = new Map();
+  for (const row of rows) {
+    if (isAddonPlan(row.plan) || map.has(row.tenant_id)) continue;
+    map.set(row.tenant_id, row.plan);
+  }
+  return map;
 }
 
 async function getActiveSmsLicense(tenantId) {
@@ -163,6 +191,8 @@ async function assertCanSendSms(tenantId, count = 1) {
 module.exports = {
   SmsLicenseError,
   getActiveLicense,
+  syncTenantPlan,
+  getActiveMainPlanMap,
   getActiveSmsLicense,
   getSmsLicenseState,
   getActiveAiLicense,

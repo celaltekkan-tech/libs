@@ -46,7 +46,6 @@ export interface TenantUser {
 export interface CreateTenantWizardPayload {
   tenant: {
     name: string
-    plan?: string
     phone?: string | null
   }
   school: {

@@ -24,13 +24,15 @@ module.exports = {
   async list(req, res, next) {
     try {
       const tenants = await Tenant.findAll({ order: [['id', 'ASC']] });
-      const [schoolCounts, userCounts] = await Promise.all([
+      const [schoolCounts, userCounts, planByTenant] = await Promise.all([
         countsByTenant(School),
         countsByTenant(User),
+        licenseService.getActiveMainPlanMap(),
       ]);
 
       const data = tenants.map((tenant) => ({
         ...tenant.toJSON(),
+        plan: planByTenant.get(tenant.id) || null,
         school_count: schoolCounts.get(tenant.id) || 0,
         user_count: userCounts.get(tenant.id) || 0,
       }));
@@ -48,7 +50,8 @@ module.exports = {
         return res.status(404).json({ success: false, message: 'Hesap bulunamadı' });
       }
 
-      res.json({ success: true, data: tenant });
+      const main = await licenseService.getActiveLicense(tenant.id);
+      res.json({ success: true, data: { ...tenant.toJSON(), plan: main?.plan || null } });
     } catch (err) {
       next(err);
     }
@@ -138,7 +141,7 @@ module.exports = {
       const tenant = await Tenant.create(
         {
           name: payload.tenant.name,
-          plan: payload.tenant.plan || null,
+          plan: null,
           phone: tenantPhone,
         },
         { transaction }

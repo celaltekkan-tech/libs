@@ -281,7 +281,9 @@ export function TenantDetailPage() {
                     {tenant && (
                       <Space direction="vertical" size={16} style={{ width: '100%' }}>
                         <Descriptions column={1} size="small">
-                          <Descriptions.Item label="Plan">{tenant.plan || '—'}</Descriptions.Item>
+                          <Descriptions.Item label="Plan">
+                            {activeLicense?.plan || 'Aktif lisans yok'}
+                          </Descriptions.Item>
                           <Descriptions.Item label="Kurum telefonu">
                             {tenant.phone || '—'}
                           </Descriptions.Item>
