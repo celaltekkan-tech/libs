@@ -28,6 +28,12 @@
     "plugins": [
       "expo-secure-store",
       "expo-image"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "0a6acd97-5365-4020-9719-a27f93999b1b"
+      }
+    },
+    "owner": "tekkan"
   }
 }

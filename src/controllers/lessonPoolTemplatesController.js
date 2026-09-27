@@ -4,7 +4,7 @@
 
 const { LessonPoolTemplate } = require('../models');
 const audit = require('../services/auditService');
-const { parseLessonPoolFile } = require('../services/lessonPoolParser');
+const { parseInChild } = require('../services/lessonPoolParseRunner');
 const { sanitizeItems } = require('../services/lessonPoolTemplateService');
 
 function httpError(status, message) {
@@ -14,7 +14,10 @@ function httpError(status, message) {
 }
 
 function sendError(res, next, err) {
-  if (err.status && err.status < 500) return res.status(err.status).json({ success: false, message: err.message });
+  if (err.status && err.status < 500) {
+    console.warn(`[lesson-pools] ${err.status}: ${err.message}`);
+    return res.status(err.status).json({ success: false, message: err.message });
+  }
   return next(err);
 }
 
@@ -57,8 +60,9 @@ module.exports = {
       if (!req.file) throw httpError(400, 'Dosya seçilmedi');
       let sheets;
       try {
-        sheets = await parseLessonPoolFile(req.file.buffer, req.file.originalname);
+        sheets = await parseInChild(req.file.buffer, req.file.originalname);
       } catch (err) {
+        console.error('[lesson-pools] dosya ayrıştırılamadı:', req.file.originalname, req.file.size, err);
         throw httpError(400, `Dosya okunamadı: ${err.message}`);
       }
       if (!sheets.length) {

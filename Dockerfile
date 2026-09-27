@@ -7,7 +7,10 @@ RUN apk add --no-cache python3 make g++ \
   && (apk add --no-cache postgresql16-client || apk add --no-cache postgresql-client)
 
 COPY package.json package-lock.json ./
-RUN npm ci
+# pdfjs-dist isteğe bağlı olarak @napi-rs/canvas (native Skia) kurar. Yalnız metin
+# çıkardığımız için gerekmez; bazı işlemcilerde yüklenince süreci çökertebildiği
+# için kaldırılır (pdfjs uyarı verip canvas'sız çalışır).
+RUN npm ci && rm -rf node_modules/@napi-rs
 
 COPY . .
 RUN mkdir -p uploads backups && chmod +x docker/backend-entrypoint.sh

@@ -19,16 +19,14 @@ import {
   listRegisterDistricts,
   listRegisterProvinces,
   listRegisterSchools,
-  resendTeacherRegisterSms,
   startTeacherRegister,
-  verifyTeacherRegister,
 } from '../api/auth';
 import { getErrorMessage } from '../api/client';
 import type { AuthStackParamList } from '../navigation/types';
 import type { ThemeColors } from '../theme/colors';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Register'>;
-type Step = 'school' | 'identity' | 'sms';
+type Step = 'school' | 'identity';
 
 export function RegisterScreen({ navigation }: Props) {
   const { applySession } = useAuth();
@@ -48,11 +46,6 @@ export function RegisterScreen({ navigation }: Props) {
   const [nationalId, setNationalId] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
-
-  const [pendingToken, setPendingToken] = useState('');
-  const [code, setCode] = useState('');
-  const [phoneHint, setPhoneHint] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -106,56 +99,20 @@ export function RegisterScreen({ navigation }: Props) {
 
   const onStart = async () => {
     if (!school) return;
-    if (!nationalId.trim() || !lastName.trim() || !email.trim() || !phone.trim()) {
-      setError('T.C. kimlik numarası, soyad, e-posta ve cep telefonu gerekli');
+    if (!nationalId.trim() || !lastName.trim() || !email.trim()) {
+      setError('T.C. kimlik numarası, soyad ve e-posta gerekli');
       return;
     }
     setSubmitting(true);
     setError(null);
     try {
-      const result = await startTeacherRegister({
+      const session = await startTeacherRegister({
         school_id: school.id,
         national_id: nationalId.trim(),
         last_name: lastName.trim(),
         email: email.trim(),
-        phone: phone.trim(),
       });
-      setPendingToken(result.pending_token);
-      setPhoneHint(result.phone_hint);
-      setCode('');
-      setStep('sms');
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const onVerify = async () => {
-    const digits = code.replace(/\D/g, '');
-    if (!/^\d{6}$/.test(digits)) {
-      setError('6 haneli doğrulama kodunu girin');
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    try {
-      const session = await verifyTeacherRegister(pendingToken, digits);
       await applySession(session);
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const onResendSms = async () => {
-    setSubmitting(true);
-    setError(null);
-    try {
-      const result = await resendTeacherRegisterSms(pendingToken);
-      setPhoneHint(result.phone_hint);
-      setCode('');
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -173,9 +130,7 @@ export function RegisterScreen({ navigation }: Props) {
         <Text style={styles.subtitle}>
           {step === 'school' && 'Önce il, ilçe ve okulunuzu seçin. Yalnızca geçerli lisansı olan okullar listelenir.'}
           {step === 'identity' &&
-            'T.C. kimlik numarası ve soyad ile öğretmen kaydınız eşleştirilir; doğrulama cep telefonunuza gelen SMS ile yapılır. Telefon, öğretmen kaydınızdaki numarayla aynı olmalıdır. E-posta adresiniz giriş için kullanıcı adı olur.'}
-          {step === 'sms' &&
-            `Doğrulama kodu ${phoneHint} numarasına gönderildi. Kodu girin; boşluklar otomatik silinir. Varsayılan şifreniz T.C. kimlik numaranızdır.`}
+            'T.C. kimlik numarası ve soyad, okulun öğretmenler listesindeki kayıtla eşleşirse hesabınız açılır. E-posta giriş kullanıcı adınızdır. Şifreniz T.C. kimlik numaranızdır.'}
         </Text>
 
         {step === 'school' && (
@@ -254,42 +209,12 @@ export function RegisterScreen({ navigation }: Props) {
               value={email}
               onChangeText={setEmail}
             />
-            <TextInput
-              style={styles.input}
-              placeholder="Cep telefonu (05xx xxx xx xx)"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="phone-pad"
-              value={phone}
-              onChangeText={setPhone}
-            />
             {error && <Text style={styles.error}>{error}</Text>}
             <TouchableOpacity style={styles.button} onPress={() => void onStart()} disabled={submitting}>
-              {submitting ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.buttonText}>Kaydı Başlat</Text>}
+              {submitting ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.buttonText}>Kayıt Ol</Text>}
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setStep('school')}>
               <Text style={styles.link}>Okul seçimine dön</Text>
-            </TouchableOpacity>
-          </>
-        )}
-
-        {step === 'sms' && (
-          <>
-            <Text style={styles.hint}>Kod {phoneHint} numarasına gönderildi.</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="6 haneli SMS kodu"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="number-pad"
-              maxLength={12}
-              value={code}
-              onChangeText={(value) => setCode(value.replace(/\D/g, '').slice(0, 6))}
-            />
-            {error && <Text style={styles.error}>{error}</Text>}
-            <TouchableOpacity style={styles.button} onPress={() => void onVerify()} disabled={submitting}>
-              {submitting ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.buttonText}>Doğrula ve Giriş Yap</Text>}
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => void onResendSms()} disabled={submitting}>
-              <Text style={styles.link}>Kodu yeniden gönder</Text>
             </TouchableOpacity>
           </>
         )}
@@ -329,7 +254,6 @@ function makeStyles(colors: ThemeColors) {
     },
     buttonText: { color: colors.primaryText, fontSize: 16, fontWeight: '600' },
     error: { color: colors.danger, marginBottom: 12, textAlign: 'center' },
-    hint: { color: colors.textSecondary, textAlign: 'center', marginBottom: 12 },
     link: { color: colors.headerLink, textAlign: 'center', marginTop: 16, fontSize: 14 },
   });
 }

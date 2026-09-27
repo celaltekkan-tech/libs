@@ -20,8 +20,11 @@ const { foldTurkishName, turkishNamesEqual } = require('../utils/trName');
 const jwtUtil = require('../utils/jwt');
 const licenseService = require('./licenseService');
 const { sendSms, SMS_STATUS, SmsConfigError } = require('./smsEngine');
-const { assertValidMobilePhone, normalizeMobilePhone } = require('../utils/phone');
+const { assertValidMobilePhone, formatMobilePhone, normalizeMobilePhone } = require('../utils/phone');
 const { maskPhone } = require('./smsLoginService');
+
+// İlk sürümde SMS tedarikçisi yok. Kayıt, T.C. + soyad eşleşince hesabı doğrudan açar.
+// SMS akışı (storeVerificationCode / sendRegisterSms) yeniden açılmak üzere duruyor.
 
 const BCRYPT_ROUNDS = 10;
 const PENDING_EXPIRES = process.env.TEACHER_REGISTER_TOKEN_TTL || '30m';
@@ -338,14 +341,13 @@ async function listLicensedSchools(provinceId, districtId) {
     .map((school) => ({ id: school.id, name: school.name }));
 }
 
-async function startRegistration({ school_id, national_id, last_name, email, phone }) {
+async function startRegistration({ school_id, national_id, last_name, email }) {
   const school = await School.findByPk(school_id, {
     include: [{ model: Tenant, attributes: ['id', 'is_active', 'name'] }],
   });
   await assertSchoolLicensed(school);
   const teacher = await matchTeacher(school, national_id, last_name);
-  const phoneNorm = assertValidMobilePhone(phone, { required: true });
-  assertPhoneBelongsToTeacher(teacher, phoneNorm);
+  const phoneNorm = formatMobilePhone(teacher.phone);
   const emailNorm = String(email).trim().toLowerCase();
   const tckn = normalizeNationalId(national_id);
   const fullName = `${teacher.first_name} ${teacher.last_name}`.trim();
@@ -379,7 +381,10 @@ async function startRegistration({ school_id, national_id, last_name, email, pho
           phone: phoneNorm,
           password_hash,
           role: 'user',
-          is_active: false,
+          is_active: true,
+          sms_login_code_hash: null,
+          sms_login_code_expires_at: null,
+          last_login_at: new Date(),
         },
         { transaction },
       );
@@ -394,7 +399,8 @@ async function startRegistration({ school_id, national_id, last_name, email, pho
           phone: phoneNorm,
           password_hash,
           role: 'user',
-          is_active: false,
+          is_active: true,
+          last_login_at: new Date(),
         },
         { transaction },
       );
@@ -414,18 +420,7 @@ async function startRegistration({ school_id, national_id, last_name, email, pho
     return pending;
   });
 
-  const issued = await storeVerificationCode(user);
-  await sendRegisterSms(phoneNorm, issued.code);
-  const pending = createPendingToken(user);
-
-  return {
-    pending_token: pending.token,
-    expires_at: pending.expires_at,
-    phone_hint: maskPhone(phoneNorm),
-    code_expires_at: issued.expires_at,
-    requests_remaining: issued.requests_remaining,
-    max_requests: issued.max_requests,
-  };
+  return user;
 }
 
 async function resendSms(tempToken) {
