@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, App, Button, Card, Checkbox, Col, Input, Row, Segmented, Select, Space, Table, Tag, Typography } from 'antd'
+import { Alert, App, Button, Card, Checkbox, Col, Input, Row, Segmented, Select, Space, Table, Tag, Typography, theme } from 'antd'
 import { listAvailability, listTimetableLessons, saveAvailability } from '../../api/timetable'
 import { getErrorMessage } from '../../api/client'
 import { DAY_LABELS, DAY_OPTIONS } from '../../types/scheduleEntry'
@@ -8,15 +8,7 @@ import { assignmentTeacherIds, shortClassroom, teacherFullName, type TimetableCt
 
 type Brush = 'closed' | 'avoid' | 'open'
 
-const ALL_DAYS = [1, 2, 3, 4, 5, 6, 7]
-
-// Bilsa renkleri: koyu gri okul dışı, açık gri kapalı, sarı istenmiyor, turuncu açık.
-const COLORS = {
-  outside: '#9ca3af',
-  closed: '#e5e7eb',
-  avoid: '#fde68a',
-  open: '#fed7aa',
-}
+type CellState = Brush | 'outside'
 
 const ENTITY_LABELS: Record<AvailabilityEntity, string> = {
   school: 'Okul',
@@ -34,7 +26,21 @@ interface EntityRow {
 
 export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
   const { message } = App.useApp()
+  const { token } = theme.useToken()
   const { project } = ctx
+  // Uygulama temasından: açık beyaz, istenmiyor uyarı tonu, kapalı ana renk, okul dışı taralı gri.
+  const COLORS: Record<CellState, string> = {
+    outside: `repeating-linear-gradient(135deg, ${token.colorFillSecondary} 0 6px, ${token.colorFillQuaternary} 6px 12px)`,
+    closed: token.colorPrimary,
+    avoid: token.colorWarningBg,
+    open: token.colorBgContainer,
+  }
+  const BORDERS: Record<CellState, string> = {
+    outside: token.colorBorderSecondary,
+    closed: token.colorPrimary,
+    avoid: token.colorWarningBorder,
+    open: token.colorBorderSecondary,
+  }
   const [rows, setRows] = useState<TimetableAvailability[]>([])
   const [lessons, setLessons] = useState<TimetableLesson[]>([])
   const [loading, setLoading] = useState(false)
@@ -48,6 +54,7 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
   const [range, setRange] = useState({ d1: project.days[0] || 1, d2: project.days[project.days.length - 1] || 5, p1: 1, p2: project.periods_per_day })
   const editable = ctx.canUpdate
   const periods = Array.from({ length: project.periods_per_day }, (_, i) => i + 1)
+  const schoolDays = (project.days.length ? [...project.days] : [1, 2, 3, 4, 5]).sort((a, b) => a - b)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -189,21 +196,20 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
   const dayOptions = DAY_OPTIONS.filter((d) => project.days.includes(d.value))
   const periodOptions = periods.map((p) => ({ value: p, label: `${p}. saat` }))
 
-  const cellColor = (d: number, p: number) => {
-    if (!usable(d, p)) return COLORS.outside
+  const cellState = (d: number, p: number): CellState => {
+    if (!usable(d, p)) return 'outside'
     const key = `${d}-${p}`
-    if (painting?.has(key)) return brush === 'open' ? COLORS.open : COLORS[brush]
-    const state = current[key]
-    return state ? COLORS[state] : COLORS.open
+    if (painting?.has(key)) return brush
+    return current[key] || 'open'
   }
 
   return (
     <>
       <Typography.Paragraph type="secondary">
-        Koyu gri hücreler okul saati dışıdır (okul zaman tablosu veya ders günü değil). Açık gri hücrede ders
-        konmaz, sarı hücreye mümkünse konmaz, turuncu hücreler açıktır. Fırçayı seçip hücrelere tıklayın ya da
-        sürükleyin; gün adına veya saat numarasına tıklamak tüm sütunu/satırı boyar. Listede "Seç" ile birden fazla
-        kayıt işaretlerseniz değişiklik hepsine uygulanır.
+        Yalnız okul saatlerinde seçilen ders günleri görünür. Cumartesi ve pazar kendiliğinden kapanmaz; ders günü
+        olarak işaretlemezseniz burada yer almazlar, işaretlerseniz açık gelir. Koyu renkli hücrede ders konmaz,
+        sarı hücreye mümkünse konmaz, boş hücreler açıktır. Fırçayı seçip hücrelere tıklayın ya da sürükleyin; gün
+        adına veya saat numarasına tıklamak tüm sütunu/satırı boyar.
       </Typography.Paragraph>
 
       <Segmented<AvailabilityEntity>
@@ -227,7 +233,7 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
                 scroll={{ y: 520 }}
                 onRow={(e) => ({
                   onClick: () => setCurrentId(e.id),
-                  style: { cursor: 'pointer', background: e.id === currentId ? '#e6f4ff' : undefined },
+                  style: { cursor: 'pointer', background: e.id === currentId ? token.colorPrimaryBg : undefined },
                 })}
                 columns={[
                   { title: 'Ad', dataIndex: 'name' },
@@ -301,33 +307,43 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: `44px repeat(${ALL_DAYS.length}, minmax(84px, 1fr))`,
+                  gridTemplateColumns: `44px repeat(${schoolDays.length}, minmax(108px, 1fr))`,
                   gap: 2,
-                  minWidth: 44 + ALL_DAYS.length * 86,
+                  minWidth: 44 + schoolDays.length * 112,
                 }}
               >
                 <div />
-                {ALL_DAYS.map((d) => (
+                {schoolDays.map((d) => (
                   <div
                     key={d}
                     onClick={() => editable && paintLine(periods.map((p) => [d, p]))}
-                    style={{ textAlign: 'center', fontWeight: 600, padding: 4, cursor: editable ? 'pointer' : 'default', background: '#f3f4f6' }}
+                    style={{
+                      textAlign: 'center',
+                      fontWeight: 600,
+                      padding: 4,
+                      cursor: editable ? 'pointer' : 'default',
+                      background: token.colorFillTertiary,
+                      color: token.colorText,
+                      borderRadius: 4,
+                      whiteSpace: 'nowrap',
+                    }}
                   >
-                    {DAY_LABELS[d]}
+                    {DAY_LABELS[d] || d}
                   </div>
                 ))}
                 {periods.map((p) => (
                   <Fragment key={p}>
                     <div
-                      onClick={() => editable && paintLine(ALL_DAYS.map((d) => [d, p]))}
-                      style={{ textAlign: 'center', fontWeight: 600, padding: 4, cursor: editable ? 'pointer' : 'default', background: '#f3f4f6' }}
+                      onClick={() => editable && paintLine(schoolDays.map((d) => [d, p]))}
+                      style={{ textAlign: 'center', fontWeight: 600, padding: 4, cursor: editable ? 'pointer' : 'default', background: token.colorFillTertiary, color: token.colorText, borderRadius: 4 }}
                     >
                       {p}
                     </div>
-                    {ALL_DAYS.map((d) => {
+                    {schoolDays.map((d) => {
                       const key = `${d}-${p}`
                       const ok = usable(d, p)
                       const items = placed.get(key) || []
+                      const state = cellState(d, p)
                       return (
                         <div
                           key={key}
@@ -335,8 +351,10 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
                           onMouseEnter={() => ok && extendPaint(key)}
                           style={{
                             minHeight: 38,
-                            background: cellColor(d, p),
-                            border: '1px solid #fff',
+                            background: COLORS[state],
+                            border: `1px solid ${BORDERS[state]}`,
+                            borderRadius: 4,
+                            color: state === 'closed' ? token.colorTextLightSolid : undefined,
                             fontSize: 11,
                             lineHeight: 1.2,
                             textAlign: 'center',
@@ -357,7 +375,7 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
             <Space wrap size={12} style={{ marginTop: 8, fontSize: 12 }}>
               {(['outside', 'closed', 'avoid', 'open'] as const).map((k) => (
                 <Space key={k} size={4}>
-                  <span style={{ display: 'inline-block', width: 14, height: 14, background: COLORS[k], border: '1px solid #d1d5db' }} />
+                  <span style={{ display: 'inline-block', width: 14, height: 14, background: COLORS[k], border: `1px solid ${BORDERS[k]}`, borderRadius: 3 }} />
                   {{ outside: 'Okul saati dışı', closed: 'Kapalı', avoid: 'İstenmiyor', open: 'Açık' }[k]}
                 </Space>
               ))}

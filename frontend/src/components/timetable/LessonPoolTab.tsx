@@ -13,11 +13,11 @@ import {
   Space,
   Table,
   Tag,
-  Tooltip,
   Typography,
 } from 'antd'
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
+import { CloudDownloadOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import { createSubject } from '../../api/subjects'
 import {
   createBranch,
   deleteBranch,
@@ -27,20 +27,21 @@ import {
   upsertPoolHour,
 } from '../../api/timetable'
 import { getErrorMessage } from '../../api/client'
+import { TypedPhraseConfirmModal } from '../TypedPhraseConfirmModal'
+import { bulkDeleteByIds, bulkDeleteResultMessage } from '../../utils/bulkDelete'
 import { DIFFICULTY_LEVEL_OPTIONS } from '../../types/subject'
 import type { Branch, LessonPool, PoolHour, PoolSubject } from '../../types/timetable'
 import { classLevels, type TimetableCtx } from './shared'
+import { PoolTemplateImportModal } from './PoolTemplateImportModal'
 
 type SubjectPatch = Partial<Omit<PoolSubject, 'id' | 'name' | 'is_active'>>
 
-function HourCell({
+function HourEditor({
   hour,
-  editable,
   onSave,
 }: {
-  hour: PoolHour | undefined
-  editable: boolean
-  onSave: (hours: number, pattern: string | null) => Promise<boolean>
+  hour?: PoolHour
+  onSave: (hours: number, pattern: string | null, id?: number) => Promise<boolean>
 }) {
   const [open, setOpen] = useState(false)
   const [hours, setHours] = useState<number | null>(hour?.weekly_hours ?? null)
@@ -52,18 +53,8 @@ function HourCell({
     setPattern(hour?.block_pattern || '')
   }, [open, hour])
 
-  const label = hour ? (
-    <span>
-      <b>{hour.weekly_hours}</b>
-      {hour.block_pattern && <span style={{ color: '#6b7280', fontSize: 11 }}> ({hour.block_pattern})</span>}
-    </span>
-  ) : (
-    <span style={{ color: '#d1d5db' }}>—</span>
-  )
-  if (!editable) return label
-
   const save = async (h: number, p: string | null) => {
-    if (await onSave(h, p)) setOpen(false)
+    if (await onSave(h, p, hour?.id)) setOpen(false)
   }
 
   return (
@@ -74,7 +65,7 @@ function HourCell({
       content={
         <Space direction="vertical" size={6}>
           <Space>
-            <InputNumber min={0} max={40} value={hours} onChange={setHours} addonAfter="saat" style={{ width: 120 }} />
+            <InputNumber min={1} max={40} value={hours} onChange={setHours} addonAfter="saat" style={{ width: 120 }} />
             <Input
               value={pattern}
               onChange={(e) => setPattern(e.target.value)}
@@ -83,23 +74,64 @@ function HourCell({
             />
           </Space>
           <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-            Blok boşsa 2'li bloklar + kalan 1 saat kullanılır.
+            Aynı sınıfta birden fazla saat olabilir. Blok boşsa 2'li bloklar + kalan 1 saat kullanılır.
           </Typography.Text>
           <Space>
-            <Button size="small" type="primary" onClick={() => save(hours || 0, pattern.trim() || null)}>
+            <Button size="small" type="primary" disabled={!hours} onClick={() => hours && save(hours, pattern.trim() || null)}>
               Kaydet
             </Button>
             {hour && (
               <Button size="small" danger onClick={() => save(0, null)}>
-                Seviyeden kaldır
+                Kaldır
               </Button>
             )}
           </Space>
         </Space>
       }
     >
-      <span style={{ cursor: 'pointer', display: 'inline-block', minWidth: 36 }}>{label}</span>
+      {hour ? (
+        <Tag style={{ cursor: 'pointer', marginInlineEnd: 0 }}>
+          {hour.weekly_hours}
+          {hour.block_pattern ? ` (${hour.block_pattern})` : ''}
+        </Tag>
+      ) : (
+        <Button size="small" type="text" icon={<PlusOutlined />} />
+      )}
     </Popover>
+  )
+}
+
+function HourCell({
+  options,
+  editable,
+  onSave,
+}: {
+  options: PoolHour[]
+  editable: boolean
+  onSave: (hours: number, pattern: string | null, id?: number) => Promise<boolean>
+}) {
+  const sorted = [...options].sort((a, b) => a.weekly_hours - b.weekly_hours)
+  if (!editable) {
+    return sorted.length ? (
+      <span>
+        {sorted.map((hour) => (
+          <span key={hour.id}>
+            <b>{hour.weekly_hours}</b>
+            {hour.block_pattern ? ` (${hour.block_pattern}) ` : ' '}
+          </span>
+        ))}
+      </span>
+    ) : (
+      <span>—</span>
+    )
+  }
+  return (
+    <Space size={2} wrap>
+      {sorted.map((hour) => (
+        <HourEditor key={hour.id} hour={hour} onSave={onSave} />
+      ))}
+      <HourEditor onSave={onSave} />
+    </Space>
   )
 }
 
@@ -115,6 +147,8 @@ function BranchesCard({
   const { message } = App.useApp()
   const [name, setName] = useState('')
   const [code, setCode] = useState('')
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
 
   const run = async (fn: () => Promise<unknown>) => {
     try {
@@ -149,6 +183,13 @@ function BranchesCard({
             Branş ekle
           </Button>
         </Space>
+      )}
+      {ctx.canDelete && branches.length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+            Toplu sil ({branches.length})
+          </Button>
+        </div>
       )}
       <Table<Branch>
         rowKey="id"
@@ -213,16 +254,42 @@ function BranchesCard({
             : []),
         ]}
       />
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Branşları toplu sil"
+        description={`Listedeki ${branches.length} branş silinecek. Bağlı derslerin branşı boşalır.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={async () => {
+          setBulkLoading(true)
+          try {
+            const result = await bulkDeleteByIds(
+              branches.map((branch) => branch.id),
+              (id) => deleteBranch(ctx.project.id, Number(id)),
+            )
+            const text = bulkDeleteResultMessage(result, 'branş')
+            if (result.failed === 0) message.success(text)
+            else message.warning(text)
+            setBulkOpen(false)
+            await onChange()
+          } finally {
+            setBulkLoading(false)
+          }
+        }}
+      />
     </>
   )
 }
 
 export function LessonPoolTab({ ctx }: { ctx: TimetableCtx }) {
+  const [importOpen, setImportOpen] = useState(false)
   const { message } = App.useApp()
   const [pool, setPool] = useState<LessonPool>({ subjects: [], hours: [], branches: [] })
   const [loading, setLoading] = useState(false)
   const [filter, setFilter] = useState('')
   const [onlyPool, setOnlyPool] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newCode, setNewCode] = useState('')
   const editable = ctx.canUpdate
   const levels = useMemo(() => classLevels(ctx.classrooms), [ctx.classrooms])
 
@@ -242,8 +309,11 @@ export function LessonPoolTab({ ctx }: { ctx: TimetableCtx }) {
   }, [load])
 
   const hourMap = useMemo(() => {
-    const map = new Map<string, PoolHour>()
-    for (const h of pool.hours) map.set(`${h.subject_id}:${h.class_level}`, h)
+    const map = new Map<string, PoolHour[]>()
+    for (const h of pool.hours) {
+      const key = `${h.subject_id}:${h.class_level}`
+      map.set(key, [...(map.get(key) || []), h])
+    }
     return map
   }, [pool.hours])
 
@@ -266,17 +336,21 @@ export function LessonPoolTab({ ctx }: { ctx: TimetableCtx }) {
     }
   }
 
-  const saveHour = async (subjectId: number, level: string, hours: number, pattern: string | null) => {
+  const saveHour = async (subjectId: number, level: string, hours: number, pattern: string | null, hourId?: number) => {
     try {
       const saved = await upsertPoolHour(ctx.project.id, {
+        id: hourId,
         subject_id: subjectId,
         class_level: level,
         weekly_hours: hours,
         block_pattern: pattern,
       })
       setPool((prev) => {
-        const rest = prev.hours.filter((h) => !(h.subject_id === subjectId && h.class_level === level))
-        return { ...prev, hours: saved ? [...rest, saved] : rest }
+        let hoursRows = prev.hours
+        if (!saved && hourId) hoursRows = hoursRows.filter((h) => h.id !== hourId)
+        else if (!saved) hoursRows = hoursRows.filter((h) => !(h.subject_id === subjectId && h.class_level === level))
+        else hoursRows = [...hoursRows.filter((h) => h.id !== saved.id), saved]
+        return { ...prev, hours: hoursRows }
       })
       return true
     } catch (err) {
@@ -285,15 +359,18 @@ export function LessonPoolTab({ ctx }: { ctx: TimetableCtx }) {
     }
   }
 
-  const flag = (key: 'allow_split' | 'allow_merge' | 'is_guidance' | 'is_activity', title: string, help: string) => ({
-    title: <Tooltip title={help}>{title}</Tooltip>,
-    key,
-    width: 56,
-    align: 'center' as const,
-    render: (_: unknown, row: PoolSubject) => (
-      <Checkbox checked={row[key]} disabled={!editable} onChange={(e) => patchSubject(row, { [key]: e.target.checked })} />
-    ),
-  })
+  const addSubject = async () => {
+    const name = newName.trim()
+    if (!name) return
+    try {
+      await createSubject(ctx.project.tenant_id, { name, code: newCode.trim() || null })
+      setNewName('')
+      setNewCode('')
+      await load()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    }
+  }
 
   const columns: ColumnsType<PoolSubject> = [
     {
@@ -350,13 +427,13 @@ export function LessonPoolTab({ ctx }: { ctx: TimetableCtx }) {
     ...levels.map((level) => ({
       title: `${level}. sınıf`,
       key: `lvl-${level}`,
-      width: 80,
+      width: 150,
       align: 'center' as const,
       render: (_: unknown, row: PoolSubject) => (
         <HourCell
-          hour={hourMap.get(`${row.id}:${level}`)}
+          options={hourMap.get(`${row.id}:${level}`) || []}
           editable={editable}
-          onSave={(h, p) => saveHour(row.id, level, h, p)}
+          onSave={(h, p, id) => saveHour(row.id, level, h, p, id)}
         />
       ),
     })),
@@ -377,8 +454,6 @@ export function LessonPoolTab({ ctx }: { ctx: TimetableCtx }) {
         />
       ),
     },
-    flag('allow_split', 'B1', "B1: 2 saatlik blok gerekirse 1+1 olarak bölünebilir"),
-    flag('allow_merge', 'B2', "B2: iki ayrı 1 saat gerekirse 2 saatlik blok olarak birleşebilir"),
     {
       title: 'Seçmeli',
       key: 'elective',
@@ -408,17 +483,22 @@ export function LessonPoolTab({ ctx }: { ctx: TimetableCtx }) {
         </Space>
       ),
     },
-    flag('is_guidance', 'Reh', 'Rehberlik dersi'),
-    flag('is_activity', 'F', 'Faaliyet dersi'),
   ]
 
   return (
     <>
       <Typography.Paragraph type="secondary">
-        Ders havuzu her dersin bir kez tanımlandığı yerdir: hangi sınıf seviyesinde kaç saat okutulduğu, blok düzeni
-        (6 saat → 2+2+2), zorluğu ve esneklikleri. Havuz her şubeye kendiliğinden yazılmaz; "Sınıfa ders verme"
-        adımında şubeye eklediğiniz ders saatini ve bloğunu buradan alır. Hücreye tıklayarak saat ve blok girin.
+        Ders havuzunda dersi bir kez tanımlarsınız. Aynı sınıf seviyesinde birden fazla saat olabilir: 12. sınıfta
+        Türk dili ve edebiyatı hem 3 hem 5 saat, seçmeli birinci yabancı dil 2, 8 veya 10 saat olabilir. Rehberlik
+        başlı başına bir derstir; branşı ne olursa olsun her öğretmen girebilir. Havuz her şubeye kendiliğinden
+        yazılmaz. Hücredeki saate tıklayarak düzenleyin, artı ile yeni saat ekleyin.
       </Typography.Paragraph>
+      <PoolTemplateImportModal
+        projectId={ctx.project.id}
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={load}
+      />
       <Collapse
         style={{ marginBottom: 12 }}
         items={[
@@ -441,9 +521,33 @@ export function LessonPoolTab({ ctx }: { ctx: TimetableCtx }) {
           <Checkbox checked={onlyPool} onChange={(e) => setOnlyPool(e.target.checked)}>
             Yalnız saati tanımlı dersler
           </Checkbox>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            Yeni ders adı "Dersler" sayfasından eklenir.
-          </Typography.Text>
+          {ctx.canCreate && (
+            <>
+              <Input
+                placeholder="Yeni ders adı"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                style={{ width: 200 }}
+                maxLength={100}
+                onPressEnter={() => void addSubject()}
+              />
+              <Input
+                placeholder="Kod"
+                value={newCode}
+                onChange={(e) => setNewCode(e.target.value)}
+                style={{ width: 90 }}
+                maxLength={20}
+              />
+              <Button icon={<PlusOutlined />} disabled={!newName.trim()} onClick={() => void addSubject()}>
+                Ders ekle
+              </Button>
+            </>
+          )}
+          {ctx.canUpdate && (
+            <Button icon={<CloudDownloadOutlined />} onClick={() => setImportOpen(true)}>
+              Hazır havuzdan aktar (MEB)
+            </Button>
+          )}
         </Space>
         <Table<PoolSubject>
           rowKey="id"
@@ -452,7 +556,7 @@ export function LessonPoolTab({ ctx }: { ctx: TimetableCtx }) {
           dataSource={rows}
           columns={columns}
           pagination={false}
-          scroll={{ x: 900 + levels.length * 80, y: 560 }}
+          scroll={{ x: 900 + levels.length * 150, y: 560 }}
         />
       </Card>
     </>

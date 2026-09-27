@@ -65,6 +65,7 @@ router.post('/runs/:id/cancel', update, ctrl.cancelRun);
 router.post('/runs/:id/apply', update, ctrl.applyRun);
 
 router.get('/projects/:projectId/lessons', read, ctrl.listLessons);
+router.get('/projects/:projectId/lessons/export', read, ctrl.exportLessons);
 router.post('/projects/:projectId/lessons/lock', update, validate(v.lockAllSchema), ctrl.lockAll);
 router.delete('/projects/:projectId/lessons', remove, ctrl.clearLessons);
 router.put('/lessons/:id/move', update, validate(v.moveLessonSchema), ctrl.moveLesson);

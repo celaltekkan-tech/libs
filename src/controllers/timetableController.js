@@ -24,6 +24,7 @@ const audit = require('../services/auditService');
 const licenseService = require('../services/licenseService');
 const solver = require('../services/timetableSolverClient');
 const runService = require('../services/timetableRunService');
+const timetableExport = require('../services/timetableExportService');
 const gemini = require('../services/geminiService');
 const aiUsage = require('../services/aiUsageService');
 const branchService = require('../services/branchService');
@@ -445,16 +446,26 @@ module.exports = {
     try {
       const project = await loadProject(req);
       const payload = { ...req.validatedBody };
+      const classroom = await Classroom.findByPk(payload.classroom_id);
+      const poolRows = classroom
+        ? await SubjectClassHour.findAll({
+            where: { tenant_id: project.tenant_id, subject_id: payload.subject_id, class_level: classroom.class_level },
+          })
+        : [];
       if (payload.weekly_hours == null) {
-        const classroom = await Classroom.findByPk(payload.classroom_id);
-        const pool = classroom
-          ? await SubjectClassHour.findOne({
-              where: { tenant_id: project.tenant_id, subject_id: payload.subject_id, class_level: classroom.class_level },
-            })
-          : null;
-        if (!pool || !pool.weekly_hours) throw httpError(400, 'Ders havuzunda bu seviye için saat yok; haftalık saati girin');
-        payload.weekly_hours = pool.weekly_hours;
-        if (payload.block_pattern === undefined) payload.block_pattern = pool.block_pattern || null;
+        if (poolRows.length !== 1) {
+          throw httpError(
+            400,
+            poolRows.length
+              ? 'Bu dersin bu seviyede birden fazla saati var; hangisini kullanacağınızı seçin'
+              : 'Ders havuzunda bu seviye için saat yok; haftalık saati girin',
+          );
+        }
+        payload.weekly_hours = poolRows[0].weekly_hours;
+        if (payload.block_pattern === undefined) payload.block_pattern = poolRows[0].block_pattern || null;
+      } else if (payload.block_pattern == null) {
+        const match = poolRows.find((row) => row.weekly_hours === payload.weekly_hours);
+        if (match?.block_pattern) payload.block_pattern = match.block_pattern;
       }
       if (payload.co_teacher_ids && payload.teacher_id) {
         payload.co_teacher_ids = payload.co_teacher_ids.filter((id) => id !== payload.teacher_id);
@@ -615,12 +626,13 @@ module.exports = {
         return [...cur.teachers.entries()].sort((a, b) => b[1] - a[1])[0][0];
       };
 
-      const hoursByLevelSubject = new Map();
-      const patternByLevelSubject = new Map();
+      const optionsByLevelSubject = new Map();
       for (const h of classHours) {
         if (!h.weekly_hours) continue;
-        hoursByLevelSubject.set(`${h.class_level}:${h.subject_id}`, h.weekly_hours);
-        if (h.block_pattern) patternByLevelSubject.set(`${h.class_level}:${h.subject_id}`, h.block_pattern);
+        const key = `${h.class_level}:${h.subject_id}`;
+        const list = optionsByLevelSubject.get(key) || [];
+        list.push(h);
+        optionsByLevelSubject.set(key, list);
       }
 
       const existingKeys = new Set(existing.map((a) => `${a.classroom_id}:${a.subject_id}`));
@@ -631,9 +643,10 @@ module.exports = {
         const [classroomId, subjectId] = key.split(':').map(Number);
         const classroom = classrooms.find((c) => c.id === classroomId);
         const poolKey = classroom ? `${classroom.class_level}:${subjectId}` : null;
-        const poolHours = poolKey ? hoursByLevelSubject.get(poolKey) : null;
-        const hours = poolHours || cur.hours;
-        const pattern = poolKey ? patternByLevelSubject.get(poolKey) : null;
+        const options = poolKey ? optionsByLevelSubject.get(poolKey) || [] : [];
+        const match = options.find((h) => h.weekly_hours === cur.hours) || (options.length === 1 ? options[0] : null);
+        const hours = match ? match.weekly_hours : cur.hours;
+        const pattern = match ? match.block_pattern : null;
         const blocks = parseBlockPattern(pattern);
         rows.push({
           key,
@@ -989,6 +1002,16 @@ module.exports = {
     }
   },
 
+  // Şube, öğretmen, öğrenci veya mekân ızgarasını Excel dosyası olarak indirir.
+  async exportLessons(req, res, next) {
+    try {
+      const project = await loadProject(req);
+      await timetableExport.writeLessonsExport(res, project, req.query);
+    } catch (err) {
+      sendError(res, next, err);
+    }
+  },
+
   // Bir ders saatini başka hücreye taşır. Hedefte aynı şubenin başka bir
   // dersi varsa yer değiştirir. Öğretmen çakışması varsa force olmadan reddeder.
   async moveLesson(req, res, next) {
@@ -1242,7 +1265,7 @@ async function dataIssues(project) {
     where: { project_id: project.id },
     include: [
       { model: Classroom, attributes: ['id', 'class_level', 'section'] },
-      { model: Subject, attributes: ['id', 'name', 'branch_id'], include: [{ model: Branch, attributes: ['id', 'name'] }] },
+      { model: Subject, attributes: ['id', 'name', 'branch_id', 'is_guidance'], include: [{ model: Branch, attributes: ['id', 'name'] }] },
     ],
   });
   const teacherIds = [...new Set(assignments.flatMap((a) => assignmentTeacherIds(a)))];
@@ -1256,7 +1279,7 @@ async function dataIssues(project) {
   const mismatch = new Map();
   for (const a of assignments) {
     const branch = a.Subject?.Branch;
-    if (!branch) continue;
+    if (!branch || a.Subject.is_guidance || branchService.isGuidanceName(a.Subject.name)) continue;
     for (const id of assignmentTeacherIds(a)) {
       const t = byId.get(id);
       const key = t ? branchService.teacherBranchKey(t) : '';

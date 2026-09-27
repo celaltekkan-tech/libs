@@ -10,7 +10,6 @@ import {
   Input,
   InputNumber,
   Modal,
-  Popconfirm,
   Popover,
   Row,
   Select,
@@ -19,6 +18,7 @@ import {
   Table,
   Tag,
   Typography,
+  theme,
 } from 'antd'
 import { CopyOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import {
@@ -32,8 +32,11 @@ import {
   updateTimetableProject,
 } from '../../api/timetable'
 import { getErrorMessage } from '../../api/client'
+import { TypedPhraseConfirmModal } from '../TypedPhraseConfirmModal'
+import { bulkDeleteByIds, bulkDeleteResultMessage } from '../../utils/bulkDelete'
 import type {
   LessonPool,
+  PoolHour,
   PoolSubject,
   TimetableAssignment,
   TimetableAssignmentPayload,
@@ -46,20 +49,6 @@ import {
   teacherFullName,
   type TimetableCtx,
 } from './shared'
-
-const FLEX_OPTIONS = [
-  { value: 'pool', label: 'Havuz' },
-  { value: 'yes', label: 'Evet' },
-  { value: 'no', label: 'Hayır' },
-]
-
-function flexValue(v: boolean | null): string {
-  return v == null ? 'pool' : v ? 'yes' : 'no'
-}
-
-function flexPayload(v: string): boolean | null {
-  return v === 'pool' ? null : v === 'yes'
-}
 
 // Havuzda saati olmayan dersi eklerken saat sorar.
 function AddWithHours({ onAdd }: { onAdd: (hours: number) => void }) {
@@ -92,8 +81,48 @@ function AddWithHours({ onAdd }: { onAdd: (hours: number) => void }) {
   )
 }
 
+function AddFromOptions({ options, onAdd }: { options: PoolHour[]; onAdd: (hours: number) => void }) {
+  const [open, setOpen] = useState(false)
+  if (options.length <= 1) {
+    const hours = options[0]?.weekly_hours
+    return <Button size="small" icon={<PlusOutlined />} disabled={!hours} onClick={() => hours && onAdd(hours)} />
+  }
+  return (
+    <Popover
+      open={open}
+      onOpenChange={setOpen}
+      trigger="click"
+      content={
+        <Space direction="vertical" size={4}>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            Bu seviyede birden fazla saat var
+          </Typography.Text>
+          {options
+            .slice()
+            .sort((a, b) => a.weekly_hours - b.weekly_hours)
+            .map((hour) => (
+              <Button
+                key={hour.id}
+                size="small"
+                onClick={() => {
+                  setOpen(false)
+                  onAdd(hour.weekly_hours)
+                }}
+              >
+                {hour.weekly_hours} saat{hour.block_pattern ? ` (${hour.block_pattern})` : ''}
+              </Button>
+            ))}
+        </Space>
+      }
+    >
+      <Button size="small" icon={<PlusOutlined />} />
+    </Popover>
+  )
+}
+
 export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
   const { message } = App.useApp()
+  const { token } = theme.useToken()
   const { project } = ctx
   const [rows, setRows] = useState<TimetableAssignment[]>([])
   const [pool, setPool] = useState<LessonPool>({ subjects: [], hours: [], branches: [] })
@@ -106,6 +135,8 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
   const [copyTargets, setCopyTargets] = useState<number[]>([])
   const [copyReplace, setCopyReplace] = useState(false)
   const [copyTeachers, setCopyTeachers] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
   const editable = ctx.canUpdate
 
   const load = useCallback(async () => {
@@ -160,12 +191,16 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
   const poolRows = useMemo(() => {
     if (!classroom) return []
     const level = classroom.class_level
-    const hours = new Map(pool.hours.filter((h) => h.class_level === level).map((h) => [h.subject_id, h]))
+    const hours = new Map<number, PoolHour[]>()
+    for (const hour of pool.hours) {
+      if (hour.class_level !== level) continue
+      hours.set(hour.subject_id, [...(hours.get(hour.subject_id) || []), hour])
+    }
     const q = poolFilter.trim().toLocaleLowerCase('tr-TR')
     return pool.subjects
       .filter((s) => (allSubjects ? s.is_active || hours.has(s.id) : hours.has(s.id)))
       .filter((s) => !q || `${s.code || ''} ${s.name}`.toLocaleLowerCase('tr-TR').includes(q))
-      .map((s) => ({ subject: s, hour: hours.get(s.id) || null }))
+      .map((s) => ({ subject: s, hours: hours.get(s.id) || [] }))
   }, [classroom, pool, poolFilter, allSubjects])
 
   const addLesson = async (subject: PoolSubject, hours?: number) => {
@@ -203,13 +238,19 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
   }
 
   const removeAll = async () => {
+    setBulkLoading(true)
     try {
-      for (const r of classRows) await deleteTimetableAssignment(r.id)
-      setRows((prev) => prev.filter((r) => r.classroom_id !== classId))
+      const ids = classRows.map((row) => row.id)
+      const result = await bulkDeleteByIds(ids, (id) => deleteTimetableAssignment(Number(id)))
+      const text = bulkDeleteResultMessage(result, 'ders')
+      if (result.failed === 0) message.success(text)
+      else message.warning(text)
+      setBulkOpen(false)
+      if (result.failed === 0) setRows((prev) => prev.filter((r) => r.classroom_id !== classId))
+      else await load()
       await ctx.reloadProject()
-    } catch (err) {
-      message.error(getErrorMessage(err))
-      await load()
+    } finally {
+      setBulkLoading(false)
     }
   }
 
@@ -276,7 +317,7 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
               scroll={{ y: 560 }}
               onRow={(c) => ({
                 onClick: () => setClassId(c.id),
-                style: { cursor: 'pointer', background: c.id === classId ? '#e6f4ff' : undefined },
+                style: { cursor: 'pointer', background: c.id === classId ? token.colorPrimaryBg : undefined },
               })}
               columns={[
                 { title: 'Şube', key: 'name', render: (_, c) => shortClassroom(c) },
@@ -333,27 +374,26 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
               )
             }
             extra={
-              classroom &&
-              editable && (
+              classroom && (editable || ctx.canDelete) ? (
                 <Space>
-                  <Button size="small" icon={<CopyOutlined />} disabled={!classRows.length} onClick={openCopy}>
-                    Diğer şubelere kopyala
-                  </Button>
+                  {editable && (
+                    <Button size="small" icon={<CopyOutlined />} disabled={!classRows.length} onClick={openCopy}>
+                      Diğer şubelere kopyala
+                    </Button>
+                  )}
                   {ctx.canDelete && (
-                    <Popconfirm
-                      title="Bu şubenin tüm dersleri silinsin mi?"
-                      okText="Sil"
-                      okButtonProps={{ danger: true }}
-                      cancelText="Vazgeç"
-                      onConfirm={removeAll}
+                    <Button
+                      size="small"
+                      danger
+                      icon={<DeleteOutlined />}
+                      disabled={!classRows.length}
+                      onClick={() => setBulkOpen(true)}
                     >
-                      <Button size="small" danger disabled={!classRows.length}>
-                        Tümünü sil
-                      </Button>
-                    </Popconfirm>
+                      Toplu sil ({classRows.length})
+                    </Button>
                   )}
                 </Space>
-              )
+              ) : undefined
             }
           >
             {selectedLoad > selectedCap && (
@@ -452,36 +492,6 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
                     ),
                   },
                   {
-                    title: 'B1',
-                    key: 'split',
-                    width: 84,
-                    render: (_, r) => (
-                      <Select
-                        size="small"
-                        style={{ width: 76 }}
-                        disabled={!editable}
-                        value={flexValue(r.allow_split)}
-                        onChange={(v) => patch(r, { allow_split: flexPayload(v) })}
-                        options={FLEX_OPTIONS}
-                      />
-                    ),
-                  },
-                  {
-                    title: 'B2',
-                    key: 'merge',
-                    width: 84,
-                    render: (_, r) => (
-                      <Select
-                        size="small"
-                        style={{ width: 76 }}
-                        disabled={!editable}
-                        value={flexValue(r.allow_merge)}
-                        onChange={(v) => patch(r, { allow_merge: flexPayload(v) })}
-                        options={FLEX_OPTIONS}
-                      />
-                    ),
-                  },
-                  {
                     title: 'Mekan',
                     key: 'room',
                     width: 120,
@@ -549,10 +559,13 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
                   key: 'hours',
                   width: 70,
                   render: (_, r) =>
-                    r.hour ? (
+                    r.hours.length ? (
                       <span>
-                        {r.hour.weekly_hours}
-                        {r.hour.block_pattern && <span style={{ fontSize: 11, color: '#6b7280' }}> ({r.hour.block_pattern})</span>}
+                        {r.hours
+                          .slice()
+                          .sort((a, b) => a.weekly_hours - b.weekly_hours)
+                          .map((hour) => hour.weekly_hours)
+                          .join(' / ')}
                       </span>
                     ) : (
                       '—'
@@ -569,8 +582,8 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
                       <Tag color="blue" style={{ marginInlineEnd: 0 }}>
                         ekli
                       </Tag>
-                    ) : r.hour ? (
-                      <Button size="small" icon={<PlusOutlined />} onClick={() => addLesson(r.subject)} />
+                    ) : r.hours.length ? (
+                      <AddFromOptions options={r.hours} onAdd={(h) => addLesson(r.subject, h)} />
                     ) : (
                       <AddWithHours onAdd={(h) => addLesson(r.subject, h)} />
                     )),
@@ -591,7 +604,7 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
         okButtonProps={{ disabled: !copyTargets.length }}
       >
         <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-          Ders, saat, blok, B1/B2 ve mekan kopyalanır. Hedef şubede zaten olan ders atlanır.
+          Ders, saat, blok ve mekan kopyalanır. Hedef şubede zaten olan ders atlanır.
         </Typography.Paragraph>
         <Checkbox.Group
           value={copyTargets}
@@ -610,6 +623,18 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
           </Space>
         </Space>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Şube derslerini toplu sil"
+        description={
+          classroom
+            ? `${shortClassroom(classroom)} şubesindeki ${classRows.length} ders silinecek. Bağlı taslak ders saatleri de kalkar.`
+            : ''
+        }
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={removeAll}
+      />
     </>
   )
 }

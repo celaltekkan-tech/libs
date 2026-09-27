@@ -220,6 +220,20 @@ export async function listTimetableLessons(projectId: number): Promise<Timetable
   return data.data
 }
 
+export type TimetableExportView = 'classroom' | 'teacher' | 'student' | 'room'
+
+export async function exportTimetableLessons(
+  projectId: number,
+  params: { view: TimetableExportView; entity_id?: number },
+): Promise<Blob> {
+  const { data } = await client.get(`${BASE}/projects/${projectId}/lessons/export`, {
+    params,
+    responseType: 'blob',
+    timeout: 120000,
+  })
+  return data
+}
+
 export type MoveResult =
   | { ok: true; swappedWith: number | null }
   | { ok: false; conflicts: string[] }
@@ -305,10 +319,16 @@ export async function updatePoolSubject(
   return data.data
 }
 
-// weekly_hours 0 kaydı siler (null döner).
+// weekly_hours 0: id varsa o seçeneği, yoksa seviyedeki tüm seçenekleri siler.
 export async function upsertPoolHour(
   projectId: number,
-  payload: { subject_id: number; class_level: string; weekly_hours: number; block_pattern?: string | null },
+  payload: {
+    id?: number | null
+    subject_id: number
+    class_level: string
+    weekly_hours: number
+    block_pattern?: string | null
+  },
 ): Promise<PoolHour | null> {
   const { data } = await client.put<Envelope<PoolHour | null>>(`${BASE}/projects/${projectId}/pool/hours`, payload)
   return data.data

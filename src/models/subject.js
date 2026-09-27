@@ -13,6 +13,7 @@ module.exports = (sequelize, DataTypes) => {
       elective_group: DataTypes.STRING,
       is_guidance: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
       is_activity: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+      max_takes: DataTypes.INTEGER,
       is_active: {
         type: DataTypes.BOOLEAN,
         allowNull: false,

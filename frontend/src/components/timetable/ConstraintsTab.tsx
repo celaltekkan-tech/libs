@@ -9,6 +9,8 @@ import {
   updateTimetableConstraint,
 } from '../../api/timetable'
 import { getErrorMessage } from '../../api/client'
+import { TypedPhraseConfirmModal } from '../TypedPhraseConfirmModal'
+import { bulkDeleteByIds, bulkDeleteResultMessage } from '../../utils/bulkDelete'
 import type { AiProposal, ConstraintInput, TimetableConstraint } from '../../types/timetable'
 import { ConstraintFormModal } from './ConstraintFormModal'
 import type { TimetableCtx } from './shared'
@@ -39,6 +41,8 @@ export function ConstraintsTab({ ctx }: { ctx: TimetableCtx }) {
   const [lastPrompt, setLastPrompt] = useState('')
   const [usage, setUsage] = useState(ctx.meta.ai_usage)
   const [formOpen, setFormOpen] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
   const [editing, setEditing] = useState<TimetableConstraint | null>(null)
   const { project } = ctx
 
@@ -274,6 +278,11 @@ export function ConstraintsTab({ ctx }: { ctx: TimetableCtx }) {
             Elle Kısıt Ekle
           </Button>
         )}
+        {ctx.canDelete && rows.length > 0 && (
+          <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+            Toplu sil ({rows.length})
+          </Button>
+        )}
       </Space>
 
       <Table<TimetableConstraint>
@@ -359,6 +368,30 @@ export function ConstraintsTab({ ctx }: { ctx: TimetableCtx }) {
         editing={editing}
         onCancel={() => setFormOpen(false)}
         onSubmit={onSubmitForm}
+      />
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="İstekleri toplu sil"
+        description={`Listedeki ${rows.length} istek silinecek.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={async () => {
+          setBulkLoading(true)
+          try {
+            const result = await bulkDeleteByIds(
+              rows.map((row) => row.id),
+              (id) => deleteTimetableConstraint(Number(id)),
+            )
+            const text = bulkDeleteResultMessage(result, 'istek')
+            if (result.failed === 0) message.success(text)
+            else message.warning(text)
+            setBulkOpen(false)
+            await load()
+            await ctx.reloadProject()
+          } finally {
+            setBulkLoading(false)
+          }
+        }}
       />
     </>
   )

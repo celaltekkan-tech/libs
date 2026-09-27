@@ -134,9 +134,10 @@ const poolSubjectSchema = Joi.object({
   is_activity: Joi.boolean(),
 }).min(1);
 const poolHourSchema = Joi.object({
+  id: id.allow(null),
   subject_id: id.required(),
   class_level: Joi.string().trim().max(20).required(),
-  // 0: bu seviyeden kaldır
+  // 0: id varsa o saat seçeneğini, yoksa bu seviyedeki tüm seçenekleri siler
   weekly_hours: Joi.number().integer().min(0).max(40).required(),
   block_pattern: Joi.string().allow('', null).max(40),
 });

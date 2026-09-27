@@ -3,6 +3,7 @@
 // Otomatik ders programı: branşlar, ders havuzu ve zaman tablosu (müsaitlik).
 // Hesap (tenant) projeden alınır; platform yöneticisi de aynı uçları kullanabilir.
 
+const { Op } = require('sequelize');
 const { sequelize, TimetableProject, TimetableAvailability, Branch, Subject, SubjectClassHour } = require('../models');
 const branchService = require('../services/branchService');
 const { parseBlockPattern } = require('../services/timetableBuildService');
@@ -156,22 +157,49 @@ module.exports = {
     }
   },
 
-  // Seviye saatini ekler/günceller; 0 saat kaydı siler.
+  // Aynı ders ve seviyede birden fazla saat olabilir. 0 saat, id ile tek seçeneği siler.
   async upsertPoolHour(req, res, next) {
     try {
       const project = await loadProject(req);
-      const { subject_id: subjectId, class_level: level, weekly_hours: hours, block_pattern: pattern } = req.validatedBody;
+      const {
+        id: hourId,
+        subject_id: subjectId,
+        class_level: level,
+        weekly_hours: hours,
+        block_pattern: pattern,
+      } = req.validatedBody;
       const subject = await Subject.findByPk(subjectId);
       if (!subject || subject.tenant_id !== project.tenant_id) throw httpError(400, 'Ders bulunamadı');
       const where = { tenant_id: project.tenant_id, subject_id: subjectId, class_level: level };
-      const row = await SubjectClassHour.findOne({ where });
+
       if (!hours) {
-        if (row) await row.destroy();
+        if (hourId) {
+          const row = await SubjectClassHour.findOne({ where: { ...where, id: hourId } });
+          if (row) await row.destroy();
+        } else {
+          await SubjectClassHour.destroy({ where });
+        }
         return res.json({ success: true, data: null });
       }
+
       const blockPattern = blockPatternFor(hours, pattern);
-      if (row) await row.update({ weekly_hours: hours, block_pattern: blockPattern });
-      const saved = row || (await SubjectClassHour.create({ ...where, weekly_hours: hours, block_pattern: blockPattern }));
+      const clash = await SubjectClassHour.findOne({
+        where: { ...where, weekly_hours: hours, ...(hourId ? { id: { [Op.ne]: hourId } } : {}) },
+      });
+      if (clash && !hourId) {
+        await clash.update({ block_pattern: blockPattern });
+        return res.json({ success: true, data: clash });
+      }
+      if (clash) throw httpError(409, 'Bu seviyede bu saat zaten var');
+
+      if (hourId) {
+        const row = await SubjectClassHour.findOne({ where: { ...where, id: hourId } });
+        if (!row) throw httpError(404, 'Saat kaydı bulunamadı');
+        await row.update({ weekly_hours: hours, block_pattern: blockPattern });
+        return res.json({ success: true, data: row });
+      }
+
+      const saved = await SubjectClassHour.create({ ...where, weekly_hours: hours, block_pattern: blockPattern });
       res.json({ success: true, data: saved });
     } catch (err) {
       sendError(res, next, err);

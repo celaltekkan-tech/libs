@@ -21,7 +21,7 @@ export function EffortPicker({ value, onChange }: { value?: number; onChange?: (
         options={PRESETS.map((item) => ({ value: item.key, label: item.label }))}
       />
       <Slider
-        style={{ marginTop: 12, maxWidth: 360 }}
+        style={{ marginTop: 12, marginBottom: 28, maxWidth: 360 }}
         min={30}
         max={180}
         step={30}

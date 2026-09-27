@@ -1,7 +1,9 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, App, Button, Empty, Popconfirm, Segmented, Select, Space, Tag, Tooltip, Typography } from 'antd'
+import { Alert, App, Button, Dropdown, Empty, Popconfirm, Segmented, Select, Space, Tag, Tooltip, Typography, theme } from 'antd'
 import {
   CloudUploadOutlined,
+  DownOutlined,
+  FileExcelOutlined,
   LeftOutlined,
   LockFilled,
   LockOutlined,
@@ -9,13 +11,16 @@ import {
   UnlockOutlined,
 } from '@ant-design/icons'
 import {
+  exportTimetableLessons,
   listAvailability,
   listTimetableLessons,
   lockTimetableLessons,
   moveTimetableLesson,
   publishTimetable,
   setTimetableLessonLock,
+  type TimetableExportView,
 } from '../../api/timetable'
+import { downloadBlob } from '../../utils/download'
 import { getErrorMessage } from '../../api/client'
 import { DAY_LABELS } from '../../types/scheduleEntry'
 import { periodClock } from './bell'
@@ -33,6 +38,8 @@ type ViewMode = 'classroom' | 'teacher' | 'room'
 
 export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
   const { message, modal } = App.useApp()
+  const { token } = theme.useToken()
+  const dark = token.colorBgBase.toLowerCase() === '#000' || token.colorBgBase.toLowerCase() === '#000000'
   const { project } = ctx
   const [lessons, setLessons] = useState<TimetableLesson[]>([])
   const [loading, setLoading] = useState(false)
@@ -41,6 +48,7 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
   const [dragId, setDragId] = useState<number | null>(null)
   const [dropKey, setDropKey] = useState<string | null>(null)
   const [publishing, setPublishing] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [availability, setAvailability] = useState<TimetableAvailability[]>([])
 
   const load = useCallback(async () => {
@@ -206,6 +214,30 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
     }
   }
 
+  const onExport = async (key: string) => {
+    const current = key === 'current'
+    const view = (current ? mode : key) as TimetableExportView
+    if (current && !entityId) return
+    const names: Record<TimetableExportView, [string, string]> = {
+      classroom: ['ders-programi-sube', 'ders-programi-subeler'],
+      teacher: ['ders-programi-ogretmen', 'ders-programi-ogretmenler'],
+      student: ['ders-programi-ogrenci', 'ders-programi-ogrenciler'],
+      room: ['ders-programi-mekan', 'ders-programi-mekanlar'],
+    }
+    setExporting(true)
+    try {
+      const blob = await exportTimetableLessons(project.id, {
+        view,
+        ...(current && entityId ? { entity_id: entityId } : {}),
+      })
+      downloadBlob(blob, `${names[view][current ? 0 : 1]}.xlsx`)
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const step = (dir: 1 | -1) => {
     const idx = entities.findIndex((e) => e.value === entityId)
     const next = entities[(idx + dir + entities.length) % entities.length]
@@ -273,8 +305,8 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
           setDropKey(null)
         }}
         style={{
-          background: subjectColor(a.subject_id),
-          borderLeft: `4px solid ${clash ? '#ff4d4f' : subjectBorder(a.subject_id)}`,
+          background: subjectColor(a.subject_id, dark),
+          borderLeft: `4px solid ${clash ? token.colorError : subjectBorder(a.subject_id, dark)}`,
           outline: clash ? '1px solid #ff4d4f' : undefined,
           borderRadius: 4,
           padding: '3px 6px',
@@ -284,9 +316,9 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
           position: 'relative',
         }}
       >
-        <div style={{ fontWeight: 600, fontSize: 12, paddingRight: 16, lineHeight: 1.3 }}>{a.Subject?.name}</div>
-        <div style={{ fontSize: 11, color: '#4b5563', lineHeight: 1.3 }}>{detail}</div>
-        {a.Room && mode !== 'room' && <div style={{ fontSize: 10, color: '#6b7280' }}>{a.Room.name}</div>}
+        <div style={{ fontWeight: 600, fontSize: 12, paddingRight: 16, lineHeight: 1.3, color: token.colorText }}>{a.Subject?.name}</div>
+        <div style={{ fontSize: 11, color: token.colorTextSecondary, lineHeight: 1.3 }}>{detail}</div>
+        {a.Room && mode !== 'room' && <div style={{ fontSize: 10, color: token.colorTextSecondary }}>{a.Room.name}</div>}
         {editable ? (
           <Tooltip title={l.is_locked ? 'Kilitli: yeniden çözümde yerinde kalır' : 'Kilitle'}>
             <span
@@ -331,6 +363,33 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
           {mode === 'teacher' && <Tag color={gapCount ? 'orange' : 'green'}>{gapCount} boş saat</Tag>}
         </Space>
         <Space wrap>
+          <Dropdown
+            disabled={exporting || lessons.length === 0}
+            menu={{
+              items: [
+                {
+                  key: 'current',
+                  label:
+                    mode === 'classroom'
+                      ? 'Bu şubenin programı'
+                      : mode === 'teacher'
+                        ? 'Bu öğretmenin programı'
+                        : 'Bu mekanın programı',
+                  disabled: !entityId,
+                },
+                { type: 'divider' },
+                { key: 'classroom', label: 'Tüm şubeler' },
+                { key: 'teacher', label: 'Tüm öğretmenler' },
+                { key: 'student', label: 'Tüm öğrenciler' },
+                { key: 'room', label: 'Tüm mekanlar' },
+              ],
+              onClick: ({ key }) => void onExport(key),
+            }}
+          >
+            <Button icon={<FileExcelOutlined />} loading={exporting}>
+              Excel <DownOutlined />
+            </Button>
+          </Dropdown>
           {editable && mode !== 'room' && (
             <>
               <Button icon={<LockOutlined />} onClick={() => lockView(true)}>
@@ -387,8 +446,8 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
         >
           <div />
           {project.days.map((d) => (
-            <div key={d} style={{ fontWeight: 600, textAlign: 'center', padding: 6 }}>
-              {DAY_LABELS[d]}
+            <div key={d} style={{ fontWeight: 600, textAlign: 'center', padding: 6, color: token.colorText, whiteSpace: 'nowrap' }}>
+              {DAY_LABELS[d] || d}
             </div>
           ))}
           {periods.map((p) => (
@@ -399,15 +458,15 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
                     gridColumn: `1 / span ${project.days.length + 1}`,
                     textAlign: 'center',
                     fontSize: 11,
-                    color: '#9ca3af',
-                    borderTop: '1px dashed #d1d5db',
+                    color: token.colorTextSecondary,
+                    borderTop: `1px dashed ${token.colorBorder}`,
                     paddingTop: 2,
                   }}
                 >
                   öğle arası
                 </div>
               )}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontWeight: 600, color: '#6b7280' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontWeight: 600, color: token.colorText }}>
                 <span>{p}</span>
                 <span style={{ fontSize: 10, fontWeight: 400 }}>
                   {periodClock(project.settings.bell, project.days[0] || 1, p, project.lunch_after)}
@@ -417,7 +476,7 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
                 const key = `${d}:${p}`
                 const items = cellLessons(d, p)
                 const state = cellState[`${d}-${p}`]
-                const idle = state === 'closed' ? '#f0f0f0' : state === 'avoid' ? '#fffbe6' : '#fff'
+                const idle = state === 'closed' ? token.colorFillSecondary : state === 'avoid' ? token.colorWarningBg : token.colorBgContainer
                 return (
                   <div
                     key={key}
@@ -433,8 +492,8 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
                     }}
                     style={{
                       minHeight: 58,
-                      border: `1px ${dropKey === key ? 'dashed #1677ff' : 'solid #e5e7eb'}`,
-                      background: dropKey === key ? '#e6f4ff' : idle,
+                      border: `1px ${dropKey === key ? 'dashed' : 'solid'} ${dropKey === key ? token.colorPrimary : token.colorBorder}`,
+                      background: dropKey === key ? token.colorPrimaryBg : idle,
                       borderRadius: 6,
                       padding: 3,
                     }}

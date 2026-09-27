@@ -64,10 +64,10 @@ async function computeHoursWarning({ tenantId, classroomId, subjectId, academicY
   const classroom = await Classroom.findByPk(classroomId);
   if (!classroom) return null;
 
-  const required = await SubjectClassHour.findOne({
+  const options = await SubjectClassHour.findAll({
     where: { tenant_id: tenantId, subject_id: subjectId, class_level: classroom.class_level },
   });
-  if (!required) return null;
+  if (!options.length) return null;
 
   const scheduled = await ScheduleEntry.count({
     where: {
@@ -78,11 +78,11 @@ async function computeHoursWarning({ tenantId, classroomId, subjectId, academicY
     },
   });
 
-  if (scheduled === 0 || scheduled === required.weekly_hours) return null;
+  const allowed = options.map((row) => row.weekly_hours);
+  if (scheduled === 0 || allowed.includes(scheduled)) return null;
   const subject = await Subject.findByPk(subjectId);
-  const diff = scheduled - required.weekly_hours;
-  const label = diff > 0 ? `${diff} saat fazla` : `${Math.abs(diff)} saat eksik`;
-  return `${classroom.class_level}/${classroom.section} şubesinde "${subject?.name || ''}" dersi okutuluyorsa haftalık ${required.weekly_hours} saat olabilir; şu an ${scheduled} saat tanımlı (${label}).`;
+  const list = [...allowed].sort((a, b) => a - b).join(' veya ');
+  return `${classroom.class_level}/${classroom.section} şubesinde "${subject?.name || ''}" dersi okutuluyorsa haftalık ${list} saat olabilir; şu an ${scheduled} saat tanımlı.`;
 }
 
 async function findClassroomConflict({ tenantId, classroomId, dayOfWeek, periodNo, academicYear, excludeId }) {
