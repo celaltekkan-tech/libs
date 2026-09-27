@@ -34,6 +34,13 @@ interface LicenseFormValues {
   ai_daily_limit?: number | null
 }
 
+const LICENSE_DURATION_PRESETS: { label: string; add: (start: Dayjs) => Dayjs }[] = [
+  { label: '1 hafta', add: (start) => start.add(1, 'week') },
+  { label: '15 gün', add: (start) => start.add(15, 'day') },
+  { label: '1 ay', add: (start) => start.add(1, 'month') },
+  { label: '1 yıl', add: (start) => start.add(1, 'year') },
+]
+
 export function LicensesPage() {
   const { message, modal } = App.useApp()
   const [licenses, setLicenses] = useState<License[]>([])
@@ -48,8 +55,20 @@ export function LicensesPage() {
   const [aiLimitValue, setAiLimitValue] = useState<number | null>(null)
   const [aiLimitSaving, setAiLimitSaving] = useState(false)
   const selectedPlanName = Form.useWatch('plan', form)
+  const selectedRange = Form.useWatch('range', form)
   const selectedPlan = selectedPlanName ? getLicensePlan(selectedPlanName) : undefined
   const selectedIsAddon = selectedPlan?.kind === 'addon'
+
+  const applyDuration = (add: (start: Dayjs) => Dayjs) => {
+    const start = selectedRange?.[0] ?? dayjs()
+    form.setFieldsValue({ range: [start, add(start)] })
+  }
+
+  const isDurationActive = (add: (start: Dayjs) => Dayjs) => {
+    const start = selectedRange?.[0]
+    const end = selectedRange?.[1]
+    return Boolean(start && end && end.isSame(add(start), 'day'))
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -378,13 +397,34 @@ export function LicensesPage() {
               kullanılmayan krediler sıfırlanır, yeni lisans paket kotasıyla başlar.
             </Typography.Paragraph>
           )}
-          <Form.Item name="range" label="Başlangıç / Bitiş">
-            <DatePicker.RangePicker
-              style={{ width: '100%' }}
-              format="DD.MM.YYYY"
-              placeholder={['Başlangıç', 'Süresiz']}
-              allowEmpty={[false, true]}
-            />
+          <Form.Item label="Başlangıç / Bitiş">
+            <Form.Item name="range" noStyle>
+              <DatePicker.RangePicker
+                style={{ width: '100%' }}
+                format="DD.MM.YYYY"
+                placeholder={['Başlangıç', 'Süresiz']}
+                allowEmpty={[false, true]}
+                presets={LICENSE_DURATION_PRESETS.map((preset) => ({
+                  label: preset.label,
+                  value: () => {
+                    const start = form.getFieldValue('range')?.[0] ?? dayjs()
+                    return [start, preset.add(start)]
+                  },
+                }))}
+              />
+            </Form.Item>
+            <Space wrap size={8} style={{ marginTop: 8 }}>
+              {LICENSE_DURATION_PRESETS.map((preset) => (
+                <Button
+                  key={preset.label}
+                  size="small"
+                  type={isDurationActive(preset.add) ? 'primary' : 'default'}
+                  onClick={() => applyDuration(preset.add)}
+                >
+                  {preset.label}
+                </Button>
+              ))}
+            </Space>
           </Form.Item>
           <Form.Item name="notes" label="Not">
             <Input.TextArea rows={3} maxLength={1000} placeholder="Opsiyonel not" />
