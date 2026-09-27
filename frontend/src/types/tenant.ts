@@ -8,8 +8,10 @@ export interface Tenant {
   is_active: boolean
   two_factor_enabled?: boolean
   sms_login_enabled?: boolean
+  feedback_enabled?: boolean
   created_at: string
   updated_at: string
+  last_login_at?: string | null
 }
 
 export interface TenantListItem extends Tenant {
@@ -71,6 +73,7 @@ export interface UpdateTenantPayload {
   is_active?: boolean
   two_factor_enabled?: boolean
   sms_login_enabled?: boolean
+  feedback_enabled?: boolean
 }
 
 export interface UpdateTenantUserPayload {

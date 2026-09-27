@@ -107,7 +107,7 @@ export function PlatformNotificationsPage() {
             Bildirimler
           </Typography.Title>
           <Typography.Text type="secondary">
-            Tenant hesaplarına veya seçili kullanıcılara panel bildirimi gönderin.
+            Hesaplara, seçili kullanıcılara veya mobil uygulama kullanıcılarına bildirim gönderin.
           </Typography.Text>
         </div>
         <Button
@@ -154,10 +154,12 @@ export function PlatformNotificationsPage() {
             <Radio.Group
               optionType="button"
               buttonStyle="solid"
+              style={{ display: 'flex', flexWrap: 'wrap', rowGap: 8 }}
               options={[
                 { value: 'tenant', label: 'Tek hesap' },
                 { value: 'users', label: 'Seçili kullanıcılar' },
                 { value: 'all_tenants', label: 'Tüm hesaplar' },
+                { value: 'all_mobile', label: 'Tüm mobil kullanıcılar' },
               ]}
               onChange={() => {
                 form.setFieldsValue({ tenant_id: undefined, user_ids: undefined })

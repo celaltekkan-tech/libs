@@ -42,6 +42,14 @@ import {
   updateFeedbackSyncSettings,
   viewFeedbackAttachment,
 } from '../../api/feedback'
+import {
+  addSupportUpdate,
+  deleteSupport,
+  downloadSupportAttachment,
+  listSupport,
+  updateSupport,
+  viewSupportAttachment,
+} from '../../api/support'
 import { listTenants } from '../../api/tenants'
 import { getErrorMessage } from '../../api/client'
 import {
@@ -65,7 +73,9 @@ import { useBulkTypedDelete } from '../../hooks/useBulkTypedDelete'
 
 const { RangePicker } = DatePicker
 
-export function FeedbackListPage() {
+export function FeedbackListPage({ mode = 'feedback' }: { mode?: 'feedback' | 'support' }) {
+  const isSupport = mode === 'support'
+  const noun = isSupport ? 'destek talebi' : 'geri bildirim'
   const { message, modal } = App.useApp()
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([])
   const [tenants, setTenants] = useState<TenantListItem[]>([])
@@ -89,8 +99,9 @@ export function FeedbackListPage() {
   }, [])
 
   useEffect(() => {
+    if (isSupport) return
     void refreshSyncStatus()
-  }, [refreshSyncStatus])
+  }, [isSupport, refreshSyncStatus])
 
   useEffect(() => {
     void (async () => {
@@ -106,7 +117,7 @@ export function FeedbackListPage() {
     setLoading(true)
     try {
       setFeedbacks(
-        await listFeedback({
+        await (isSupport ? listSupport : listFeedback)({
           ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
           ...(tenantFilter != null ? { tenant_id: tenantFilter } : {}),
           ...(dateRange?.[0] ? { from: dateRange[0].format('YYYY-MM-DD') } : {}),
@@ -118,7 +129,7 @@ export function FeedbackListPage() {
     } finally {
       setLoading(false)
     }
-  }, [message, statusFilter, tenantFilter, dateRange])
+  }, [message, statusFilter, tenantFilter, dateRange, isSupport])
 
   useEffect(() => {
     void load()
@@ -126,8 +137,8 @@ export function FeedbackListPage() {
 
   const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
     getIds: () => feedbacks.map((f) => f.id),
-    deleteOne: (id) => deleteFeedback(Number(id)),
-    noun: 'geri bildirim',
+    deleteOne: (id) => (isSupport ? deleteSupport(Number(id)) : deleteFeedback(Number(id))),
+    noun,
     reload: () => void load(),
     message,
   })
@@ -174,7 +185,7 @@ export function FeedbackListPage() {
 
   const changeStatus = async (id: number, status: FeedbackStatus) => {
     try {
-      await updateFeedback(id, { status })
+      await (isSupport ? updateSupport : updateFeedback)(id, { status })
       message.success('Durum güncellendi')
       void load()
     } catch (err) {
@@ -197,10 +208,10 @@ export function FeedbackListPage() {
     setReplySubmitting(true)
     try {
       if (hasBody) {
-        await addFeedbackUpdate(replyTarget.id, html)
+        await (isSupport ? addSupportUpdate : addFeedbackUpdate)(replyTarget.id, html)
       }
       if (values.status !== replyTarget.status) {
-        await updateFeedback(replyTarget.id, { status: values.status })
+        await (isSupport ? updateSupport : updateFeedback)(replyTarget.id, { status: values.status })
       } else if (!hasBody) {
         message.warning('Durum değişmedi ve gelişme metni girilmedi')
         return
@@ -218,9 +229,9 @@ export function FeedbackListPage() {
   const openAttachment = async (att: FeedbackAttachment, mode: 'view' | 'download') => {
     try {
       if (mode === 'view' && isPdfAttachment(att)) {
-        await viewFeedbackAttachment(att.id, att.original_name, true)
+        await (isSupport ? viewSupportAttachment : viewFeedbackAttachment)(att.id, att.original_name, true)
       } else {
-        await downloadFeedbackAttachment(att.id, att.original_name)
+        await (isSupport ? downloadSupportAttachment : downloadFeedbackAttachment)(att.id, att.original_name)
       }
     } catch (err) {
       message.error(getErrorMessage(err))
@@ -229,15 +240,17 @@ export function FeedbackListPage() {
 
   const remove = (id: number) => {
     modal.confirm({
-      title: 'Geri bildirimi sil',
-      content: 'Bu geri bildirimi silmek istediğinize emin misiniz?',
+      title: isSupport ? 'Destek talebini sil' : 'Geri bildirimi sil',
+      content: isSupport
+        ? 'Bu destek talebini silmek istediğinize emin misiniz?'
+        : 'Bu geri bildirimi silmek istediğinize emin misiniz?',
       okText: 'Sil',
       okButtonProps: { danger: true },
       cancelText: 'Vazgeç',
       onOk: async () => {
         try {
-          await deleteFeedback(id)
-          message.success('Geri bildirim silindi')
+          await (isSupport ? deleteSupport : deleteFeedback)(id)
+          message.success(isSupport ? 'Destek talebi silindi' : 'Geri bildirim silindi')
           void load()
         } catch (err) {
           message.error(getErrorMessage(err))
@@ -247,25 +260,27 @@ export function FeedbackListPage() {
   }
 
   return (
-    <AppLayout title="Geri Bildirimler">
+    <AppLayout title={isSupport ? 'Teknik Destek' : 'Geri Bildirimler'}>
       <div style={{ width: '100%' }}>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <div>
             <Typography.Title level={3} style={{ margin: 0 }}>
-              Geri Bildirimler
+              {isSupport ? 'Teknik Destek' : 'Geri Bildirimler'}
             </Typography.Title>
             <Typography.Text type="secondary">
-              Tenant hesaplarından gelen mesajları filtreleyin, yanıtlayın ve ekleri inceleyin.
-              {syncStatus?.last_success_at
+              {isSupport
+                ? 'Hesaplardan gelen destek taleplerini filtreleyin, yanıtlayın ve ekleri inceleyin.'
+                : 'Tenant hesaplarından gelen mesajları filtreleyin, yanıtlayın ve ekleri inceleyin.'}
+              {!isSupport && syncStatus?.last_success_at
                 ? ` Son senkron: ${new Date(syncStatus.last_success_at).toLocaleString('tr-TR')}.`
                 : ''}
-              {syncStatus?.enabled
+              {!isSupport && syncStatus?.enabled
                 ? syncStatus.auto_sync_enabled
                   ? ' Otomatik senkron açık.'
                   : ' Otomatik senkron kapalı; yalnızca elle çalışır.'
                 : ''}
             </Typography.Text>
-            {syncStatus?.last_error ? (
+            {!isSupport && syncStatus?.last_error ? (
               <div>
                 <Typography.Text type="danger">{syncStatus.last_error}</Typography.Text>
               </div>
@@ -299,6 +314,8 @@ export function FeedbackListPage() {
                 />
               </Space>
               <Space>
+                {!isSupport && (
+                <>
                 <Tooltip
                   title={
                     syncStatus && !syncStatus.enabled
@@ -336,6 +353,8 @@ export function FeedbackListPage() {
                     </Button>
                   </span>
                 </Tooltip>
+                </>
+                )}
                 {!loading && feedbacks.length > 0 && (
                   <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
                     Toplu sil ({feedbacks.length})
@@ -352,7 +371,17 @@ export function FeedbackListPage() {
           ) : (
             <List
               dataSource={feedbacks}
-              locale={{ emptyText: <Empty description="Bu filtrelere uygun geri bildirim yok" /> }}
+              locale={{
+                emptyText: (
+                  <Empty
+                    description={
+                      isSupport
+                        ? 'Bu filtrelere uygun destek talebi yok'
+                        : 'Bu filtrelere uygun geri bildirim yok'
+                    }
+                  />
+                ),
+              }}
               pagination={{
                 defaultPageSize: 10,
                 showSizeChanger: true,
@@ -569,8 +598,8 @@ export function FeedbackListPage() {
       </Modal>
       <TypedPhraseConfirmModal
         open={bulkOpen}
-        title="Geri bildirimleri toplu sil"
-        description={`Filtreye uyan ${feedbacks.length} geri bildirim silinecek.`}
+        title={isSupport ? 'Destek taleplerini toplu sil' : 'Geri bildirimleri toplu sil'}
+        description={`Filtreye uyan ${feedbacks.length} ${noun} silinecek.`}
         loading={bulkLoading}
         onCancel={() => setBulkOpen(false)}
         onConfirm={onBulkDelete}

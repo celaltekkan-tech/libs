@@ -1,7 +1,7 @@
 'use strict';
 
 const { Op } = require('sequelize');
-const { Student, Classroom, School, Feedback } = require('../models');
+const { Student, Classroom, School, Feedback, Tenant } = require('../models');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
 const {
@@ -940,7 +940,10 @@ module.exports = {
       const unmatchedColumns = unmatchedHeaders.map((h) => h.label);
 
       let feedbackCreated = false;
-      if (unmatchedHeaders.length > 0) {
+      const feedbackTenant = unmatchedHeaders.length > 0
+        ? await Tenant.findByPk(tenantId, { attributes: ['feedback_enabled'] })
+        : null;
+      if (unmatchedHeaders.length > 0 && feedbackTenant?.feedback_enabled) {
         const columnLines = unmatchedHeaders
           .map((h) => {
             const suggestion = columnSuggestions[String(h.index)];

@@ -8,6 +8,7 @@ import {
   BankOutlined,
   BellOutlined,
   CommentOutlined,
+  CustomerServiceOutlined,
   DatabaseOutlined,
   GlobalOutlined,
   HomeOutlined,
@@ -56,6 +57,7 @@ const PLATFORM_ADMIN_ITEMS: NavNode[] = [
   { key: '/platform/roles', icon: <SafetyCertificateOutlined />, label: 'Global Yetkiler' },
   { key: '/platform/licenses', icon: <IdcardOutlined />, label: 'Lisans Yönetimi' },
   { key: '/platform/directory-schools', icon: <GlobalOutlined />, label: 'MEB Okul Kataloğu' },
+  { key: '/platform/support', icon: <CustomerServiceOutlined />, label: 'Teknik Destek' },
   { key: '/platform/feedback', icon: <CommentOutlined />, label: 'Geri Bildirimler' },
   { key: '/platform/notifications', icon: <BellOutlined />, label: 'Bildirimler' },
   { key: '/platform/backups', icon: <DatabaseOutlined />, label: 'Yedekleme' },
@@ -339,7 +341,10 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
         </Layout.Header>
         <Layout.Content className="app-content">{children}</Layout.Content>
       </Layout>
-      {!session?.is_platform_admin && <FeedbackFabModal />}
+      {!session?.is_platform_admin && (
+        <FeedbackFabModal mode="support" raised={hasModule('feedback')} />
+      )}
+      {!session?.is_platform_admin && hasModule('feedback') && <FeedbackFabModal />}
       {!session?.is_platform_admin && <MandatoryWorkReminder />}
       <PageHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} content={pageHelp} />
       {canEditMenu && (

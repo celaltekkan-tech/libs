@@ -40,6 +40,14 @@ import {
   submitFeedback,
   viewFeedbackAttachment,
 } from '../api/feedback'
+import {
+  addSupportUpdate,
+  cancelSupport,
+  downloadSupportAttachment,
+  listMySupport,
+  submitSupport,
+  viewSupportAttachment,
+} from '../api/support'
 import { getErrorMessage } from '../api/client'
 import {
   FEEDBACK_ACCEPT,
@@ -61,7 +69,33 @@ const ALLOWED_EXT = /\.(pdf|docx?|xlsx?|pptx?|odt|ods|odp|png|jpe?g|gif|webp)$/i
 const MAX_FILE_SIZE = 5 * 1024 * 1024
 const MAX_FILES = 5
 
-export function FeedbackPage() {
+export function FeedbackPage({ mode = 'feedback' }: { mode?: 'feedback' | 'support' }) {
+  const isSupport = mode === 'support'
+  const copy = isSupport
+    ? {
+        title: 'Teknik Destek',
+        heading: 'Destek Talebi Gönder',
+        intro:
+          'Madde imi, kalın/italik yazı kullanabilirsiniz. İsterseniz PDF veya ekran görüntüsü ekleyin (Ctrl+V ile yapıştırabilirsiniz).',
+        placeholder: 'Yaşadığınız sorunu yazın… (madde imi için araç çubuğunu kullanın)',
+        sent: 'Destek talebiniz gönderildi',
+        cancelled: 'Destek talebi iptal edildi',
+        empty: 'Bu filtrelere uygun destek talebi yok',
+        mine: 'Taleplerim',
+        cancelTitle: 'Destek talebini iptal et',
+      }
+    : {
+        title: 'Geri Bildirim',
+        heading: 'Geri Bildirim Gönder',
+        intro:
+          'Madde imi, kalın/italik yazı kullanabilirsiniz. İsterseniz PDF veya ekran görüntüsü ekleyin (Ctrl+V ile yapıştırabilirsiniz).',
+        placeholder: 'Yazmak istediğiniz geri bildirim… (madde imi için araç çubuğunu kullanın)',
+        sent: 'Geri bildiriminiz gönderildi, teşekkürler',
+        cancelled: 'Geri bildirim iptal edildi',
+        empty: 'Bu filtrelere uygun geri bildirim yok',
+        mine: 'Gönderdiklerim',
+        cancelTitle: 'Geri bildirimi iptal et',
+      }
   const { message } = App.useApp()
   const { pathname } = useLocation()
   const [form] = Form.useForm<{ message: string }>()
@@ -82,7 +116,7 @@ export function FeedbackPage() {
     setLoading(true)
     try {
       setFeedbacks(
-        await listMyFeedback({
+        await (isSupport ? listMySupport : listMyFeedback)({
           ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
           ...(dateRange?.[0] ? { from: dateRange[0].format('YYYY-MM-DD') } : {}),
           ...(dateRange?.[1] ? { to: dateRange[1].format('YYYY-MM-DD') } : {}),
@@ -93,7 +127,7 @@ export function FeedbackPage() {
     } finally {
       setLoading(false)
     }
-  }, [message, statusFilter, dateRange])
+  }, [message, statusFilter, dateRange, isSupport])
 
   useEffect(() => {
     void load()
@@ -111,8 +145,8 @@ export function FeedbackPage() {
         .map((f) => f.originFileObj)
         .filter((f): f is RcFile => Boolean(f))
       const page = getPageHelp(pathname)
-      await submitFeedback(html, files, { path: pathname, title: page.title })
-      message.success('Geri bildiriminiz gönderildi, teşekkürler')
+      await (isSupport ? submitSupport : submitFeedback)(html, files, { path: pathname, title: page.title })
+      message.success(copy.sent)
       form.resetFields()
       setFileList([])
       void load()
@@ -126,9 +160,9 @@ export function FeedbackPage() {
   const openAttachment = async (att: FeedbackAttachment, mode: 'view' | 'download') => {
     try {
       if (mode === 'view' && (isPdfAttachment(att) || isImageAttachment(att))) {
-        await viewFeedbackAttachment(att.id, att.original_name, true)
+        await (isSupport ? viewSupportAttachment : viewFeedbackAttachment)(att.id, att.original_name, true)
       } else {
-        await downloadFeedbackAttachment(att.id, att.original_name)
+        await (isSupport ? downloadSupportAttachment : downloadFeedbackAttachment)(att.id, att.original_name)
       }
     } catch (err) {
       message.error(getErrorMessage(err))
@@ -145,8 +179,8 @@ export function FeedbackPage() {
     try {
       const { reason } = await cancelForm.validateFields()
       setCancelSubmitting(true)
-      await cancelFeedback(cancelTarget.id, reason)
-      message.success('Geri bildirim iptal edildi')
+      await (isSupport ? cancelSupport : cancelFeedback)(cancelTarget.id, reason)
+      message.success(copy.cancelled)
       setCancelTarget(null)
       void load()
     } catch (err) {
@@ -170,7 +204,7 @@ export function FeedbackPage() {
     }
     setUpdateSubmitting(true)
     try {
-      await addFeedbackUpdate(updateTarget.id, html)
+      await (isSupport ? addSupportUpdate : addFeedbackUpdate)(updateTarget.id, html)
       message.success('Gelişme eklendi; kayıt beklemede')
       setUpdateTarget(null)
       updateForm.resetFields()
@@ -212,13 +246,10 @@ export function FeedbackPage() {
   }
 
   return (
-    <AppLayout title="Geri Bildirim">
+    <AppLayout title={copy.title}>
       <div style={{ width: '100%' }}>
-        <Typography.Title level={3}>Geri Bildirim Gönder</Typography.Title>
-        <Typography.Paragraph type="secondary">
-          Madde imi, kalın/italik yazı kullanabilirsiniz. İsterseniz PDF veya ekran görüntüsü ekleyin
-          (Ctrl+V ile yapıştırabilirsiniz).
-        </Typography.Paragraph>
+        <Typography.Title level={3}>{copy.heading}</Typography.Title>
+        <Typography.Paragraph type="secondary">{copy.intro}</Typography.Paragraph>
 
         <Card>
           <Form form={form} layout="vertical" onFinish={onFinish}>
@@ -237,7 +268,7 @@ export function FeedbackPage() {
             >
               <RichTextEditor
                 minHeight={140}
-                placeholder="Yazmak istediğiniz geri bildirim… (madde imi için araç çubuğunu kullanın)"
+                placeholder={copy.placeholder}
                 onImagePaste={addImageFile}
               />
             </Form.Item>
@@ -278,7 +309,7 @@ export function FeedbackPage() {
         </Card>
 
         <Typography.Title level={4} style={{ marginTop: 32 }}>
-          Gönderdiklerim
+          {copy.mine}
         </Typography.Title>
 
         <FilterBar>
@@ -299,7 +330,7 @@ export function FeedbackPage() {
         <List
           loading={loading}
           dataSource={feedbacks}
-          locale={{ emptyText: <Empty description="Bu filtrelere uygun geri bildirim yok" /> }}
+          locale={{ emptyText: <Empty description={copy.empty} /> }}
           pagination={{
             defaultPageSize: 10,
             showSizeChanger: true,
@@ -429,7 +460,7 @@ export function FeedbackPage() {
       </Modal>
 
       <Modal
-        title="Geri bildirimi iptal et"
+        title={copy.cancelTitle}
         open={!!cancelTarget}
         onCancel={() => setCancelTarget(null)}
         onOk={() => void submitCancelFeedback()}

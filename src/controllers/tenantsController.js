@@ -20,14 +20,44 @@ async function countsByTenant(Model) {
   return map;
 }
 
+function toIsoOrNull(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+async function lastLoginByTenant() {
+  const rows = await User.findAll({
+    attributes: [
+      'tenant_id',
+      [db.sequelize.fn('MAX', db.sequelize.col('last_login_at')), 'last_login_at'],
+    ],
+    where: { is_platform_admin: false },
+    group: ['tenant_id'],
+    raw: true,
+  });
+
+  const map = new Map();
+  rows.forEach((row) => map.set(row.tenant_id, toIsoOrNull(row.last_login_at)));
+  return map;
+}
+
+async function tenantLastLoginAt(tenantId) {
+  const value = await User.max('last_login_at', {
+    where: { tenant_id: tenantId, is_platform_admin: false },
+  });
+  return toIsoOrNull(value);
+}
+
 module.exports = {
   async list(req, res, next) {
     try {
       const tenants = await Tenant.findAll({ order: [['id', 'ASC']] });
-      const [schoolCounts, userCounts, planByTenant] = await Promise.all([
+      const [schoolCounts, userCounts, planByTenant, lastLogins] = await Promise.all([
         countsByTenant(School),
         countsByTenant(User),
         licenseService.getActiveMainPlanMap(),
+        lastLoginByTenant(),
       ]);
 
       const data = tenants.map((tenant) => ({
@@ -35,6 +65,7 @@ module.exports = {
         plan: planByTenant.get(tenant.id) || null,
         school_count: schoolCounts.get(tenant.id) || 0,
         user_count: userCounts.get(tenant.id) || 0,
+        last_login_at: lastLogins.get(tenant.id) || null,
       }));
 
       res.json({ success: true, data });
@@ -50,8 +81,14 @@ module.exports = {
         return res.status(404).json({ success: false, message: 'Hesap bulunamadı' });
       }
 
-      const main = await licenseService.getActiveLicense(tenant.id);
-      res.json({ success: true, data: { ...tenant.toJSON(), plan: main?.plan || null } });
+      const [main, lastLoginAt] = await Promise.all([
+        licenseService.getActiveLicense(tenant.id),
+        tenantLastLoginAt(tenant.id),
+      ]);
+      res.json({
+        success: true,
+        data: { ...tenant.toJSON(), plan: main?.plan || null, last_login_at: lastLoginAt },
+      });
     } catch (err) {
       next(err);
     }

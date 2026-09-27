@@ -45,6 +45,20 @@ async function resolveRecipients({ target_type, tenant_id, user_ids, senderId })
     return rows.map((u) => ({ user_id: u.id, tenant_id: u.tenant_id }));
   }
 
+  // all_mobile: mobil uygulamadan kayıt olmuş aktif öğretmen hesapları
+  if (target_type === 'all_mobile') {
+    const rows = await User.findAll({
+      where: {
+        is_active: true,
+        is_platform_admin: false,
+        teacher_id: { [Op.ne]: null },
+        id: { [Op.ne]: senderId || 0 },
+      },
+      attributes: ['id', 'tenant_id'],
+    });
+    return rows.map((u) => ({ user_id: u.id, tenant_id: u.tenant_id }));
+  }
+
   // all_tenants: tüm aktif tenant kullanıcıları (platform admin hariç)
   const rows = await User.findAll({
     where: {

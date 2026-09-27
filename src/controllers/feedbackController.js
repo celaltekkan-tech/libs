@@ -65,6 +65,41 @@ function parseDateEnd(value) {
   return d;
 }
 
+function ticketKind(req) {
+  return req.ticketKind === 'support' ? 'support' : 'feedback';
+}
+
+function ticketCopy(kind) {
+  if (kind === 'support') {
+    return {
+      cancelBlocked: 'Bu destek talebi iptal edilemez',
+      userUpdateBlocked: 'Yalnızca incelenmekte olan destek taleplerine gelişme eklenebilir',
+      closedBlocked: 'Sonuçlanmış veya iptal edilmiş talebe gelişme eklenemez',
+      updateTitle: 'Destek talebinize yeni gelişme eklendi',
+      updateBody:
+        'Gönderdiğiniz destek talebine platform tarafından yeni bir gelişme eklendi. Detay için Teknik Destek sayfasına bakın.',
+      replyTitle: 'Destek talebinize yanıt verildi',
+      replyBody:
+        'Gönderdiğiniz destek talebine platform tarafından yanıt verildi. Detay için Teknik Destek sayfasına bakın.',
+    };
+  }
+  return {
+    cancelBlocked: 'Bu geri bildirim iptal edilemez',
+    userUpdateBlocked: 'Yalnızca incelenmekte olan geri bildirimlere gelişme eklenebilir',
+    closedBlocked: 'Sonuçlanmış veya iptal edilmiş kayda gelişme eklenemez',
+    updateTitle: 'Geri bildiriminize yeni gelişme eklendi',
+    updateBody:
+      'Gönderdiğiniz geri bildirime platform tarafından yeni bir gelişme eklendi. Detay için Geri Bildirim sayfasına bakın.',
+    replyTitle: 'Geri bildiriminize yanıt verildi',
+    replyBody:
+      'Gönderdiğiniz geri bildirime platform tarafından yanıt verildi. Detay için Geri Bildirim sayfasına bakın.',
+  };
+}
+
+function sameKind(row, kind) {
+  return Boolean(row) && (row.kind || 'feedback') === kind;
+}
+
 function buildFeedbackWhere(query = {}, extra = {}) {
   const where = { ...extra };
 
@@ -100,6 +135,7 @@ module.exports = {
       const feedback = await sequelize.transaction(async (transaction) => {
         const created = await Feedback.create(
           {
+            kind: ticketKind(req),
             tenant_id: req.user.tenant_id,
             user_id: req.user.user_id,
             message: payload.message,
@@ -145,7 +181,10 @@ module.exports = {
 
   async listMine(req, res, next) {
     try {
-      const where = buildFeedbackWhere(req.query, { tenant_id: req.user.tenant_id });
+      const where = buildFeedbackWhere(req.query, {
+        tenant_id: req.user.tenant_id,
+        kind: ticketKind(req),
+      });
       const feedbacks = await Feedback.findAll({
         where,
         include: [{ model: User, attributes: ['id', 'full_name'] }, attachmentInclude, updatesInclude],
@@ -164,7 +203,7 @@ module.exports = {
 
   async list(req, res, next) {
     try {
-      const where = buildFeedbackWhere(req.query);
+      const where = buildFeedbackWhere(req.query, { kind: ticketKind(req) });
       const feedbacks = await Feedback.findAll({
         where,
         include: [
@@ -196,7 +235,9 @@ module.exports = {
           updatesInclude,
         ],
       });
-      if (!feedback) return res.status(404).json({ success: false, message: 'Bulunamadı' });
+      if (!sameKind(feedback, ticketKind(req))) {
+        return res.status(404).json({ success: false, message: 'Bulunamadı' });
+      }
       res.json({ success: true, data: feedback });
     } catch (err) {
       next(err);
@@ -205,13 +246,16 @@ module.exports = {
 
   async cancelMine(req, res, next) {
     try {
+      const kind = ticketKind(req);
       const feedback = await Feedback.findByPk(req.params.id);
-      if (!feedback) return res.status(404).json({ success: false, message: 'Bulunamadı' });
+      if (!sameKind(feedback, kind)) {
+        return res.status(404).json({ success: false, message: 'Bulunamadı' });
+      }
       if (feedback.tenant_id !== req.user.tenant_id || feedback.user_id !== req.user.user_id) {
         return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
       }
       if (!OPEN_FEEDBACK_STATUSES.includes(feedback.status)) {
-        return res.status(400).json({ success: false, message: 'Bu geri bildirim iptal edilemez' });
+        return res.status(400).json({ success: false, message: ticketCopy(kind).cancelBlocked });
       }
       const { cancel_reason } = req.validatedBody || req.body;
       await feedback.update({ status: 'cancelled', cancel_reason });
@@ -226,8 +270,12 @@ module.exports = {
 
   async addUpdate(req, res, next) {
     try {
+      const kind = ticketKind(req);
+      const copy = ticketCopy(kind);
       const feedback = await Feedback.findByPk(req.params.id);
-      if (!feedback) return res.status(404).json({ success: false, message: 'Bulunamadı' });
+      if (!sameKind(feedback, kind)) {
+        return res.status(404).json({ success: false, message: 'Bulunamadı' });
+      }
 
       const user = await User.findByPk(req.user.user_id, {
         attributes: ['id', 'full_name', 'is_platform_admin', 'tenant_id', 'is_active'],
@@ -248,14 +296,14 @@ module.exports = {
       if (!isPlatform && !REVIEW_FEEDBACK_STATUSES.includes(feedback.status)) {
         return res.status(400).json({
           success: false,
-          message: 'Yalnızca incelenmekte olan geri bildirimlere gelişme eklenebilir',
+          message: copy.userUpdateBlocked,
         });
       }
 
       if (isPlatform && (feedback.status === 'cancelled' || feedback.status === 'resolved')) {
         return res.status(400).json({
           success: false,
-          message: 'Sonuçlanmış veya iptal edilmiş kayda gelişme eklenemez',
+          message: copy.closedBlocked,
         });
       }
 
@@ -278,8 +326,8 @@ module.exports = {
           recipient_user_id: feedback.user_id,
           tenant_id: feedback.tenant_id,
           sender_user_id: user.id,
-          title: 'Geri bildiriminize yeni gelişme eklendi',
-          body: 'Gönderdiğiniz geri bildirime platform tarafından yeni bir gelişme eklendi. Detay için Geri Bildirim sayfasına bakın.',
+          title: copy.updateTitle,
+          body: copy.updateBody,
         });
         // Yönetici gelişme ekleyip henüz sonuçlandırmadıysa kayıt incelemeye döner
         if (feedback.status !== 'read') {
@@ -305,8 +353,11 @@ module.exports = {
 
   async update(req, res, next) {
     try {
+      const kind = ticketKind(req);
       const feedback = await Feedback.findByPk(req.params.id);
-      if (!feedback) return res.status(404).json({ success: false, message: 'Bulunamadı' });
+      if (!sameKind(feedback, kind)) {
+        return res.status(404).json({ success: false, message: 'Bulunamadı' });
+      }
 
       const payload = req.validatedBody || req.body;
       const hadReply = Boolean(feedback.reply);
@@ -320,8 +371,8 @@ module.exports = {
           recipient_user_id: feedback.user_id,
           tenant_id: feedback.tenant_id,
           sender_user_id: req.user.user_id,
-          title: 'Geri bildiriminize yanıt verildi',
-          body: 'Gönderdiğiniz geri bildirime platform tarafından yanıt verildi. Detay için Geri Bildirim sayfasına bakın.',
+          title: ticketCopy(kind).replyTitle,
+          body: ticketCopy(kind).replyBody,
         });
       }
 
@@ -344,7 +395,9 @@ module.exports = {
       const feedback = await Feedback.findByPk(req.params.id, {
         include: [{ model: FeedbackAttachment, as: 'Attachments' }],
       });
-      if (!feedback) return res.status(404).json({ success: false, message: 'Bulunamadı' });
+      if (!sameKind(feedback, ticketKind(req))) {
+        return res.status(404).json({ success: false, message: 'Bulunamadı' });
+      }
 
       const storedNames = (feedback.Attachments || []).map((a) => a.stored_name);
       await sequelize.transaction(async (transaction) => {
@@ -361,9 +414,9 @@ module.exports = {
   async downloadAttachment(req, res, next) {
     try {
       const attachment = await FeedbackAttachment.findByPk(req.params.attachmentId, {
-        include: [{ model: Feedback, attributes: ['id', 'tenant_id'] }],
+        include: [{ model: Feedback, attributes: ['id', 'tenant_id', 'kind'] }],
       });
-      if (!attachment || !attachment.Feedback) {
+      if (!attachment || !sameKind(attachment.Feedback, ticketKind(req))) {
         return res.status(404).json({ success: false, message: 'Dosya bulunamadı' });
       }
 

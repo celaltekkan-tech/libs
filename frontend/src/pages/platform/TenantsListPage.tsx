@@ -50,8 +50,20 @@ export function TenantsListPage() {
       render: (isActive: boolean) =>
         isActive ? <Tag color="green">Aktif</Tag> : <Tag color="red">Askıda</Tag>,
     },
+    {
+      title: 'Geri bildirim',
+      dataIndex: 'feedback_enabled',
+      render: (enabled: boolean | undefined) =>
+        enabled ? <Tag color="blue">Açık</Tag> : <Tag>Kapalı</Tag>,
+    },
     { title: 'Okul', dataIndex: 'school_count', align: 'right' },
     { title: 'Kullanıcı', dataIndex: 'user_count', align: 'right' },
+    {
+      title: 'Son giriş',
+      dataIndex: 'last_login_at',
+      render: (value: string | null | undefined) =>
+        value ? new Date(value).toLocaleString('tr-TR') : '—',
+    },
     {
       title: 'Oluşturma',
       dataIndex: 'created_at',

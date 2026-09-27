@@ -468,6 +468,10 @@ body {
   pointer-events: none;
 }
 
+.feedback-fab-host.is-raised {
+  bottom: 84px;
+}
+
 .feedback-fab-host > * {
   pointer-events: auto;
 }

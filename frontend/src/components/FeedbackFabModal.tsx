@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { App, Button, Form, Modal, Tooltip, Typography, Upload } from 'antd'
-import { CommentOutlined, InboxOutlined, SendOutlined } from '@ant-design/icons'
+import { CommentOutlined, CustomerServiceOutlined, InboxOutlined, SendOutlined } from '@ant-design/icons'
 import type { RcFile, UploadFile } from 'antd/es/upload/interface'
 import { submitFeedback } from '../api/feedback'
+import { submitSupport } from '../api/support'
 import { getErrorMessage } from '../api/client'
 import { FEEDBACK_ACCEPT } from '../types/feedback'
 import { getPageHelp } from '../constants/pageHelp'
@@ -14,7 +15,14 @@ const ALLOWED_EXT = /\.(pdf|docx?|xlsx?|pptx?|odt|ods|odp|png|jpe?g|gif|webp)$/i
 const MAX_FILE_SIZE = 5 * 1024 * 1024
 const MAX_FILES = 5
 
-export function FeedbackFabModal() {
+export function FeedbackFabModal({
+  mode = 'feedback',
+  raised = false,
+}: {
+  mode?: 'feedback' | 'support'
+  raised?: boolean
+}) {
+  const isSupport = mode === 'support'
   const { message } = App.useApp()
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
@@ -70,8 +78,8 @@ export function FeedbackFabModal() {
         .map((f) => f.originFileObj)
         .filter((f): f is RcFile => Boolean(f))
       const page = getPageHelp(pathname)
-      await submitFeedback(html, files, { path: pathname, title: page.title })
-      message.success('Geri bildiriminiz gönderildi, teşekkürler')
+      await (isSupport ? submitSupport : submitFeedback)(html, files, { path: pathname, title: page.title })
+      message.success(isSupport ? 'Destek talebiniz gönderildi' : 'Geri bildiriminiz gönderildi, teşekkürler')
       close()
     } catch (err) {
       message.error(getErrorMessage(err))
@@ -83,15 +91,15 @@ export function FeedbackFabModal() {
   return (
     <>
       {createPortal(
-        <div className="feedback-fab-host">
-          <Tooltip title="Geri bildirim gönder" placement="left">
+        <div className={raised ? 'feedback-fab-host is-raised' : 'feedback-fab-host'}>
+          <Tooltip title={isSupport ? 'Teknik destek talebi' : 'Geri bildirim gönder'} placement="left">
             <button
               type="button"
               className="feedback-fab"
-              aria-label="Geri bildirim gönder"
+              aria-label={isSupport ? 'Teknik destek talebi' : 'Geri bildirim gönder'}
               onClick={() => setOpen(true)}
             >
-              <CommentOutlined />
+              {isSupport ? <CustomerServiceOutlined /> : <CommentOutlined />}
             </button>
           </Tooltip>
         </div>,
@@ -99,7 +107,7 @@ export function FeedbackFabModal() {
       )}
 
       <Modal
-        title="Geri Bildirim Gönder"
+        title={isSupport ? 'Teknik Destek Talebi' : 'Geri Bildirim Gönder'}
         open={open}
         onCancel={close}
         footer={null}
@@ -107,8 +115,9 @@ export function FeedbackFabModal() {
         width={560}
       >
         <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-          Öneri, sorun veya isteklerinizi yazın. Madde imi, kalın yazı gibi biçimlendirme
-          kullanabilirsiniz. Dosya veya ekran görüntüsü ekleyebilirsiniz (Ctrl+V).
+          {isSupport
+            ? 'Yaşadığınız sorunu yazın. Madde imi, kalın yazı gibi biçimlendirme kullanabilirsiniz. Dosya veya ekran görüntüsü ekleyebilirsiniz (Ctrl+V).'
+            : 'Öneri, sorun veya isteklerinizi yazın. Madde imi, kalın yazı gibi biçimlendirme kullanabilirsiniz. Dosya veya ekran görüntüsü ekleyebilirsiniz (Ctrl+V).'}
           Bulunduğunuz sayfa ({getPageHelp(pathname).title}) kayda otomatik eklenir.
         </Typography.Paragraph>
 
@@ -127,7 +136,11 @@ export function FeedbackFabModal() {
             ]}
           >
             <RichTextEditor
-              placeholder="Yazmak istediğiniz geri bildirim… (madde imi için araç çubuğunu kullanın)"
+              placeholder={
+                isSupport
+                  ? 'Yaşadığınız sorunu yazın… (madde imi için araç çubuğunu kullanın)'
+                  : 'Yazmak istediğiniz geri bildirim… (madde imi için araç çubuğunu kullanın)'
+              }
               onImagePaste={addImageFile}
             />
           </Form.Item>

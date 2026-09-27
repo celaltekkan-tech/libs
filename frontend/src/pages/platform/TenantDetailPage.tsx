@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { App, Button, Card, Descriptions, Form, Input, Modal, Popconfirm, Space, Switch, Tag, Typography } from 'antd'
 import { SortableTable } from '../../components/SortableTable'
-import { ArrowLeftOutlined, EditOutlined, IdcardOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, CommentOutlined, EditOutlined, IdcardOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
 import { AppLayout } from '../../components/AppLayout'
 import { SortableDashboard } from '../../components/SortableDashboard'
 import { useAuth } from '../../auth/AuthContext'
@@ -47,6 +47,7 @@ export function TenantDetailPage() {
   const [togglingStatus, setTogglingStatus] = useState(false)
   const [toggling2fa, setToggling2fa] = useState(false)
   const [togglingSmsLogin, setTogglingSmsLogin] = useState(false)
+  const [togglingFeedback, setTogglingFeedback] = useState(false)
   const [resetting2fa, setResetting2fa] = useState(false)
   const [resettingUserId, setResettingUserId] = useState<number | null>(null)
   const [resettingSmsUserId, setResettingSmsUserId] = useState<number | null>(null)
@@ -138,6 +139,19 @@ export function TenantDetailPage() {
       message.error(getErrorMessage(err))
     } finally {
       setToggling2fa(false)
+    }
+  }
+
+  async function handleToggleFeedback(checked: boolean) {
+    setTogglingFeedback(true)
+    try {
+      const { tenant: updated } = await updateTenant(tenantId, { feedback_enabled: checked })
+      setTenant(updated)
+      message.success(checked ? 'Geri bildirim bu hesap için açıldı' : 'Geri bildirim bu hesap için kapatıldı')
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setTogglingFeedback(false)
     }
   }
 
@@ -297,6 +311,11 @@ export function TenantDetailPage() {
                               {tenant.is_active ? <Tag color="green">Aktif</Tag> : <Tag color="red">Askıda</Tag>}
                             </Space>
                           </Descriptions.Item>
+                          <Descriptions.Item label="Son giriş">
+                            {tenant.last_login_at
+                              ? new Date(tenant.last_login_at).toLocaleString('tr-TR')
+                              : '—'}
+                          </Descriptions.Item>
                           <Descriptions.Item label="Oluşturma">
                             {new Date(tenant.created_at).toLocaleString('tr-TR')}
                           </Descriptions.Item>
@@ -376,6 +395,37 @@ export function TenantDetailPage() {
                             </Button>
                           </Popconfirm>
                         </Space>
+                      </Space>
+                    )}
+                  </Card>
+                ),
+              },
+              {
+                id: 'tenant-feedback',
+                span: { xs: 24, md: 12 },
+                node: (
+                  <Card
+                    loading={loading}
+                    title={
+                      <Space>
+                        <CommentOutlined />
+                        Geri bildirim
+                      </Space>
+                    }
+                  >
+                    {tenant && (
+                      <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                        <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                          Kapalıyken bu hesabın kullanıcıları menüde geri bildirimi görmez ve
+                          gönderemez. Yalnızca açtığınız hesaplar kullanır.
+                        </Typography.Paragraph>
+                        <Switch
+                          checked={Boolean(tenant.feedback_enabled)}
+                          loading={togglingFeedback}
+                          checkedChildren="Açık"
+                          unCheckedChildren="Kapalı"
+                          onChange={(checked) => void handleToggleFeedback(checked)}
+                        />
                       </Space>
                     )}
                   </Card>
@@ -505,6 +555,12 @@ export function TenantDetailPage() {
                             `${record.sms_login_requests_count ?? 0}/3`,
                         },
                         { title: 'Rol', dataIndex: 'role' },
+                        {
+                          title: 'Son giriş',
+                          dataIndex: 'last_login_at',
+                          render: (value: string | null) =>
+                            value ? new Date(value).toLocaleString('tr-TR') : '—',
+                        },
                         {
                           title: 'Durum',
                           dataIndex: 'is_active',

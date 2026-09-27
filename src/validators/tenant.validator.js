@@ -33,6 +33,7 @@ const updateTenantSchema = Joi.object({
   is_active: Joi.boolean(),
   two_factor_enabled: Joi.boolean(),
   sms_login_enabled: Joi.boolean(),
+  feedback_enabled: Joi.boolean(),
 }).min(1);
 
 const updateTenantUserSchema = Joi.object({
