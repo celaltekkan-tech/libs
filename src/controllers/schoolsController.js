@@ -6,6 +6,7 @@ const schoolLogoUpload = require('../services/schoolLogoUpload');
 const { GLOBAL_ADMIN_ROLES } = require('../services/accessService');
 const { getSchoolLimitForPlan, canAssignSchoolCode } = require('../config/licensePlans');
 const { isValidSchoolCode, generateUniqueSchoolCode, SCHOOL_CODE_MESSAGE } = require('../utils/schoolCode');
+const { validateSchoolProgram } = require('../utils/schoolProgram');
 
 async function getTenantSchoolQuota(tenantId) {
   const activeLicense = await licenseService.getActiveLicense(tenantId);
@@ -128,6 +129,11 @@ module.exports = {
         throw err;
       }
 
+      const programError = validateSchoolProgram(payload);
+      if (programError) {
+        return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', message: programError });
+      }
+
       if (!isValidSchoolCode(payload.code)) {
         if (userCanAssignSchoolCode(req, quota.plan)) {
           return res.status(400).json({
@@ -182,6 +188,16 @@ module.exports = {
       } catch (err) {
         if (err.status) return res.status(err.status).json({ success: false, message: err.message });
         throw err;
+      }
+
+      const programError = validateSchoolProgram({
+        school_type: payload.school_type ?? school.school_type,
+        program_type: payload.program_type !== undefined ? payload.program_type : school.program_type,
+        has_prep_class: payload.has_prep_class ?? school.has_prep_class,
+        is_special_program: payload.is_special_program ?? school.is_special_program,
+      });
+      if (programError) {
+        return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', message: programError });
       }
 
       const quota = await getTenantSchoolQuota(school.tenant_id);

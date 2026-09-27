@@ -143,7 +143,6 @@ export function buildTenantMenu(opts: {
 
   const programs: NavLeaf[] = []
   if (hasModule('schedule')) {
-    programs.push({ key: '/schedule', icon: <ScheduleOutlined />, label: 'Ders Programı' })
     programs.push({ key: '/schedule-builder', icon: <RobotOutlined />, label: 'Otomatik Ders Programı' })
   }
   if (hasModule('exams')) {

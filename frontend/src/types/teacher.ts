@@ -34,6 +34,8 @@ export interface Teacher {
   union_name: string | null
   personnel_category_id: number | null
   employment_type?: 'kadrolu' | 'sozlesmeli' | 'ucretli' | null
+  // Dış kurum görevlendirmesi; null = kurumun kendi öğretmeni
+  duty_assignment_type?: 'ders_tamamlama' | 'tam_zamanli' | null
   typ_subject?: string | null
   PersonnelCategory?: { id: number; name: string; code: string | null } | null
   created_at: string
@@ -106,6 +108,8 @@ export interface TeacherPayload {
   personnel_type?: string
   personnel_category_id?: number | null
   employment_type?: 'kadrolu' | 'sozlesmeli' | 'ucretli' | null
+  // Dış kurum görevlendirmesi; null = kurumun kendi öğretmeni
+  duty_assignment_type?: 'ders_tamamlama' | 'tam_zamanli' | null
   typ_subject?: string | null
   contract_start_date?: string | null
   contract_end_date?: string | null

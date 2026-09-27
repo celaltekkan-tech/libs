@@ -273,20 +273,6 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       },
     ],
   },
-  '/schedule': {
-    title: 'Ders Dağıtım ve Ders Programı',
-    summary: 'Haftalık ders programını oluşturur ve öğretmen / sınıf dağıtımını yönetirsiniz.',
-    topics: [
-      {
-        title: 'Program hazırlama',
-        steps: [
-          'Sınıf veya öğretmen görünümünü seçin.',
-          'Boş saate ders atayın.',
-          'Çakışma uyarılarını kontrol edip kaydedin.',
-        ],
-      },
-    ],
-  },
   '/schedule-builder': {
     title: 'Otomatik Ders Programı',
     summary:

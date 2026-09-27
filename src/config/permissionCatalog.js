@@ -222,7 +222,7 @@ const MENU_PATH_PERMISSION = {
   '/duty': 'duty.read',
   '/extra-lessons': 'payroll.read',
   '/attendance': 'payroll.read',
-  '/schedule': 'schedule.read',
+  '/schedule-builder': 'schedule.read',
   '/exams': 'exams.read',
   '/kelebek': 'exams.read',
   '/dyk': 'attendance.read',

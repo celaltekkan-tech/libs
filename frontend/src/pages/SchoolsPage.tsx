@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { App, Button, Form, Input, InputNumber, Modal, Select, Space, Typography, Upload } from 'antd'
+import { App, Button, Form, Input, InputNumber, Modal, Select, Space, Switch, Typography, Upload } from 'antd'
 import { DeleteOutlined, EditOutlined, PictureOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
@@ -20,7 +20,10 @@ import {
 import { getErrorMessage } from '../api/client'
 import {
   FOREIGN_LANGUAGE_OPTIONS,
+  SCHOOL_PROGRAMS,
   SCHOOL_TYPE_LABELS,
+  guessProgramType,
+  programOptionsFor,
   SCHOOL_CODE_RULES,
   type School,
   type SchoolPayload,
@@ -78,6 +81,23 @@ export function SchoolsPage() {
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkLoading, setBulkLoading] = useState(false)
   const [form] = Form.useForm<SchoolFormValues>()
+  const watchedName = Form.useWatch('name', form)
+  const watchedSchoolType = Form.useWatch('school_type', form)
+  const watchedProgram = Form.useWatch('program_type', form)
+  const programDef = watchedProgram ? SCHOOL_PROGRAMS[watchedProgram] : undefined
+
+  // Kademe veya ad değişince (katalogdan seçim dahil) uyumsuz/boş programı addan tahminle doldur.
+  useEffect(() => {
+    if (!watchedSchoolType) return
+    const current = form.getFieldValue('program_type') as SchoolFormValues['program_type']
+    if (current && SCHOOL_PROGRAMS[current]?.school_type === watchedSchoolType) return
+    form.setFieldValue('program_type', guessProgramType(watchedName, watchedSchoolType) ?? undefined)
+  }, [form, watchedName, watchedSchoolType])
+
+  useEffect(() => {
+    if (!programDef?.prep) form.setFieldValue('has_prep_class', false)
+    if (!programDef?.special) form.setFieldValue('is_special_program', false)
+  }, [form, programDef])
   const [pendingLogoFile, setPendingLogoFile] = useState<File | null>(null)
   const [pendingRemoveLogo, setPendingRemoveLogo] = useState(false)
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null)
@@ -156,6 +176,9 @@ export function SchoolsPage() {
     form.resetFields()
     form.setFieldsValue({
       school_type: 'lise',
+      program_type: undefined,
+      has_prep_class: false,
+      is_special_program: false,
       daily_period_count: 8,
       first_foreign_language: undefined,
       second_foreign_language: undefined,
@@ -170,6 +193,9 @@ export function SchoolsPage() {
       name: school.name,
       code: school.code,
       school_type: school.school_type,
+      program_type: school.program_type ?? undefined,
+      has_prep_class: Boolean(school.has_prep_class),
+      is_special_program: Boolean(school.is_special_program),
       daily_period_count: school.daily_period_count,
       province_id: school.province_id ?? undefined,
       district_id: school.district_id ?? undefined,
@@ -189,6 +215,9 @@ export function SchoolsPage() {
       const payload: SchoolPayload = {
         name: values.name,
         school_type: values.school_type,
+        program_type: values.program_type || null,
+        has_prep_class: Boolean(values.has_prep_class),
+        is_special_program: Boolean(values.is_special_program),
         daily_period_count: values.daily_period_count,
         province_id: values.province_id || null,
         district_id: values.district_id || null,
@@ -317,6 +346,19 @@ export function SchoolsPage() {
       title: 'Kademe',
       dataIndex: 'school_type',
       render: (value: School['school_type']) => SCHOOL_TYPE_LABELS[value] ?? value,
+    },
+    {
+      title: 'Program',
+      dataIndex: 'program_type',
+      render: (_value, row) => {
+        if (!row.program_type) return <Typography.Text type="warning">Tanımsız</Typography.Text>
+        const def = SCHOOL_PROGRAMS[row.program_type]
+        const tags = [
+          row.has_prep_class ? 'hazırlıklı' : null,
+          row.is_special_program ? (def?.specialLabel ? 'tematik' : 'özel program') : null,
+        ].filter(Boolean)
+        return `${def?.label ?? row.program_type}${tags.length ? ` (${tags.join(', ')})` : ''}`
+      },
     },
     {
       title: 'Oluşturma',
@@ -502,6 +544,38 @@ export function SchoolsPage() {
             <Typography.Paragraph type="secondary">
               Katalogda MEB kodu varsa o kullanılır; yoksa 6 haneli benzersiz bir kod otomatik atanır.
             </Typography.Paragraph>
+          )}
+          <Form.Item
+            name="program_type"
+            label="Uygulanan program"
+            tooltip="MEB haftalık ders çizelgesi (ders havuzu) bu programa göre seçilir."
+            rules={[{ required: true, message: 'Uygulanan program zorunludur' }]}
+          >
+            <Select
+              placeholder={watchedSchoolType ? 'Program seçin' : 'Önce kademe seçin'}
+              disabled={!watchedSchoolType}
+              options={programOptionsFor(watchedSchoolType)}
+            />
+          </Form.Item>
+          {(programDef?.prep || programDef?.special) && (
+            <Space size="large" wrap style={{ marginBottom: 16 }}>
+              {programDef.prep && (
+                <Space>
+                  <Form.Item name="has_prep_class" valuePropName="checked" noStyle>
+                    <Switch />
+                  </Form.Item>
+                  <span>Hazırlık sınıfı var</span>
+                </Space>
+              )}
+              {programDef.special && (
+                <Space>
+                  <Form.Item name="is_special_program" valuePropName="checked" noStyle>
+                    <Switch />
+                  </Form.Item>
+                  <span>{programDef.specialLabel ?? 'Özel program uygular'}</span>
+                </Space>
+              )}
+            </Space>
           )}
           <Form.Item
             name="daily_period_count"

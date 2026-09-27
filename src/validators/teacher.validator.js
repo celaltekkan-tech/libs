@@ -30,6 +30,7 @@ const createTeacherSchema = Joi.object({
   personnel_type: Joi.string().valid('ogretmen', 'memur', 'isci', 'typ', 'diger').allow(null),
   personnel_category_id: Joi.number().integer().allow(null),
   employment_type: Joi.string().valid('kadrolu', 'sozlesmeli', 'ucretli').allow('', null),
+  duty_assignment_type: Joi.string().valid('ders_tamamlama', 'tam_zamanli').allow('', null),
   typ_subject: Joi.string().trim().max(120).allow('', null),
   contract_start_date: Joi.date().iso().allow(null),
   contract_end_date: Joi.date().iso().allow(null),
