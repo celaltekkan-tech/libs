@@ -19,7 +19,7 @@ export interface AppNotification {
   Recipient?: { id: number; full_name: string; email?: string; tenant_id?: number } | null
 }
 
-export type NotificationTargetType = 'users' | 'tenant' | 'all_tenants'
+export type NotificationTargetType = 'users' | 'tenant' | 'all_tenants' | 'all_mobile'
 
 export interface CreateNotificationPayload {
   title: string

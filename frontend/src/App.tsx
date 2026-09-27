@@ -88,7 +88,10 @@ function ThemedApp() {
                   <Route element={<ModuleRoute module="audit" />}>
                     <Route path="/audit-logs" element={<AuditLogsPage />} />
                   </Route>
-                  <Route path="/feedback" element={<FeedbackPage />} />
+                  <Route path="/support" element={<FeedbackPage mode="support" />} />
+                  <Route element={<ModuleRoute module="feedback" />}>
+                    <Route path="/feedback" element={<FeedbackPage />} />
+                  </Route>
                   <Route path="/work-tasks" element={<WorkTasksPage />} />
                   <Route path="/calendar" element={<CalendarPage />} />
                   <Route path="/message-logs" element={<MessageLogsPage />} />
@@ -152,6 +155,7 @@ function ThemedApp() {
                   <Route path="/platform/licenses" element={<LicensesPage />} />
                   <Route path="/platform/directory-schools" element={<DirectorySchoolsPage />} />
                   <Route path="/directory-schools" element={<Navigate to="/platform/directory-schools" replace />} />
+                  <Route path="/platform/support" element={<FeedbackListPage mode="support" />} />
                   <Route path="/platform/feedback" element={<FeedbackListPage />} />
                   <Route path="/platform/notifications" element={<PlatformNotificationsPage />} />
                   <Route path="/platform/backups" element={<BackupsPage />} />

@@ -99,8 +99,12 @@ async function buildSessionPayload(access) {
   const tenant = access.user.is_platform_admin
     ? null
     : await Tenant.findByPk(access.user.tenant_id, {
-        attributes: ['id', 'two_factor_enabled', 'sms_login_enabled', 'menu_layout'],
+        attributes: ['id', 'two_factor_enabled', 'sms_login_enabled', 'feedback_enabled', 'menu_layout'],
       });
+
+  const modules = tenant?.feedback_enabled
+    ? [...access.modules, 'feedback']
+    : access.modules;
 
   return {
     user: serializeUser(access.user),
@@ -113,7 +117,7 @@ async function buildSessionPayload(access) {
     license: access.license,
     sms_license: access.sms_license || null,
     ai_license: access.ai_license || null,
-    modules: access.modules,
+    modules,
     tenant_two_factor_enabled: Boolean(tenant?.two_factor_enabled),
     tenant_sms_login_enabled: Boolean(tenant?.sms_login_enabled),
     menu_layout: tenant?.menu_layout || null,

@@ -2,21 +2,18 @@ const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/feedbackController');
 const validate = require('../middlewares/validate');
-const feedbackSyncAuth = require('../middlewares/feedbackSyncAuth');
 const {
   createFeedbackSchema,
   updateFeedbackSchema,
   cancelFeedbackSchema,
   addFeedbackUpdateSchema,
-  updateFeedbackSyncSettingsSchema,
 } = require('../validators/feedback.validator');
 const auth = require('../middlewares/auth');
 const platformAdmin = require('../middlewares/platformAdmin');
-const feedbackEnabled = require('../middlewares/feedbackEnabled');
 const ticketKind = require('../middlewares/ticketKind');
-
-const kind = ticketKind('feedback');
 const { upload } = require('../services/feedbackUpload');
+
+const kind = ticketKind('support');
 
 function handleMulterError(err, req, res, next) {
   if (!err) return next();
@@ -44,34 +41,10 @@ function handleMulterError(err, req, res, next) {
   return next(err);
 }
 
-// Karşı ortam (paylaşılan anahtar)
-router.post('/sync/export', feedbackSyncAuth, ctrl.syncExport);
-router.post('/sync/import', feedbackSyncAuth, ctrl.syncImport);
-router.get('/sync/files/:publicId', feedbackSyncAuth, ctrl.syncDownloadFile);
-router.put(
-  '/sync/files/:publicId',
-  feedbackSyncAuth,
-  express.raw({ type: 'application/octet-stream', limit: '6mb' }),
-  ctrl.syncUploadFile
-);
-
-// Platform yöneticisi: durum ve elle tetikleme
-router.get('/sync/status', auth, platformAdmin, ctrl.syncStatus);
-router.put(
-  '/sync/settings',
-  auth,
-  platformAdmin,
-  validate(updateFeedbackSyncSettingsSchema),
-  ctrl.updateSyncSettings
-);
-router.post('/sync/run', auth, platformAdmin, ctrl.syncRun);
-
-// Geri bildirimi platform yöneticisinin açtığı hesaplar gönderebilir (opsiyonel dosya)
 router.post(
   '/',
   auth,
   kind,
-  feedbackEnabled,
   (req, res, next) => {
     upload.array('files', 5)(req, res, (err) => handleMulterError(err, req, res, next));
   },
@@ -79,16 +52,10 @@ router.post(
   ctrl.create
 );
 
-router.get('/mine', auth, kind, feedbackEnabled, ctrl.listMine);
-
-// Kullanıcı kendi (henüz sonuçlanmamış) geri bildirimini açıklama yazarak iptal edebilir
-router.put('/:id/cancel', auth, kind, feedbackEnabled, validate(cancelFeedbackSchema), ctrl.cancelMine);
-
-// İncelemedeki kayda gelişme ekleme (sahip kullanıcı veya platform admin)
-router.post('/:id/updates', auth, kind, feedbackEnabled, validate(addFeedbackUpdateSchema), ctrl.addUpdate);
-
-// Ek indirme: platform admin veya ilgili tenant kullanıcısı
-router.get('/attachments/:attachmentId/download', auth, kind, feedbackEnabled, ctrl.downloadAttachment);
+router.get('/mine', auth, kind, ctrl.listMine);
+router.put('/:id/cancel', auth, kind, validate(cancelFeedbackSchema), ctrl.cancelMine);
+router.post('/:id/updates', auth, kind, validate(addFeedbackUpdateSchema), ctrl.addUpdate);
+router.get('/attachments/:attachmentId/download', auth, kind, ctrl.downloadAttachment);
 
 router.get('/', auth, platformAdmin, kind, ctrl.list);
 router.get('/:id', auth, platformAdmin, kind, ctrl.get);

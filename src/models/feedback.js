@@ -5,6 +5,7 @@ module.exports = (sequelize, DataTypes) => {
     'Feedback',
     {
       public_id: { type: DataTypes.UUID, allowNull: false, defaultValue: DataTypes.UUIDV4 },
+      kind: { type: DataTypes.STRING(16), allowNull: false, defaultValue: 'feedback' },
       tenant_id: { type: DataTypes.INTEGER, allowNull: true },
       user_id: { type: DataTypes.INTEGER, allowNull: true },
       message: { type: DataTypes.TEXT, allowNull: false },

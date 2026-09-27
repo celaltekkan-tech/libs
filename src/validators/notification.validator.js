@@ -3,7 +3,7 @@ const Joi = require('joi');
 const createNotificationSchema = Joi.object({
   title: Joi.string().trim().min(2).max(200).required(),
   body: Joi.string().trim().min(1).max(5000).required(),
-  target_type: Joi.string().valid('users', 'tenant', 'all_tenants').required(),
+  target_type: Joi.string().valid('users', 'tenant', 'all_tenants', 'all_mobile').required(),
   tenant_id: Joi.number().integer().when('target_type', {
     is: 'tenant',
     then: Joi.required(),

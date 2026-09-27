@@ -231,6 +231,7 @@ async function exportChanges(body = {}) {
 function serializeFeedback(row) {
   return {
     public_id: row.public_id,
+    kind: row.kind === 'support' ? 'support' : 'feedback',
     message: row.message,
     page_path: row.page_path,
     page_title: row.page_title,
@@ -341,6 +342,7 @@ async function applyFeedback(remote) {
   const createdAt = asDate(remote.created_at) || new Date();
   const updatedAt = asDate(remote.updated_at) || createdAt;
   const fields = {
+    kind: remote.kind === 'support' ? 'support' : 'feedback',
     message: remote.message,
     page_path: remote.page_path || null,
     page_title: remote.page_title || null,
@@ -377,11 +379,14 @@ async function applyFeedback(remote) {
   const ownerId = links.userId || (local && local.user_id) || null;
   const tenantId = links.tenantId || (local && local.tenant_id) || null;
   if (remote.reply && remote.reply !== previousReply && ownerId && isRecent(remote.updated_at)) {
+    const support = fields.kind === 'support';
     await notifyOwner(
       ownerId,
       tenantId,
-      'Geri bildiriminize yanıt verildi',
-      'Gönderdiğiniz geri bildirime platform tarafından yanıt verildi. Detay için Geri Bildirim sayfasına bakın.'
+      support ? 'Destek talebinize yanıt verildi' : 'Geri bildiriminize yanıt verildi',
+      support
+        ? 'Gönderdiğiniz destek talebine platform tarafından yanıt verildi. Detay için Teknik Destek sayfasına bakın.'
+        : 'Gönderdiğiniz geri bildirime platform tarafından yanıt verildi. Detay için Geri Bildirim sayfasına bakın.'
     );
   }
   return 'applied';
@@ -416,11 +421,14 @@ async function applyUpdate(remote) {
     );
     await writeTimestamps('FeedbackUpdates', created.public_id, createdAt, updatedAt);
     if (remote.is_from_platform && parent.user_id && isRecent(remote.updated_at)) {
+      const support = parent.kind === 'support';
       await notifyOwner(
         parent.user_id,
         parent.tenant_id,
-        'Geri bildiriminize yeni gelişme eklendi',
-        'Gönderdiğiniz geri bildirime platform tarafından yeni bir gelişme eklendi. Detay için Geri Bildirim sayfasına bakın.'
+        support ? 'Destek talebinize yeni gelişme eklendi' : 'Geri bildiriminize yeni gelişme eklendi',
+        support
+          ? 'Gönderdiğiniz destek talebine platform tarafından yeni bir gelişme eklendi. Detay için Teknik Destek sayfasına bakın.'
+          : 'Gönderdiğiniz geri bildirime platform tarafından yeni bir gelişme eklendi. Detay için Geri Bildirim sayfasına bakın.'
       );
     }
   } else {

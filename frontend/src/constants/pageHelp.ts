@@ -497,6 +497,16 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       },
     ],
   },
+  '/support': {
+    title: 'Teknik Destek',
+    summary: 'Karşılaştığınız sorun için destek talebi gönderir ve yanıtı buradan takip edersiniz.',
+    topics: [
+      {
+        title: 'Talep',
+        steps: ['Sorunu yazın.', 'İsterseniz dosya veya ekran görüntüsü ekleyin.', 'Gönder’e tıklayın.', 'Durumu listeden takip edebilirsiniz.'],
+      },
+    ],
+  },
   '/feedback': {
     title: 'Geri Bildirim',
     summary: 'Uygulama hakkında öneri veya sorun bildirimi gönderirsiniz.',
@@ -565,6 +575,16 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       {
         title: 'Lisans tanımlama',
         steps: ['Tenant seçin.', 'Plan ve tarihleri girin.', 'Kaydedin; önceki aktif lisans iptal edilebilir.'],
+      },
+    ],
+  },
+  '/platform/support': {
+    title: 'Teknik Destek (Platform)',
+    summary: 'Hesaplardan gelen destek taleplerini inceler, yanıtlar ve durumunu güncellersiniz.',
+    topics: [
+      {
+        title: 'Yanıt',
+        body: 'Talebi açın, gelişme yazın ve durumu incelemeye, beklemeye veya sonuçlandı olarak güncelleyin. Kullanıcıya bildirim gider.',
       },
     ],
   },
@@ -640,6 +660,7 @@ const PREFIX_HELP: Array<{ prefix: string; content: PageHelpContent }> = [
           steps: [
             'Okul ve kullanıcı sayılarını kontrol edin.',
             'Lisans durumunu inceleyin.',
+            'Geri bildirimi yalnızca bu hesap için açın veya kapatın.',
             'Gerekirse lisans yönetimi sayfasından planı güncelleyin.',
           ],
         },

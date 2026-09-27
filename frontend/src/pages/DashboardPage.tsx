@@ -7,6 +7,7 @@ import {
   BankOutlined,
   CheckOutlined,
   CommentOutlined,
+  CustomerServiceOutlined,
   ExclamationCircleOutlined,
   IdcardOutlined,
   ReadOutlined,
@@ -26,6 +27,7 @@ import { listStudents } from '../api/students'
 import { listTenants } from '../api/tenants'
 import { listLicenses } from '../api/licenses'
 import { listFeedback } from '../api/feedback'
+import { listSupport } from '../api/support'
 import { getOnlinePresence, type OnlinePresence } from '../api/presence'
 import { completeWorkTask, listWorkTasks } from '../api/workTasks'
 import { getErrorMessage } from '../api/client'
@@ -125,20 +127,23 @@ function PlatformAdminDashboard() {
   const [tenants, setTenants] = useState<TenantListItem[]>([])
   const [licenses, setLicenses] = useState<License[]>([])
   const [feedbackCounts, setFeedbackCounts] = useState<Record<FeedbackStatus, number> | null>(null)
+  const [supportCounts, setSupportCounts] = useState<Record<FeedbackStatus, number> | null>(null)
   const [online, setOnline] = useState<OnlinePresence | null>(null)
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      const [tenantRows, licenseRows, feedbackRows, presence] = await Promise.all([
+      const [tenantRows, licenseRows, feedbackRows, supportRows, presence] = await Promise.all([
         listTenants(),
         listLicenses(),
         listFeedback().catch(() => [] as Feedback[]),
+        listSupport().catch(() => [] as Feedback[]),
         getOnlinePresence().catch(() => null),
       ])
       setTenants(tenantRows)
       setLicenses(licenseRows)
       setFeedbackCounts(countFeedbackByStatus(feedbackRows))
+      setSupportCounts(countFeedbackByStatus(supportRows))
       setOnline(presence)
     } catch (err) {
       message.error(getErrorMessage(err))
@@ -291,6 +296,26 @@ function PlatformAdminDashboard() {
       icon: <CommentOutlined />,
       color: '#be123c',
       path: '/platform/feedback',
+    },
+    {
+      key: 'support',
+      title: 'Teknik destek',
+      value: supportCounts
+        ? FEEDBACK_STATUS_ORDER.reduce((sum, s) => sum + supportCounts[s], 0)
+        : null,
+      hint: null as string | null,
+      detail: supportCounts ? (
+        <Space size={[4, 4]} wrap style={{ marginTop: 8 }}>
+          {FEEDBACK_STATUS_ORDER.map((status) => (
+            <Tag key={status} color={FEEDBACK_STATUS_LABEL[status].color}>
+              {FEEDBACK_STATUS_LABEL[status].text}: {supportCounts[status]}
+            </Tag>
+          ))}
+        </Space>
+      ) : null,
+      icon: <CustomerServiceOutlined />,
+      color: '#0f766e',
+      path: '/platform/support',
     },
   ]
 

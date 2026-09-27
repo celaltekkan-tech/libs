@@ -8,6 +8,7 @@ import {
   ClockCircleOutlined,
   ClusterOutlined,
   CommentOutlined,
+  CustomerServiceOutlined,
   ContactsOutlined,
   DollarOutlined,
   ExclamationCircleOutlined,
@@ -195,7 +196,10 @@ export function buildTenantMenu(opts: {
   system.push({ key: '/work-tasks', icon: <CheckSquareOutlined />, label: 'İş Takibi' })
   system.push({ key: '/calendar', icon: <CalendarOutlined />, label: 'Kurum Takvimi' })
   system.push({ key: '/message-logs', icon: <MailOutlined />, label: 'SMS / E-posta Kayıtları' })
-  system.push({ key: '/feedback', icon: <CommentOutlined />, label: 'Geri Bildirim' })
+  system.push({ key: '/support', icon: <CustomerServiceOutlined />, label: 'Teknik Destek' })
+  if (hasModule('feedback')) {
+    system.push({ key: '/feedback', icon: <CommentOutlined />, label: 'Geri Bildirim' })
+  }
   nodes.push({
     key: 'grp-system',
     icon: groupIconFor('grp-system'),
