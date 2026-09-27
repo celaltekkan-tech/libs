@@ -121,7 +121,7 @@ export function buildTenantMenu(opts: {
     )
   }
   if (hasModule('leaves')) {
-    personnel.push({ key: '/leaves', icon: <CalendarOutlined />, label: 'İzin Takibi' })
+    personnel.push({ key: '/leaves', icon: <CalendarOutlined />, label: 'Rapor Takibi' })
   }
   if (hasModule('duty')) {
     personnel.push({ key: '/duty', icon: <FieldTimeOutlined />, label: 'Nöbet Programı' })

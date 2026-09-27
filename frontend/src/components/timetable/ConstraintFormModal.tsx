@@ -89,6 +89,27 @@ export function ConstraintFormModal({ ctx, open, editing, onCancel, onSubmit }: 
             <Select showSearch optionFilterProp="label" options={ctx.subjects.map((s) => ({ value: s.id, label: s.name }))} />
           </Form.Item>
         )}
+        {has('subject_ids') && (
+          <Form.Item
+            name="subject_ids"
+            label="Dersler"
+            rules={[{ required: true, message: 'Ders seçin' }]}
+            extra={
+              type === 'subject_no_lunch_split'
+                ? 'Yalnız "bloklar öğle arasını aşabilir" ayarı açıkken etkilidir; kapalıyken hiçbir blok bölünmez.'
+                : type === 'subjects_same_day'
+                  ? 'Az saatli dersin günleri, en çok saatli dersin günlerinin içinde kalır.'
+                  : undefined
+            }
+          >
+            <Select
+              mode="multiple"
+              showSearch
+              optionFilterProp="label"
+              options={ctx.subjects.map((s) => ({ value: s.id, label: s.name }))}
+            />
+          </Form.Item>
+        )}
         {has('classroom_id') && (
           <Form.Item
             name="classroom_id"

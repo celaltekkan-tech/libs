@@ -11,6 +11,10 @@ module.exports = (sequelize, DataTypes) => {
       block_pattern: DataTypes.STRING,
       room_id: DataTypes.INTEGER,
       sync_group: DataTypes.STRING,
+      elective_group: DataTypes.STRING,
+      co_teacher_ids: { type: DataTypes.ARRAY(DataTypes.INTEGER), allowNull: false, defaultValue: [] },
+      allow_split: DataTypes.BOOLEAN,
+      allow_merge: DataTypes.BOOLEAN,
     },
     {
       tableName: 'TimetableAssignments',
@@ -27,6 +31,7 @@ module.exports = (sequelize, DataTypes) => {
     TimetableAssignment.belongsTo(models.Teacher, { foreignKey: 'teacher_id', as: 'Teacher' });
     TimetableAssignment.belongsTo(models.TimetableRoom, { foreignKey: 'room_id', as: 'Room' });
     TimetableAssignment.hasMany(models.TimetableLesson, { foreignKey: 'assignment_id' });
+    TimetableAssignment.hasMany(models.TimetableElectiveChoice, { foreignKey: 'assignment_id' });
   };
 
   return TimetableAssignment;

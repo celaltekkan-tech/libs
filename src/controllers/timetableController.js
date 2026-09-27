@@ -9,12 +9,16 @@ const {
   TimetableConstraint,
   TimetableRun,
   TimetableLesson,
+  TimetableAvailability,
+  TimetableElectiveChoice,
   ScheduleEntry,
+  Student,
   SubjectClassHour,
   Classroom,
   Subject,
   Teacher,
   School,
+  Branch,
 } = require('../models');
 const audit = require('../services/auditService');
 const licenseService = require('../services/licenseService');
@@ -22,6 +26,7 @@ const solver = require('../services/timetableSolverClient');
 const runService = require('../services/timetableRunService');
 const gemini = require('../services/geminiService');
 const aiUsage = require('../services/aiUsageService');
+const branchService = require('../services/branchService');
 const { TYPES, DAY_NAMES, normalizeParams, describe } = require('../services/timetableConstraintCatalog');
 const {
   buildPayload,
@@ -29,6 +34,7 @@ const {
   parseBlockPattern,
   classroomLabel,
   teacherName,
+  assignmentTeacherIds,
 } = require('../services/timetableBuildService');
 
 function tenantOf(req) {
@@ -130,7 +136,7 @@ const assignmentIncludes = [
 
 async function validateAssignmentRefs(req, project, payload) {
   const tenantId = tenantOf(req);
-  for (const k of ['block_pattern', 'sync_group']) {
+  for (const k of ['block_pattern', 'sync_group', 'elective_group']) {
     if (typeof payload[k] === 'string') payload[k] = payload[k].trim() || null;
   }
   if (payload.classroom_id != null) {
@@ -144,6 +150,14 @@ async function validateAssignmentRefs(req, project, payload) {
   if (payload.teacher_id != null) {
     const t = await Teacher.findByPk(payload.teacher_id);
     if (!t || t.tenant_id !== project.tenant_id) throw httpError(400, 'Öğretmen bulunamadı');
+  }
+  if (payload.co_teacher_ids) {
+    const ids = [...new Set(payload.co_teacher_ids)];
+    if (ids.length) {
+      const count = await Teacher.count({ where: { id: ids, tenant_id: project.tenant_id } });
+      if (count !== ids.length) throw httpError(400, 'Ortak öğretmenlerden biri bulunamadı');
+    }
+    payload.co_teacher_ids = ids;
   }
   if (payload.room_id != null) {
     const r = await TimetableRoom.findByPk(payload.room_id);
@@ -173,8 +187,38 @@ async function lessonsWithAssignments(project) {
   });
 }
 
+// İki ders aynı şubede aynı saatte olabilir mi: seçimler girildiyse ortak öğrenci
+// yoksa, girilmediyse aynı seçmeli grubundalarsa.
+function classClash(a, b, students) {
+  if (a.classroom_id !== b.classroom_id) return false;
+  if (!a.elective_group || !b.elective_group) return true;
+  const sa = students.get(a.id);
+  const sb = students.get(b.id);
+  if (students.hasClass?.has(a.classroom_id)) {
+    if (!sa || !sb) return false;
+    for (const s of sa) if (sb.has(s)) return true;
+    return false;
+  }
+  return a.elective_group !== b.elective_group;
+}
+
+async function choiceIndex(projectId) {
+  const rows = await TimetableElectiveChoice.findAll({
+    where: { project_id: projectId },
+    include: [{ model: TimetableAssignment, attributes: ['classroom_id'] }],
+  });
+  const map = new Map();
+  map.hasClass = new Set();
+  for (const r of rows) {
+    if (!map.has(r.assignment_id)) map.set(r.assignment_id, new Set());
+    map.get(r.assignment_id).add(r.student_id);
+    if (r.TimetableAssignment) map.hasClass.add(r.TimetableAssignment.classroom_id);
+  }
+  return map;
+}
+
 // Bir dersin (day, period) hücresine taşınması durumunda oluşacak çakışmalar.
-function findConflicts(lessons, moving, day, period, ignoreIds = new Set()) {
+function findConflicts(lessons, moving, day, period, ignoreIds = new Set(), students = new Map()) {
   const a = moving.Assignment;
   const conflicts = [];
   for (const l of lessons) {
@@ -183,10 +227,13 @@ function findConflicts(lessons, moving, day, period, ignoreIds = new Set()) {
     const b = l.Assignment;
     if (!b) continue;
     const sameSync = a.sync_group && b.sync_group && a.sync_group === b.sync_group;
-    if (!sameSync && a.teacher_id && a.teacher_id === b.teacher_id) {
-      conflicts.push(`${teacherName(a.Teacher)} bu saatte ${classroomLabel(b.Classroom)} sınıfında (${b.Subject?.name})`);
+    const bTeachers = assignmentTeacherIds(b);
+    const shared = sameSync ? [] : assignmentTeacherIds(a).filter((id) => bTeachers.includes(id));
+    for (const id of shared) {
+      const who = id === a.teacher_id ? teacherName(a.Teacher) : `Ortak öğretmen #${id}`;
+      conflicts.push(`${who} bu saatte ${classroomLabel(b.Classroom)} sınıfında (${b.Subject?.name})`);
     }
-    if (!sameSync && a.classroom_id === b.classroom_id) {
+    if (!sameSync && classClash(a, b, students)) {
       conflicts.push(`${classroomLabel(a.Classroom)} bu saatte ${b.Subject?.name} dersinde`);
     }
   }
@@ -245,17 +292,23 @@ module.exports = {
   async getProject(req, res, next) {
     try {
       const project = await loadProject(req);
-      const [assignmentCount, constraintCount, lessonCount] = await Promise.all([
+      const [assignmentCount, constraintCount, lessonCount, availabilityCount] = await Promise.all([
         TimetableAssignment.count({ where: { project_id: project.id } }),
         TimetableConstraint.count({ where: { project_id: project.id } }),
         TimetableLesson.count({ where: { project_id: project.id } }),
+        TimetableAvailability.count({ where: { project_id: project.id } }),
       ]);
       res.json({
         success: true,
         data: {
           ...project.toJSON(),
           settings: projectSettings(project),
-          counts: { assignments: assignmentCount, constraints: constraintCount, lessons: lessonCount },
+          counts: {
+            assignments: assignmentCount,
+            constraints: constraintCount,
+            lessons: lessonCount,
+            availability: availabilityCount,
+          },
         },
       });
     } catch (err) {
@@ -266,13 +319,27 @@ module.exports = {
   async createProject(req, res, next) {
     try {
       const body = req.validatedBody;
-      await assertSchool(req, body.school_id);
-      const project = await TimetableProject.create({
-        ...pick(body, PROJECT_FIELDS),
-        tenant_id: tenantOf(req),
-        school_id: body.school_id,
-        status: 'taslak',
-        created_by: req.user.user_id || null,
+      const school = await assertSchool(req, body.school_id);
+      let source = null;
+      if (body.copy_from) {
+        source = await TimetableProject.findByPk(body.copy_from.project_id);
+        if (!source || source.tenant_id !== school.tenant_id || source.school_id !== body.school_id) {
+          throw httpError(400, 'Kopyalanacak çalışma bulunamadı');
+        }
+      }
+      const project = await sequelize.transaction(async (transaction) => {
+        const created = await TimetableProject.create(
+          {
+            ...pick(body, PROJECT_FIELDS),
+            tenant_id: school.tenant_id,
+            school_id: body.school_id,
+            status: 'taslak',
+            created_by: req.user.user_id || null,
+          },
+          { transaction }
+        );
+        if (source) await copyProjectParts(source, created, body.copy_from.parts, transaction);
+        return created;
       });
       await audit.log(req, {
         action: 'create',
@@ -378,6 +445,24 @@ module.exports = {
     try {
       const project = await loadProject(req);
       const payload = { ...req.validatedBody };
+      if (payload.weekly_hours == null) {
+        const classroom = await Classroom.findByPk(payload.classroom_id);
+        const pool = classroom
+          ? await SubjectClassHour.findOne({
+              where: { tenant_id: project.tenant_id, subject_id: payload.subject_id, class_level: classroom.class_level },
+            })
+          : null;
+        if (!pool || !pool.weekly_hours) throw httpError(400, 'Ders havuzunda bu seviye için saat yok; haftalık saati girin');
+        payload.weekly_hours = pool.weekly_hours;
+        if (payload.block_pattern === undefined) payload.block_pattern = pool.block_pattern || null;
+      }
+      if (payload.co_teacher_ids && payload.teacher_id) {
+        payload.co_teacher_ids = payload.co_teacher_ids.filter((id) => id !== payload.teacher_id);
+      }
+      if (payload.elective_group === undefined) {
+        const subject = await Subject.findByPk(payload.subject_id, { attributes: ['is_elective', 'elective_group'] });
+        if (subject?.is_elective && subject.elective_group) payload.elective_group = subject.elective_group;
+      }
       await validateAssignmentRefs(req, project, payload);
       const row = await TimetableAssignment.create({ ...payload, tenant_id: project.tenant_id, project_id: project.id });
       const full = await TimetableAssignment.findByPk(row.id, { include: assignmentIncludes });
@@ -397,6 +482,11 @@ module.exports = {
         const sum = parseBlockPattern(row.block_pattern).reduce((a, b) => a + b, 0);
         if (sum !== payload.weekly_hours) payload.block_pattern = null;
       }
+      const primary = payload.teacher_id !== undefined ? payload.teacher_id : row.teacher_id;
+      if (payload.co_teacher_ids || payload.teacher_id !== undefined) {
+        const co = payload.co_teacher_ids || row.co_teacher_ids || [];
+        payload.co_teacher_ids = co.filter((id) => id !== primary);
+      }
       await validateAssignmentRefs(req, project, payload);
       await row.update(payload);
       const full = await TimetableAssignment.findByPk(row.id, { include: assignmentIncludes });
@@ -413,6 +503,67 @@ module.exports = {
       await validateAssignmentRefs(req, project, { ...changes, block_pattern: undefined });
       const [count] = await TimetableAssignment.update(changes, { where: { project_id: project.id, id: ids } });
       res.json({ success: true, data: { updated: count } });
+    } catch (err) {
+      sendError(res, next, err);
+    }
+  },
+
+  // Bir şubenin ders listesini başka şubelere kopyalar (Bilsa: sağ tık, kopyala).
+  // Öğretmenler varsayılan olarak kopyalanmaz; şubeler farklı öğretmenle okur.
+  async copyAssignments(req, res, next) {
+    try {
+      const project = await loadProject(req);
+      const { source_classroom_id: sourceId, target_classroom_ids: targetIds, replace, with_teachers: withTeachers } =
+        req.validatedBody;
+      const targets = (
+        await Classroom.findAll({ where: { id: targetIds, tenant_id: project.tenant_id, school_id: project.school_id } })
+      ).filter((c) => c.id !== sourceId);
+      if (!targets.length) throw httpError(400, 'Hedef şube bulunamadı');
+      const source = await TimetableAssignment.findAll({ where: { project_id: project.id, classroom_id: sourceId } });
+      if (!source.length) throw httpError(400, 'Kaynak şubenin dersi yok');
+
+      let created = 0;
+      let skipped = 0;
+      await sequelize.transaction(async (transaction) => {
+        const targetIdList = targets.map((c) => c.id);
+        if (replace) {
+          await TimetableAssignment.destroy({ where: { project_id: project.id, classroom_id: targetIdList }, transaction });
+        }
+        const existing = replace
+          ? []
+          : await TimetableAssignment.findAll({
+              where: { project_id: project.id, classroom_id: targetIdList },
+              attributes: ['classroom_id', 'subject_id'],
+              transaction,
+            });
+        const have = new Set(existing.map((a) => `${a.classroom_id}:${a.subject_id}`));
+        const rows = [];
+        for (const c of targets) {
+          for (const a of source) {
+            if (have.has(`${c.id}:${a.subject_id}`)) {
+              skipped += 1;
+              continue;
+            }
+            rows.push({
+              tenant_id: project.tenant_id,
+              project_id: project.id,
+              classroom_id: c.id,
+              subject_id: a.subject_id,
+              weekly_hours: a.weekly_hours,
+              block_pattern: a.block_pattern,
+              allow_split: a.allow_split,
+              allow_merge: a.allow_merge,
+              room_id: a.room_id,
+              elective_group: a.elective_group,
+              teacher_id: withTeachers ? a.teacher_id : null,
+              co_teacher_ids: withTeachers ? a.co_teacher_ids || [] : [],
+            });
+          }
+        }
+        await TimetableAssignment.bulkCreate(rows, { transaction });
+        created = rows.length;
+      });
+      res.json({ success: true, data: { created, skipped, classrooms: targets.length } });
     } catch (err) {
       sendError(res, next, err);
     }
@@ -465,9 +616,11 @@ module.exports = {
       };
 
       const hoursByLevelSubject = new Map();
+      const patternByLevelSubject = new Map();
       for (const h of classHours) {
         if (!h.weekly_hours) continue;
         hoursByLevelSubject.set(`${h.class_level}:${h.subject_id}`, h.weekly_hours);
+        if (h.block_pattern) patternByLevelSubject.set(`${h.class_level}:${h.subject_id}`, h.block_pattern);
       }
 
       const existingKeys = new Set(existing.map((a) => `${a.classroom_id}:${a.subject_id}`));
@@ -477,14 +630,17 @@ module.exports = {
       for (const [key, cur] of fromSchedule.entries()) {
         const [classroomId, subjectId] = key.split(':').map(Number);
         const classroom = classrooms.find((c) => c.id === classroomId);
-        const poolHours = classroom
-          ? hoursByLevelSubject.get(`${classroom.class_level}:${subjectId}`)
-          : null;
+        const poolKey = classroom ? `${classroom.class_level}:${subjectId}` : null;
+        const poolHours = poolKey ? hoursByLevelSubject.get(poolKey) : null;
+        const hours = poolHours || cur.hours;
+        const pattern = poolKey ? patternByLevelSubject.get(poolKey) : null;
+        const blocks = parseBlockPattern(pattern);
         rows.push({
           key,
           classroom_id: classroomId,
           subject_id: subjectId,
-          weekly_hours: poolHours || cur.hours,
+          weekly_hours: hours,
+          block_pattern: blocks && blocks.reduce((a, b) => a + b, 0) === hours ? blocks.join('+') : null,
           teacher_id: topTeacher(key),
         });
       }
@@ -519,6 +675,69 @@ module.exports = {
           classrooms: classrooms.length,
         },
       });
+    } catch (err) {
+      sendError(res, next, err);
+    }
+  },
+
+  // ---------------------------------------------------------------- seçmeli öğrenci seçimleri
+  async getElectives(req, res, next) {
+    try {
+      const project = await loadProject(req);
+      const classroomId = Number(req.query.classroom_id);
+      if (!classroomId) throw httpError(400, 'classroom_id gerekli');
+      const [students, assignments] = await Promise.all([
+        Student.findAll({
+          where: {
+            tenant_id: project.tenant_id,
+            classroom_id: classroomId,
+            [Op.or]: [{ registration_status: null }, { registration_status: 'aktif' }],
+          },
+          attributes: ['id', 'student_number', 'first_name', 'last_name'],
+          order: [['student_number', 'ASC'], ['first_name', 'ASC']],
+        }),
+        TimetableAssignment.findAll({
+          where: { project_id: project.id, classroom_id: classroomId, elective_group: { [Op.ne]: null } },
+          attributes: ['id'],
+        }),
+      ]);
+      const choices = await TimetableElectiveChoice.findAll({
+        where: { project_id: project.id, assignment_id: assignments.map((a) => a.id) },
+        attributes: ['assignment_id', 'student_id'],
+      });
+      res.json({ success: true, data: { students, choices } });
+    } catch (err) {
+      sendError(res, next, err);
+    }
+  },
+
+  // Şubenin tüm seçimlerini baştan yazar.
+  async saveElectives(req, res, next) {
+    try {
+      const project = await loadProject(req);
+      const { classroom_id: classroomId, choices } = req.validatedBody;
+      const [assignments, students] = await Promise.all([
+        TimetableAssignment.findAll({
+          where: { project_id: project.id, classroom_id: classroomId, elective_group: { [Op.ne]: null } },
+          attributes: ['id'],
+        }),
+        Student.findAll({ where: { tenant_id: project.tenant_id, classroom_id: classroomId }, attributes: ['id'] }),
+      ]);
+      const aIds = new Set(assignments.map((a) => a.id));
+      const sIds = new Set(students.map((s) => s.id));
+      const rows = [];
+      for (const c of choices) {
+        if (!sIds.has(c.student_id)) throw httpError(400, 'Öğrenci bu şubede değil');
+        for (const aid of c.assignment_ids) {
+          if (!aIds.has(aid)) throw httpError(400, 'Seçmeli ders bu şubede bulunamadı');
+          rows.push({ tenant_id: project.tenant_id, project_id: project.id, assignment_id: aid, student_id: c.student_id });
+        }
+      }
+      await sequelize.transaction(async (transaction) => {
+        await TimetableElectiveChoice.destroy({ where: { project_id: project.id, assignment_id: [...aIds] }, transaction });
+        await TimetableElectiveChoice.bulkCreate(rows, { transaction });
+      });
+      res.json({ success: true, data: { saved: rows.length } });
     } catch (err) {
       sendError(res, next, err);
     }
@@ -680,6 +899,8 @@ module.exports = {
       const project = await loadProject(req);
       const payload = await buildPayload(project);
       const result = await solver.check(payload);
+      const extra = await dataIssues(project);
+      result.issues = [...(result.issues || []), ...extra];
       res.json({ success: true, data: result });
     } catch (err) {
       sendError(res, next, err);
@@ -780,19 +1001,21 @@ module.exports = {
       }
       const lessons = await lessonsWithAssignments(project);
       const moving = lessons.find((l) => l.id === lesson.id);
+      const students = await choiceIndex(project.id);
 
       const swapWith = lessons.find(
         (l) =>
           l.id !== moving.id &&
           l.day_of_week === day &&
           l.period_no === period &&
-          l.Assignment?.classroom_id === moving.Assignment.classroom_id &&
+          l.Assignment &&
+          classClash(moving.Assignment, l.Assignment, students) &&
           !(moving.Assignment.sync_group && l.Assignment.sync_group === moving.Assignment.sync_group)
       );
 
-      const conflicts = findConflicts(lessons, moving, day, period, new Set(swapWith ? [swapWith.id] : []));
+      const conflicts = findConflicts(lessons, moving, day, period, new Set(swapWith ? [swapWith.id] : []), students);
       if (swapWith) {
-        const back = findConflicts(lessons, swapWith, moving.day_of_week, moving.period_no, new Set([moving.id]));
+        const back = findConflicts(lessons, swapWith, moving.day_of_week, moving.period_no, new Set([moving.id]), students);
         conflicts.push(...back);
       }
       if (conflicts.length && !force) {
@@ -832,7 +1055,7 @@ module.exports = {
       if (classroomId || teacherId) {
         const aWhere = { project_id: project.id };
         if (classroomId) aWhere.classroom_id = classroomId;
-        if (teacherId) aWhere.teacher_id = teacherId;
+        if (teacherId) aWhere[Op.or] = [{ teacher_id: teacherId }, { co_teacher_ids: { [Op.contains]: [teacherId] } }];
         const ids = (await TimetableAssignment.findAll({ where: aWhere, attributes: ['id'] })).map((a) => a.id);
         where.assignment_id = ids;
       }
@@ -870,29 +1093,32 @@ module.exports = {
       const rows = [];
       for (const l of lessons) {
         const a = l.Assignment;
-        const cKey = `${a.classroom_id}:${l.day_of_week}:${l.period_no}`;
-        // Senkron gruplarda aynı şubenin paralel dersleri tek kayda iner.
+        // Paralel seçmeliler aynı şube-saatte ayrı kayıt olur; aynı ders tek kayda iner.
+        const cKey = `${a.classroom_id}:${l.day_of_week}:${l.period_no}:${a.subject_id}`;
         if (classSlots.has(cKey)) {
           classDropped += 1;
           continue;
         }
         classSlots.add(cKey);
-        let teacherId = a.teacher_id || null;
-        if (teacherId) {
-          const tKey = `${teacherId}:${l.day_of_week}:${l.period_no}`;
+        const slotTeachers = [];
+        for (const id of assignmentTeacherIds(a)) {
+          const tKey = `${id}:${l.day_of_week}:${l.period_no}`;
           if (teacherSlots.has(tKey)) {
-            teacherId = null;
             teacherDropped += 1;
           } else {
             teacherSlots.add(tKey);
+            slotTeachers.push(id);
           }
         }
+        // 1. öğretmen düştüyse sıradaki öğretmen kaydın sahibi olur.
+        const teacherId = a.teacher_id && slotTeachers.includes(a.teacher_id) ? a.teacher_id : slotTeachers[0] || null;
         rows.push({
           tenant_id: project.tenant_id,
           school_id: project.school_id,
           classroom_id: a.classroom_id,
           subject_id: a.subject_id,
           teacher_id: teacherId,
+          co_teacher_ids: slotTeachers.filter((id) => id !== teacherId),
           day_of_week: l.day_of_week,
           period_no: l.period_no,
           academic_year: year,
@@ -950,4 +1176,101 @@ async function fillTeacherNames(maps, rows) {
   if (!missing.length) return;
   const teachers = await Teacher.findAll({ where: { id: missing }, attributes: ['id', 'first_name', 'last_name'] });
   for (const t of teachers) maps.teachers[t.id] = teacherName(t);
+}
+
+// Başka çalışmadan atama / zaman tablosu / kısıt kopyalar. Taslak dersler ve
+// çalıştırmalar kopyalanmaz.
+async function copyProjectParts(source, target, parts, transaction) {
+  const base = { tenant_id: target.tenant_id, project_id: target.id };
+  if (parts.includes('assignments')) {
+    const rows = await TimetableAssignment.findAll({ where: { project_id: source.id }, order: [['id', 'ASC']], transaction });
+    const created = await TimetableAssignment.bulkCreate(
+      rows.map((a) => ({
+        ...base,
+        classroom_id: a.classroom_id,
+        subject_id: a.subject_id,
+        teacher_id: a.teacher_id,
+        co_teacher_ids: a.co_teacher_ids || [],
+        weekly_hours: a.weekly_hours,
+        block_pattern: a.block_pattern,
+        allow_split: a.allow_split,
+        allow_merge: a.allow_merge,
+        room_id: a.room_id,
+        sync_group: a.sync_group,
+        elective_group: a.elective_group,
+      })),
+      { transaction, returning: true }
+    );
+    // Öğrenci seçmeli seçimleri yeni atama kimliklerine taşınır.
+    const idMap = new Map(rows.map((a, i) => [a.id, created[i].id]));
+    const choices = await TimetableElectiveChoice.findAll({ where: { project_id: source.id }, transaction });
+    await TimetableElectiveChoice.bulkCreate(
+      choices
+        .filter((c) => idMap.has(c.assignment_id))
+        .map((c) => ({ ...base, assignment_id: idMap.get(c.assignment_id), student_id: c.student_id })),
+      { transaction }
+    );
+  }
+  if (parts.includes('availability')) {
+    const rows = await TimetableAvailability.findAll({ where: { project_id: source.id }, transaction });
+    await TimetableAvailability.bulkCreate(
+      rows.map((r) => ({ ...base, entity_type: r.entity_type, entity_id: r.entity_id, cells: r.cells })),
+      { transaction }
+    );
+  }
+  if (parts.includes('constraints')) {
+    const rows = await TimetableConstraint.findAll({ where: { project_id: source.id }, transaction });
+    await TimetableConstraint.bulkCreate(
+      rows.map((c) => ({
+        ...base,
+        type: c.type,
+        is_hard: c.is_hard,
+        weight: c.weight,
+        params: c.params,
+        source: c.source,
+        source_text: c.source_text,
+        is_active: c.is_active,
+      })),
+      { transaction }
+    );
+  }
+}
+
+// Solver'ın bilmediği veri sorunları: branş dışı atamalar.
+async function dataIssues(project) {
+  const assignments = await TimetableAssignment.findAll({
+    where: { project_id: project.id },
+    include: [
+      { model: Classroom, attributes: ['id', 'class_level', 'section'] },
+      { model: Subject, attributes: ['id', 'name', 'branch_id'], include: [{ model: Branch, attributes: ['id', 'name'] }] },
+    ],
+  });
+  const teacherIds = [...new Set(assignments.flatMap((a) => assignmentTeacherIds(a)))];
+  const teachers = teacherIds.length
+    ? await Teacher.findAll({
+        where: { id: teacherIds },
+        attributes: ['id', 'first_name', 'last_name', 'brans', 'title_branch', 'personnel_type', 'personnel_category_id'],
+      })
+    : [];
+  const byId = new Map(teachers.map((t) => [t.id, t]));
+  const mismatch = new Map();
+  for (const a of assignments) {
+    const branch = a.Subject?.Branch;
+    if (!branch) continue;
+    for (const id of assignmentTeacherIds(a)) {
+      const t = byId.get(id);
+      const key = t ? branchService.teacherBranchKey(t) : '';
+      if (!t || !key || key === branchService.branchKey(branch.name)) continue;
+      const cur = mismatch.get(id) || { teacher: t, items: [] };
+      cur.items.push(`${classroomLabel(a.Classroom)} ${a.Subject.name}`);
+      mismatch.set(id, cur);
+    }
+  }
+  return [...mismatch.values()].map(({ teacher, items }) => ({
+    level: 'warning',
+    message: `${teacherName(teacher)} (${teacher.brans || 'branş yok'}) branşı dışında ders almış: ${items
+      .slice(0, 6)
+      .join(', ')}${items.length > 6 ? ` ve ${items.length - 6} ders daha` : ''}.`,
+    teacher_id: teacher.id,
+  }));
 }

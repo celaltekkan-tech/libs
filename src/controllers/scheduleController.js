@@ -101,7 +101,7 @@ async function findTeacherConflict({ tenantId, teacherId, dayOfWeek, periodNo, a
   if (!teacherId) return null;
   const where = {
     tenant_id: tenantId,
-    teacher_id: teacherId,
+    [Op.or]: [{ teacher_id: teacherId }, { co_teacher_ids: { [Op.contains]: [teacherId] } }],
     day_of_week: dayOfWeek,
     period_no: periodNo,
     academic_year: academicYear ?? null,
@@ -143,7 +143,11 @@ module.exports = {
       const where = {};
       if (tenantId) where.tenant_id = tenantId;
       if (req.query.classroom_id) where.classroom_id = Number(req.query.classroom_id);
-      if (req.query.teacher_id) where.teacher_id = Number(req.query.teacher_id);
+      // Ortak (2.-5.) öğretmen olarak girdiği dersler de öğretmen programında görünür.
+      if (req.query.teacher_id) {
+        const teacherId = Number(req.query.teacher_id);
+        where[Op.or] = [{ teacher_id: teacherId }, { co_teacher_ids: { [Op.contains]: [teacherId] } }];
+      }
       if (req.query.school_id) where.school_id = Number(req.query.school_id);
       if (req.query.academic_year) where.academic_year = req.query.academic_year;
       if (req.query.day_of_week) where.day_of_week = Number(req.query.day_of_week);

@@ -1,6 +1,14 @@
 import client from './client'
 import type {
   AiProposal,
+  AvailabilityCells,
+  AvailabilityEntity,
+  Branch,
+  ElectiveData,
+  LessonPool,
+  PoolHour,
+  PoolSubject,
+  TimetableAvailability,
   CheckResult,
   ConstraintInput,
   TimetableAssignment,
@@ -101,6 +109,17 @@ export async function bulkUpdateTimetableAssignments(
 ): Promise<number> {
   const { data } = await client.post<Envelope<{ updated: number }>>(`${BASE}/projects/${projectId}/assignments/bulk`, payload)
   return data.data.updated
+}
+
+export async function copyTimetableAssignments(
+  projectId: number,
+  payload: { source_classroom_id: number; target_classroom_ids: number[]; replace?: boolean; with_teachers?: boolean },
+): Promise<{ created: number; skipped: number; classrooms: number }> {
+  const { data } = await client.post<Envelope<{ created: number; skipped: number; classrooms: number }>>(
+    `${BASE}/projects/${projectId}/assignments/copy`,
+    payload,
+  )
+  return data.data
 }
 
 export async function deleteTimetableAssignment(id: number): Promise<void> {
@@ -246,4 +265,92 @@ export async function publishTimetable(
     Envelope<{ published: number; classrooms: number; teacher_dropped: number; class_dropped: number }>
   >(`${BASE}/projects/${projectId}/publish`, null, { timeout: 60000 })
   return data.data
+}
+
+// ---- branşlar ve ders havuzu
+export async function listBranches(projectId: number): Promise<Branch[]> {
+  const { data } = await client.get<Envelope<Branch[]>>(`${BASE}/projects/${projectId}/branches`)
+  return data.data
+}
+
+export async function createBranch(projectId: number, payload: { name: string; code?: string | null }): Promise<Branch> {
+  const { data } = await client.post<Envelope<Branch>>(`${BASE}/projects/${projectId}/branches`, payload)
+  return data.data
+}
+
+export async function updateBranch(
+  projectId: number,
+  id: number,
+  payload: { name?: string; code?: string | null },
+): Promise<Branch> {
+  const { data } = await client.put<Envelope<Branch>>(`${BASE}/projects/${projectId}/branches/${id}`, payload)
+  return data.data
+}
+
+export async function deleteBranch(projectId: number, id: number): Promise<void> {
+  await client.delete(`${BASE}/projects/${projectId}/branches/${id}`)
+}
+
+export async function getLessonPool(projectId: number): Promise<LessonPool> {
+  const { data } = await client.get<Envelope<LessonPool>>(`${BASE}/projects/${projectId}/pool`)
+  return data.data
+}
+
+export async function updatePoolSubject(
+  projectId: number,
+  id: number,
+  payload: Partial<Omit<PoolSubject, 'id' | 'name' | 'is_active'>>,
+): Promise<PoolSubject> {
+  const { data } = await client.put<Envelope<PoolSubject>>(`${BASE}/projects/${projectId}/pool/subjects/${id}`, payload)
+  return data.data
+}
+
+// weekly_hours 0 kaydı siler (null döner).
+export async function upsertPoolHour(
+  projectId: number,
+  payload: { subject_id: number; class_level: string; weekly_hours: number; block_pattern?: string | null },
+): Promise<PoolHour | null> {
+  const { data } = await client.put<Envelope<PoolHour | null>>(`${BASE}/projects/${projectId}/pool/hours`, payload)
+  return data.data
+}
+
+// ---- zaman tablosu
+export async function listAvailability(projectId: number): Promise<TimetableAvailability[]> {
+  const { data } = await client.get<Envelope<TimetableAvailability[]>>(`${BASE}/projects/${projectId}/availability`)
+  return data.data
+}
+
+// patch: yalnız verilen hücreler değişir ("open" açar); replace: hücreler baştan yazılır.
+export async function saveAvailability(
+  projectId: number,
+  payload: {
+    entity_type: AvailabilityEntity
+    entity_ids: number[]
+    mode?: 'patch' | 'replace'
+    cells: Record<string, 'closed' | 'avoid' | 'open'> | AvailabilityCells
+  },
+): Promise<TimetableAvailability[]> {
+  const { data } = await client.put<Envelope<TimetableAvailability[]>>(`${BASE}/projects/${projectId}/availability`, payload)
+  return data.data
+}
+
+// ---- seçmeli öğrenci seçimleri
+export async function getElectives(projectId: number, classroomId: number): Promise<ElectiveData> {
+  const { data } = await client.get<Envelope<ElectiveData>>(`${BASE}/projects/${projectId}/electives`, {
+    params: { classroom_id: classroomId },
+  })
+  return data.data
+}
+
+// Şubenin tüm seçimlerini baştan yazar.
+export async function saveElectives(
+  projectId: number,
+  classroomId: number,
+  choices: Array<{ student_id: number; assignment_ids: number[] }>,
+): Promise<number> {
+  const { data } = await client.put<Envelope<{ saved: number }>>(`${BASE}/projects/${projectId}/electives`, {
+    classroom_id: classroomId,
+    choices,
+  })
+  return data.data.saved
 }

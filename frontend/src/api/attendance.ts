@@ -52,6 +52,8 @@ export interface AttendanceExportPayload {
   typ_start_date?: string
   typ_end_date?: string
   school_id?: number
+  teacher_ids?: number[]
+  per_sheet?: 3 | 4
 }
 
 export async function exportAttendance(payload: AttendanceExportPayload): Promise<Blob> {

@@ -1,5 +1,7 @@
 const Joi = require('joi');
 
+const DOC_CATEGORIES = ['mevzuat', 'yillik_evrak', 'dilekce', 'sinif_rehberlik', 'maarif'];
+
 const DOC_TYPES = [
   'yillik_plan',
   'zumre_tutanagi',
@@ -13,10 +15,13 @@ const STATUSES = ['taslak', 'teslim_edildi', 'onaylandi', 'revizyon_istendi'];
 
 const createDocumentSchema = Joi.object({
   tenant_id: Joi.number().integer().required(),
-  teacher_id: Joi.number().integer().required(),
+  teacher_id: Joi.number().integer().allow(null),
+  category: Joi.string()
+    .valid(...DOC_CATEGORIES)
+    .required(),
   doc_type: Joi.string()
     .valid(...DOC_TYPES)
-    .required(),
+    .optional(),
   title: Joi.string().required().max(150),
   academic_year: Joi.string().allow('', null).max(20),
   content: Joi.string().allow('', null).max(20000),
@@ -46,5 +51,6 @@ module.exports = {
   reviewDocumentSchema,
   duplicateDocumentSchema,
   DOC_TYPES,
+  DOC_CATEGORIES,
   STATUSES,
 };

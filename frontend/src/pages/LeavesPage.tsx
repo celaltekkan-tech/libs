@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { App, Button, DatePicker, Descriptions, Form, Input, InputNumber, Modal, Select, Space, Tabs, Tag, Typography } from 'antd'
 import { SortableTable } from '../components/SortableTable'
-import { DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
+import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { AppLayout } from '../components/AppLayout'
@@ -10,19 +10,17 @@ import { useAuth } from '../auth/AuthContext'
 import {
   createLeaveRecord,
   deleteLeaveRecord,
-  exportLeaveRecords,
-  fetchLeaveSummary,
   listLeaveRecords,
   updateLeaveRecord,
 } from '../api/leaves'
-import { listTeachers, updateTeacher } from '../api/teachers'
+import { listTeachers } from '../api/teachers'
 import { LeaveCalendarView } from '../components/LeaveCalendarView'
 import { getErrorMessage } from '../api/client'
-import { LEAVE_QUOTA_SOURCE_LABELS, LEAVE_TYPE_LABELS, LEAVE_TYPE_OPTIONS } from '../types/leaveRecord'
-import type { LeaveRecord, LeaveSummary } from '../types/leaveRecord'
+import { LEAVE_TYPE_LABELS } from '../types/leaveRecord'
+import type { LeaveRecord } from '../types/leaveRecord'
 import type { Teacher } from '../types/teacher'
-import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
 import { tablePagination } from '../utils/tablePagination'
+import { teacherTitleParts } from '../utils/teacherTitle'
 import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
 interface LeaveFormValues {
@@ -40,16 +38,22 @@ export function LeavesPage() {
   const [selectedTeacherId, setSelectedTeacherId] = useState<number | null>(null)
   const [year, setYear] = useState<number>(new Date().getFullYear())
   const [rows, setRows] = useState<LeaveRecord[]>([])
-  const [summary, setSummary] = useState<LeaveSummary | null>(null)
+  const [yearReports, setYearReports] = useState<LeaveRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [rowsLoading, setRowsLoading] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
-  const [exportOpen, setExportOpen] = useState(false)
   const [editing, setEditing] = useState<LeaveRecord | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [quotaDraft, setQuotaDraft] = useState<number | null>(null)
-  const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx')
   const [form] = Form.useForm<LeaveFormValues>()
+
+  const isReportPerson = (teacher: Teacher) => {
+    if (teacher.employment_type === 'ucretli') return false
+    const text = `${teacher.unvan || ''} ${teacher.title_branch || ''} ${teacher.brans || ''} ${teacher.kariyer || ''}`.toLocaleLowerCase(
+      'tr-TR',
+    )
+    if (text.includes('müdür')) return true
+    return teacher.personnel_type === 'ogretmen' || teacher.personnel_type === 'memur'
+  }
 
   const canCreate = hasPermission('leaves.create')
   const canUpdate = hasPermission('leaves.update')
@@ -59,8 +63,9 @@ export function LeavesPage() {
     setLoading(true)
     try {
       const data = await listTeachers()
-      setTeachers(data)
-      if (data.length > 0) setSelectedTeacherId(data[0].id)
+      const eligible = data.filter(isReportPerson)
+      setTeachers(eligible)
+      setSelectedTeacherId((current) => current ?? eligible[0]?.id ?? null)
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
@@ -73,20 +78,16 @@ export function LeavesPage() {
   }, [loadTeachers])
 
   const loadForTeacher = useCallback(async () => {
-    if (!selectedTeacherId) {
-      setRows([])
-      setSummary(null)
-      return
-    }
     setRowsLoading(true)
     try {
-      const [rowsData, summaryData] = await Promise.all([
-        listLeaveRecords({ teacher_id: selectedTeacherId, year }),
-        fetchLeaveSummary(selectedTeacherId, year),
+      const [rowsData, yearData] = await Promise.all([
+        selectedTeacherId
+          ? listLeaveRecords({ teacher_id: selectedTeacherId, year, leave_type: 'rapor' })
+          : Promise.resolve([]),
+        listLeaveRecords({ year, leave_type: 'rapor' }),
       ])
       setRows(rowsData)
-      setSummary(summaryData)
-      setQuotaDraft(summaryData.annual_leave_quota)
+      setYearReports(yearData)
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
@@ -101,7 +102,7 @@ export function LeavesPage() {
   const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
     getIds: () => rows.map((r) => r.id),
     deleteOne: (id) => deleteLeaveRecord(Number(id)),
-    noun: 'izin kaydı',
+    noun: 'rapor kaydı',
     reload: () => void loadForTeacher(),
     message,
   })
@@ -115,7 +116,7 @@ export function LeavesPage() {
     if (!selectedTeacherId) return
     setEditing(null)
     form.resetFields()
-    form.setFieldsValue({ teacher_id: selectedTeacherId })
+    form.setFieldsValue({ teacher_id: selectedTeacherId, leave_type: 'rapor' })
     setModalOpen(true)
   }
 
@@ -143,10 +144,10 @@ export function LeavesPage() {
       }
       if (editing) {
         await updateLeaveRecord(editing.id, payload)
-        message.success('İzin kaydı güncellendi')
+        message.success('Rapor kaydı güncellendi. 7 günü aşan kısım maaş değişikliği formuna işlenir.')
       } else {
-        await createLeaveRecord(session.user.tenant_id, payload)
-        message.success('İzin kaydı oluşturuldu')
+        await createLeaveRecord(session.user.tenant_id, { ...payload, leave_type: 'rapor' })
+        message.success('Rapor kaydedildi. 7 günü aşan kısım maaş değişikliği formuna işlenir.')
       }
       setModalOpen(false)
       void loadForTeacher()
@@ -159,15 +160,15 @@ export function LeavesPage() {
 
   const onDelete = (row: LeaveRecord) => {
     modal.confirm({
-      title: 'İzin kaydını sil',
-      content: 'Bu izin kaydını silmek istediğinize emin misiniz?',
+      title: 'Rapor kaydını sil',
+      content: 'Bu rapor kaydını silmek istediğinize emin misiniz?',
       okText: 'Sil',
       okButtonProps: { danger: true },
       cancelText: 'Vazgeç',
       onOk: async () => {
         try {
           await deleteLeaveRecord(row.id)
-          message.success('İzin kaydı silindi')
+          message.success('Rapor kaydı silindi')
           void loadForTeacher()
         } catch (err) {
           message.error(getErrorMessage(err))
@@ -176,40 +177,20 @@ export function LeavesPage() {
     })
   }
 
-  const onSaveQuota = async () => {
-    if (!selectedTeacherId) return
-    setSubmitting(true)
-    try {
-      await updateTeacher(selectedTeacherId, { annual_leave_quota: quotaDraft })
-      message.success('Yıllık izin hakkı güncellendi')
-      void loadForTeacher()
-      void loadTeachers()
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    } finally {
-      setSubmitting(false)
+  const reportDaysByTeacher = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const row of yearReports) {
+      map.set(row.teacher_id, (map.get(row.teacher_id) || 0) + Number(row.day_count || 0))
     }
-  }
+    return map
+  }, [yearReports])
 
-  const onExport = async () => {
-    setSubmitting(true)
-    try {
-      const blob = await exportLeaveRecords({
-        format: exportFormat,
-        filters: selectedTeacherId ? { teacher_id: selectedTeacherId, year } : { year },
-      })
-      downloadBlob(blob, exportFilename('izin-kayitlari', exportFormat))
-      message.success('Dışa aktarma indirildi')
-      setExportOpen(false)
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    } finally {
-      setSubmitting(false)
-    }
-  }
+  const selectedDays = selectedTeacherId ? reportDaysByTeacher.get(selectedTeacherId) || 0 : 0
+  const withinFree = Math.min(7, selectedDays)
+  const excessDays = Math.max(0, selectedDays - 7)
 
   const columns: ColumnsType<LeaveRecord> = [
-    { title: 'İzin Türü', dataIndex: 'leave_type', render: (v: string) => LEAVE_TYPE_LABELS[v] || v },
+    { title: 'Kayıt', dataIndex: 'leave_type', render: (v: string) => LEAVE_TYPE_LABELS[v] || v },
     { title: 'Başlangıç', dataIndex: 'start_date' },
     { title: 'Bitiş', dataIndex: 'end_date' },
     { title: 'Gün', dataIndex: 'day_count' },
@@ -256,57 +237,57 @@ export function LeavesPage() {
               Toplu sil ({rows.length})
             </Button>
           )}
-          <Button icon={<DownloadOutlined />} onClick={() => setExportOpen(true)}>
-            Dışa Aktar
-          </Button>
           {canCreate && selectedTeacherId && (
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-              Yeni İzin Kaydı
+              Yeni Rapor
             </Button>
           )}
         </Space>
       </Space>
 
-      {selectedTeacher && summary && (
-        <Descriptions bordered size="small" column={2} style={{ marginBottom: 24, maxWidth: 800 }}>
+      <SortableTable
+        rowKey="id"
+        size="small"
+        loading={rowsLoading}
+        style={{ marginBottom: 16 }}
+        pagination={false}
+        dataSource={teachers.map((teacher) => ({
+          id: teacher.id,
+          name: `${teacher.first_name} ${teacher.last_name}`,
+          role: teacherTitleParts(teacher).unvan || teacher.title_branch || 'Personel',
+          days: reportDaysByTeacher.get(teacher.id) || 0,
+        }))}
+        columns={[
+          { title: 'Personel', dataIndex: 'name' },
+          { title: 'Görev', dataIndex: 'role' },
+          { title: `${year} rapor günü`, dataIndex: 'days' },
+          {
+            title: '7 gün içinde',
+            render: (_: unknown, row: { id: number; days: number }) => Math.min(7, row.days),
+          },
+          {
+            title: 'Maaşa yansıyan',
+            render: (_: unknown, row: { id: number; days: number }) => {
+              const extra = Math.max(0, row.days - 7)
+              return extra > 0 ? <Tag color="red">{extra} gün</Tag> : '0'
+            },
+          },
+        ]}
+        onRow={(row) => ({
+          onClick: () => setSelectedTeacherId(row.id),
+          style: { cursor: 'pointer', background: row.id === selectedTeacherId ? '#fffbe6' : undefined },
+        })}
+      />
+
+      {selectedTeacher && (
+        <Descriptions bordered size="small" column={3} style={{ marginBottom: 16 }}>
           <Descriptions.Item label="Personel">
             {selectedTeacher.first_name} {selectedTeacher.last_name}
           </Descriptions.Item>
-          <Descriptions.Item label="Yıllık izin hakkı (manuel override)">
-            <Space>
-              <InputNumber
-                min={0}
-                max={365}
-                placeholder="Otomatik"
-                value={quotaDraft ?? undefined}
-                onChange={(v) => setQuotaDraft(v == null ? null : Number(v))}
-                disabled={!canUpdate}
-                style={{ width: 90 }}
-              />
-              {canUpdate && (
-                <Button size="small" onClick={() => void onSaveQuota()} loading={submitting}>
-                  Kaydet
-                </Button>
-              )}
-            </Space>
+          <Descriptions.Item label="Ücret kesintisiz">{withinFree} gün</Descriptions.Item>
+          <Descriptions.Item label="Maaş değişikliğine giden">
+            <Tag color={excessDays > 0 ? 'red' : 'green'}>{excessDays} gün</Tag>
           </Descriptions.Item>
-          <Descriptions.Item label="Uygulanan kota" span={2}>
-            <Tag>{summary.annual_leave_quota} gün</Tag>
-            <Typography.Text type="secondary">
-              {LEAVE_QUOTA_SOURCE_LABELS[summary.annual_leave_quota_source]}
-            </Typography.Text>
-          </Descriptions.Item>
-          <Descriptions.Item label="Kullanılan yıllık izin">{summary.totals.yillik || 0} gün</Descriptions.Item>
-          <Descriptions.Item label="Kalan yıllık izin">
-            <Tag color={summary.remaining_annual_leave < 0 ? 'red' : 'green'}>
-              {summary.remaining_annual_leave} gün
-            </Tag>
-          </Descriptions.Item>
-          {LEAVE_TYPE_OPTIONS.filter((o) => o.value !== 'yillik').map((o) => (
-            <Descriptions.Item label={o.label} key={o.value}>
-              {summary.totals[o.value] || 0} gün
-            </Descriptions.Item>
-          ))}
         </Descriptions>
       )}
 
@@ -322,10 +303,13 @@ export function LeavesPage() {
   )
 
   return (
-    <AppLayout title="Personel İzin Takibi">
-      <Typography.Title level={3} style={{ margin: 0, marginBottom: 16 }}>
-        Personel İzin Takibi
+    <AppLayout title="Rapor Takibi">
+      <Typography.Title level={3} style={{ margin: 0 }}>
+        Rapor Takibi
       </Typography.Title>
+      <Typography.Paragraph type="secondary">
+        Öğretmen, memur, müdür ve müdür yardımcılarının sağlık raporları burada tutulur. 1 Ocak–31 Aralık arasında ilk 7 gün ücret kesintisine girmez. 7 günü aşan kısım, raporun düştüğü ayın maaş değişikliği formuna yazılır.
+      </Typography.Paragraph>
 
       <Tabs
         items={[
@@ -335,7 +319,7 @@ export function LeavesPage() {
       />
 
       <Modal
-        title={editing ? 'İzin Kaydını Düzenle' : 'Yeni İzin Kaydı'}
+        title={editing ? 'Rapor kaydını düzenle' : 'Yeni rapor'}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={() => form.submit()}
@@ -348,10 +332,10 @@ export function LeavesPage() {
           <Form.Item name="teacher_id" hidden>
             <Input type="hidden" />
           </Form.Item>
-          <Form.Item name="leave_type" label="İzin türü" rules={[{ required: true, message: 'İzin türü zorunludur' }]}>
-            <Select options={LEAVE_TYPE_OPTIONS} />
+          <Form.Item name="leave_type" hidden initialValue="rapor">
+            <Input />
           </Form.Item>
-          <Form.Item name="range" label="Tarih aralığı" rules={[{ required: true, message: 'Tarih aralığı zorunludur' }]}>
+          <Form.Item name="range" label="Rapor tarih aralığı" rules={[{ required: true, message: 'Tarih aralığı zorunludur' }]}>
             <DatePicker.RangePicker style={{ width: '100%' }} format="DD.MM.YYYY" />
           </Form.Item>
           <Form.Item name="reason" label="Açıklama">
@@ -360,34 +344,10 @@ export function LeavesPage() {
         </Form>
       </Modal>
 
-      <Modal
-        title="İzin Kayıtlarını Dışa Aktar"
-        open={exportOpen}
-        onCancel={() => setExportOpen(false)}
-        onOk={() => void onExport()}
-        confirmLoading={submitting}
-        okText="İndir"
-        cancelText="Vazgeç"
-        destroyOnHidden
-      >
-        <Form layout="vertical">
-          <Form.Item label="Biçim">
-            <Select
-              value={exportFormat}
-              onChange={setExportFormat}
-              options={[
-                { value: 'xlsx', label: 'Excel (.xlsx)' },
-                { value: 'csv', label: 'CSV (.csv)' },
-                { value: 'pdf', label: 'PDF' },
-              ]}
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
       <TypedPhraseConfirmModal
         open={bulkOpen}
-        title="İzin kayıtlarını toplu sil"
-        description={`Seçili filtreye uyan ${rows.length} izin kaydı silinecek.`}
+        title="Rapor kayıtlarını toplu sil"
+        description={`Seçili personele ait ${rows.length} rapor kaydı silinecek.`}
         loading={bulkLoading}
         onCancel={() => setBulkOpen(false)}
         onConfirm={onBulkDelete}

@@ -111,6 +111,9 @@ function PersonListFields({
                   <Form.Item {...field} name={[field.name, 'documents']} label="Eklenecek belgeler">
                     <Input />
                   </Form.Item>
+                  <Form.Item {...field} name={[field.name, 'source_key']} hidden>
+                    <Input />
+                  </Form.Item>
                 </Col>
               </Row>
             </Card>

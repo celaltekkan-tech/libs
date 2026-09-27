@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Form, Input, Modal, Select, Space, Tag, Typography } from 'antd'
+import { App, Button, Card, Form, Input, Modal, Select, Space, Tabs, Tag, Typography } from 'antd'
 import { SortableTable } from '../components/SortableTable'
-import { CopyOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
+import { CopyOutlined, DeleteOutlined, LinkOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
-import { ClearFiltersButton } from '../components/ClearFiltersButton'
-import { FilterBar } from '../components/FilterBar'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import {
@@ -15,14 +13,33 @@ import {
   listTeacherDocuments,
   reviewTeacherDocument,
 } from '../api/teacherDocuments'
-import { listTeachers } from '../api/teachers'
 import { getErrorMessage } from '../api/client'
-import { DOC_STATUS_LABELS, DOC_STATUS_OPTIONS, DOC_TYPE_LABELS, DOC_TYPE_OPTIONS } from '../types/teacherDocument'
-import type { TeacherDocument, TeacherDocumentPayload } from '../types/teacherDocument'
-import type { Teacher } from '../types/teacher'
+import {
+  DMK_657_URL,
+  DOC_CATEGORY_OPTIONS,
+  DOC_STATUS_LABELS,
+  DOC_STATUS_OPTIONS,
+  DOC_TYPE_LABELS,
+  DOC_TYPE_OPTIONS,
+} from '../types/teacherDocument'
+import type { DocCategory, TeacherDocument, TeacherDocumentPayload } from '../types/teacherDocument'
 import { tablePagination } from '../utils/tablePagination'
-import { nestedPersonNameSorter, SORT_AZ } from '../utils/tableSort'
 import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
+
+function categoryOf(doc: TeacherDocument): DocCategory {
+  if (
+    doc.category === 'mevzuat' ||
+    doc.category === 'yillik_evrak' ||
+    doc.category === 'dilekce' ||
+    doc.category === 'sinif_rehberlik' ||
+    doc.category === 'maarif'
+  ) {
+    return doc.category
+  }
+  if (doc.doc_type === 'sinif_rehberlik_plani' || doc.doc_type === 'ogrenci_gelisim_raporu') return 'sinif_rehberlik'
+  if (doc.doc_type === 'maarif_modeli_raporu') return 'maarif'
+  return 'yillik_evrak'
+}
 
 const STATUS_COLORS: Record<string, string> = {
   taslak: 'default',
@@ -36,8 +53,7 @@ export function TeacherDocumentsPage() {
   const { session, hasPermission } = useAuth()
 
   const [docs, setDocs] = useState<TeacherDocument[]>([])
-  const [teachers, setTeachers] = useState<Teacher[]>([])
-  const [selectedTeacherId, setSelectedTeacherId] = useState<number | null>(null)
+  const [category, setCategory] = useState<DocCategory>('mevzuat')
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [reviewing, setReviewing] = useState<TeacherDocument | null>(null)
@@ -54,25 +70,21 @@ export function TeacherDocumentsPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [docData, teacherData] = await Promise.all([
-        listTeacherDocuments(selectedTeacherId ? { teacher_id: selectedTeacherId } : undefined),
-        listTeachers({ scope: 'teachers' }),
-      ])
+      const docData = await listTeacherDocuments()
       setDocs(docData)
-      setTeachers(teacherData)
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
-  }, [selectedTeacherId, message])
+  }, [message])
 
   useEffect(() => {
     void load()
   }, [load])
 
   const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
-    getIds: () => docs.map((d) => d.id),
+    getIds: () => docs.filter((d) => categoryOf(d) === category).map((d) => d.id),
     deleteOne: (id) => deleteTeacherDocument(Number(id)),
     noun: 'evrak',
     reload: () => void load(),
@@ -83,7 +95,7 @@ export function TeacherDocumentsPage() {
     if (!session) return
     setSubmitting(true)
     try {
-      await createTeacherDocument(session.user.tenant_id, values)
+      await createTeacherDocument(session.user.tenant_id, { ...values, category })
       message.success('Evrak oluşturuldu')
       setModalOpen(false)
       form.resetFields()
@@ -150,13 +162,9 @@ export function TeacherDocumentsPage() {
     })
   }
 
+  const visibleDocs = docs.filter((doc) => categoryOf(doc) === category)
+
   const columns: ColumnsType<TeacherDocument> = [
-    {
-      title: 'Personel',
-      sorter: nestedPersonNameSorter((r: TeacherDocument) => r.Teacher),
-      sortDirections: [...SORT_AZ],
-      render: (_: unknown, r: TeacherDocument) => (r.Teacher ? `${r.Teacher.first_name} ${r.Teacher.last_name}` : '—'),
-    },
     { title: 'Evrak Türü', dataIndex: 'doc_type', render: (v: string) => DOC_TYPE_LABELS[v] || v },
     { title: 'Başlık', dataIndex: 'title' },
     { title: 'Eğitim Öğretim Yılı', dataIndex: 'academic_year', render: (v: string | null) => v || '—' },
@@ -188,46 +196,57 @@ export function TeacherDocumentsPage() {
 
   return (
     <AppLayout title="Öğretmen Evrak Arşivi">
-      <Typography.Title level={3} style={{ margin: 0, marginBottom: 16 }}>
+      <Typography.Title level={3} style={{ margin: 0 }}>
         Öğretmen Evrak Arşivi
       </Typography.Title>
+      <Typography.Paragraph type="secondary">
+        Ortak evraklar gruplanır. Personel listesi yoktur; öğretmenler buradan mevzuat, yıllık evrak, dilekçe ve örnek belgelere bakar.
+      </Typography.Paragraph>
 
-      <Space wrap style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <FilterBar style={{ marginBottom: 0, width: 'auto' }}>
-          <Select
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            placeholder="Personele göre filtrele"
-            value={selectedTeacherId ?? undefined}
-            onChange={(v) => setSelectedTeacherId(v ?? null)}
-            options={teachers.map((t) => ({ value: t.id, label: `${t.first_name} ${t.last_name}` }))}
-            style={{ width: 260 }}
-          />
-          <ClearFiltersButton
-            active={selectedTeacherId != null}
-            onClick={() => setSelectedTeacherId(null)}
-          />
-        </FilterBar>
-        <Space wrap>
-          {canDelete && docs.length > 0 && (
-            <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
-              Toplu sil ({docs.length})
+      <Tabs
+        activeKey={category}
+        onChange={(key) => setCategory(key as DocCategory)}
+        tabBarExtraContent={
+          <Space>
+            {canDelete && visibleDocs.length > 0 && (
+              <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+                Toplu sil ({visibleDocs.length})
+              </Button>
+            )}
+            {canCreate && (
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => {
+                  form.resetFields()
+                  form.setFieldsValue({ category, doc_type: category === 'yillik_evrak' ? 'yillik_plan' : undefined })
+                  setModalOpen(true)
+                }}
+              >
+                Yeni evrak
+              </Button>
+            )}
+          </Space>
+        }
+        items={DOC_CATEGORY_OPTIONS.map((item) => ({ key: item.value, label: item.label }))}
+      />
+
+      {category === 'mevzuat' && (
+        <Card size="small" style={{ marginBottom: 16 }}>
+          <Space direction="vertical" size={4}>
+            <Typography.Text strong>657 sayılı Devlet Memurları Kanunu</Typography.Text>
+            <Button type="link" icon={<LinkOutlined />} href={DMK_657_URL} target="_blank" style={{ paddingLeft: 0 }}>
+              Mevzuat.gov.tr üzerinde aç
             </Button>
-          )}
-          {canCreate && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-              Yeni Evrak
-            </Button>
-          )}
-        </Space>
-      </Space>
+          </Space>
+        </Card>
+      )}
 
       <SortableTable
         rowKey="id"
         loading={loading}
         columns={columns}
-        dataSource={docs}
+        dataSource={visibleDocs}
         pagination={tablePagination(20)}
         scroll={{ x: 'max-content' }}
       />
@@ -243,16 +262,14 @@ export function TeacherDocumentsPage() {
         destroyOnHidden
       >
         <Form form={form} layout="vertical" onFinish={onFinish}>
-          <Form.Item name="teacher_id" label="Personel" rules={[{ required: true, message: 'Personel seçimi zorunludur' }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={teachers.map((t) => ({ value: t.id, label: `${t.first_name} ${t.last_name}` }))}
-            />
+          <Form.Item name="category" hidden>
+            <Input />
           </Form.Item>
-          <Form.Item name="doc_type" label="Evrak türü" rules={[{ required: true, message: 'Evrak türü zorunludur' }]}>
-            <Select options={DOC_TYPE_OPTIONS} />
-          </Form.Item>
+          {(category === 'yillik_evrak' || category === 'sinif_rehberlik' || category === 'maarif') && (
+            <Form.Item name="doc_type" label="Evrak türü">
+              <Select allowClear options={DOC_TYPE_OPTIONS} placeholder="İsteğe bağlı" />
+            </Form.Item>
+          )}
           <Form.Item name="title" label="Başlık" rules={[{ required: true, message: 'Başlık zorunludur' }]}>
             <Input />
           </Form.Item>
@@ -304,7 +321,7 @@ export function TeacherDocumentsPage() {
       <TypedPhraseConfirmModal
         open={bulkOpen}
         title="Evrakları toplu sil"
-        description={`Filtreye uyan ${docs.length} evrak kaydı silinecek.`}
+        description={`Bu gruptaki ${visibleDocs.length} evrak kaydı silinecek.`}
         loading={bulkLoading}
         onCancel={() => setBulkOpen(false)}
         onConfirm={onBulkDelete}

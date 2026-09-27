@@ -9,9 +9,13 @@ Girdi (Node tarafının timetableBuildService.js ile ürettiği JSON):
   weights: {...}          Esnek kural ağırlıkları
   max_subject_daily: int  Bir şubede bir dersin günlük üst sınırı
   classrooms/teachers/rooms/subjects: [{id, label|name, ...}]
-  assignments: [{id, classroom_id, subject_id, teacher_id, hours, blocks, room_id, sync_group}]
+  assignments: [{id, classroom_id, subject_id, teacher_id, teacher_ids, hours, blocks,
+                 allow_split, allow_merge, room_id, sync_group}]
   constraints: [{id, type, hard, weight, params}]
   locked: [{assignment_id, day, period}]
+  availability: [{type: school|teacher|classroom|room|subject, id, closed: [[d,p]], avoid: [[d,p]]}]
+  block_across_lunch: bool  Bloklar öğle arasını aşabilir (subject_no_lunch_split ile sınırlanır)
+  class_lunch: {classroom_id: after}  Şubeye özel öğle arası
 
 Çıktı: status, lessons, score, violations, diagnostics.
 """
@@ -29,7 +33,11 @@ DEFAULT_WEIGHTS = {
     'teacher_single_hour_day': 6,
     'hard_subject_late': 3,
     'soft_constraint': 20,
+    'availability_avoid': 15,
+    'block_flex': 8,
 }
+
+AVAIL_TYPES = ('school', 'teacher', 'classroom', 'room', 'subject')
 
 STATUS_NAMES = {
     cp_model.OPTIMAL: 'OPTIMAL',
@@ -52,6 +60,15 @@ class Ctx:
         self.lunch = int(la) if la and 0 < int(la) < self.P else None
         self.weights = {**DEFAULT_WEIGHTS, **(data.get('weights') or {})}
         self.max_subject_daily = int(data.get('max_subject_daily') or 2)
+        self.block_across_lunch = bool(data.get('block_across_lunch'))
+        self.class_lunch = {}
+        for k, v in (data.get('class_lunch') or {}).items():
+            try:
+                k, v = int(k), int(v)
+            except (TypeError, ValueError):
+                continue
+            if 0 < v < self.P:
+                self.class_lunch[k] = v
 
         self.classrooms = {c['id']: c for c in data.get('classrooms', [])}
         self.teachers = {t['id']: t for t in data.get('teachers', [])}
@@ -60,6 +77,25 @@ class Ctx:
 
         self.assignments = [a for a in data.get('assignments', []) if int(a.get('hours') or 0) > 0]
         self.by_id = {a['id']: a for a in self.assignments}
+        self._structure = {}
+
+        # Zaman tablosu: (tür, id) -> {'closed': {(d,p)}, 'avoid': {(d,p)}}; okul için id 0.
+        self.avail = {}
+        for row in data.get('availability') or []:
+            t = row.get('type')
+            if t not in AVAIL_TYPES:
+                continue
+            key = (t, 0 if t == 'school' else row.get('id'))
+            cur = self.avail.setdefault(key, {'closed': set(), 'avoid': set()})
+            for state in ('closed', 'avoid'):
+                for cell in row.get(state) or []:
+                    try:
+                        d, p = int(cell[0]), int(cell[1])
+                    except (TypeError, ValueError, IndexError):
+                        continue
+                    if d in self.days and 1 <= p <= self.P:
+                        cur[state].add((d, p))
+            cur['avoid'] -= cur['closed']
 
         # Senkron gruplar: aynı sync_group'taki atamalar aynı saatlere yerleşir.
         # Grubun ilk ataması "kanonik"tir; diğerleri onun değişkenlerini kullanır.
@@ -96,25 +132,134 @@ class Ctx:
     def label_assignment(self, a):
         return f"{self.label_classroom(a['classroom_id'])} {self.label_subject(a['subject_id'])}"
 
+    def label_entity(self, t, eid):
+        if t == 'school':
+            return 'Okul'
+        if t == 'teacher':
+            return self.label_teacher(eid)
+        if t == 'classroom':
+            return self.label_classroom(eid)
+        if t == 'room':
+            return self.label_room(eid)
+        return self.label_subject(eid)
+
+    def teachers_of(self, a):
+        """1. öğretmen + ortak öğretmenler (tekrarsız)."""
+        out = []
+        for tid in [a.get('teacher_id')] + list(a.get('teacher_ids') or []):
+            if tid and tid not in out:
+                out.append(tid)
+        return out
+
+    def class_structure(self, cid):
+        """Şubenin çakışma yapısı: (çekirdek, seçmeli grupları, öğrenci profilleri | None).
+
+        Çekirdek: tüm öğrencilerin girdiği dersler. Aynı seçmeli grubundaki dersler
+        alternatiftir (öğrenci birini alır) ve paralel işlenebilir. Öğrenci seçimleri
+        varsa profiller (her öğrencinin aldığı seçmeliler) esas alınır.
+        """
+        if cid in self._structure:
+            return self._structure[cid]
+        core, groups, electives = set(), defaultdict(set), set()
+        for a in self.assignments:
+            if a['classroom_id'] != cid:
+                continue
+            cn = self.canon[a['id']]
+            g = (a.get('elective_group') or '').strip()
+            if g:
+                groups[g].add(cn)
+                electives.add(cn)
+            else:
+                core.add(cn)
+        core -= electives  # senkron grupta hem seçmeli hem çekirdek varsa seçmeli sayılır
+        profiles = None
+        raw = (self.data.get('elective_profiles') or {}).get(str(cid)) or \
+            (self.data.get('elective_profiles') or {}).get(cid)
+        if raw and electives:
+            seen = set()
+            profiles = []
+            covered = set()
+            for prof in raw:
+                ps = frozenset(self.canon[i] for i in prof if i in self.canon and self.canon[i] in electives)
+                if ps and ps not in seen:
+                    seen.add(ps)
+                    profiles.append(ps)
+                    covered |= ps
+            # Kimsenin seçmediği seçmeliler yalnız çekirdekle çakışmasın.
+            for cn in electives - covered:
+                profiles.append(frozenset([cn]))
+        self._structure[cid] = (core, dict(groups), profiles)
+        return self._structure[cid]
+
+    def class_required_hours(self, cid):
+        """Şubenin haftada dolu olacağı en az saat (paralel seçmeliler bir kez sayılır)."""
+        core, groups, profiles = self.class_structure(cid)
+        h = lambda cn: int(self.by_id[cn]['hours'])  # noqa: E731
+        total = sum(h(cn) for cn in core)
+        if profiles is not None:
+            total += max((sum(h(cn) for cn in p) for p in profiles), default=0)
+        else:
+            total += sum(max(h(cn) for cn in cs) for cs in groups.values())
+        return total
+
+    def closed(self, t, eid):
+        return (self.avail.get((t, eid)) or {}).get('closed', set())
+
     def blocks_of(self, a):
         blocks = [int(b) for b in (a.get('blocks') or []) if int(b) > 0]
         return blocks or default_blocks(int(a['hours']))
 
-    def segments(self):
+    def block_variants(self, a):
+        """[(değişiklik sayısı, bloklar)]. B1: ikili blok 1+1 olabilir; B2: iki tekli 2'lik blok olabilir."""
+        base = self.blocks_of(a)
+        out = [(0, base)]
+        seen = {tuple(sorted(base))}
+        twos = base.count(2)
+        ones = base.count(1)
+        rest = [b for b in base if b not in (1, 2)]
+        if a.get('allow_split'):
+            for j in range(1, twos + 1):
+                v = sorted(rest + [2] * (twos - j) + [1] * (ones + 2 * j), reverse=True)
+                if tuple(sorted(v)) not in seen and len(v) <= len(self.days):
+                    seen.add(tuple(sorted(v)))
+                    out.append((j, v))
+        if a.get('allow_merge'):
+            for j in range(1, ones // 2 + 1):
+                v = sorted(rest + [2] * (twos + j) + [1] * (ones - 2 * j), reverse=True)
+                if tuple(sorted(v)) not in seen and max(v) <= self.max_block_len(a.get('classroom_id')):
+                    seen.add(tuple(sorted(v)))
+                    out.append((j, v))
+        return out
+
+    def lunch_for(self, cid=None):
+        if cid is not None and cid in self.class_lunch:
+            return self.class_lunch[cid]
+        return self.lunch
+
+    def segments(self, cid=None):
         """Öğle arası ile bölünen ardışık saat aralıkları."""
-        if self.lunch:
-            return [(1, self.lunch), (self.lunch + 1, self.P)]
+        lunch = self.lunch_for(cid)
+        if lunch:
+            return [(1, lunch), (lunch + 1, self.P)]
         return [(1, self.P)]
 
-    def max_block_len(self):
-        return max(e - s + 1 for s, e in self.segments())
+    def max_block_len(self, cid=None):
+        if self.block_across_lunch:
+            return self.P
+        return max(e - s + 1 for s, e in self.segments(cid))
 
-    def valid_starts(self, length):
+    def valid_starts(self, length, cid=None):
+        if self.block_across_lunch:
+            return list(range(1, self.P - length + 2))
         starts = []
-        for s, e in self.segments():
+        for s, e in self.segments(cid):
             for p in range(s, e - length + 2):
                 starts.append(p)
         return starts
+
+    def crosses_lunch(self, start, length, cid=None):
+        lunch = self.lunch_for(cid)
+        return bool(lunch) and start <= lunch < start + length - 1
 
     def cells_from_slots(self, slots):
         """[{day, periods:[..]}] -> {(d,p)}; boş periods tüm gün demektir."""
@@ -160,6 +305,13 @@ def constraint_label(ctx, c):
         return f"{ctx.label_subject(p.get('subject_id'))}: belirli saatler {mode}"
     if t == 'subject_max_daily':
         return f"{ctx.label_subject(p.get('subject_id'))}: günde en fazla {p.get('max')} saat"
+    names = ', '.join(ctx.label_subject(s) for s in (p.get('subject_ids') or []))
+    if t == 'subjects_not_same_day':
+        return f'{names}: aynı güne gelmesin'
+    if t == 'subjects_same_day':
+        return f'{names}: aynı gün olsun'
+    if t == 'subject_no_lunch_split':
+        return f'{names}: öğle arasıyla bölünmesin'
     return t or 'Kısıt'
 
 
@@ -176,13 +328,13 @@ def check(data):
 
     n_days = len(ctx.days)
     total_slots = n_days * ctx.P
-    max_len = ctx.max_block_len()
 
     if not ctx.assignments:
-        add('error', 'Hiç ders ataması yok. Önce "Ders Atamaları" sekmesinden atama oluşturun.')
+        add('error', 'Hiç ders ataması yok. Önce sınıflara ders verin.')
 
     for a in ctx.assignments:
         blocks = ctx.blocks_of(a)
+        max_len = ctx.max_block_len(a['classroom_id'])
         if sum(blocks) != int(a['hours']):
             add('error', f"{ctx.label_assignment(a)}: blok düzeni ({'+'.join(map(str, blocks))}) haftalık saate ({a['hours']}) eşit değil.",
                 assignment_ids=[a['id']])
@@ -192,7 +344,7 @@ def check(data):
         if len(blocks) > n_days:
             add('warning', f"{ctx.label_assignment(a)}: {len(blocks)} blok var ama {n_days} gün var; bazı bloklar aynı güne düşecek.",
                 assignment_ids=[a['id']])
-        if not a.get('teacher_id'):
+        if not ctx.teachers_of(a):
             add('warning', f"{ctx.label_assignment(a)}: öğretmen atanmamış; öğretmen çakışması kontrol edilmeyecek.",
                 assignment_ids=[a['id']])
 
@@ -203,10 +355,17 @@ def check(data):
             add('error', f'"{g}" senkron grubundaki derslerin haftalık saatleri ve blok düzenleri aynı olmalı.',
                 assignment_ids=[m['id'] for m in members])
 
-    # Hard kapalı hücreler (kapasite hesaplarında düşülür).
+    # Kesin kapalı hücreler (kapasite hesaplarında düşülür): zaman tablosu + kesin kısıtlar.
+    school_closed = ctx.closed('school', 0)
     teacher_closed = defaultdict(set)
     class_closed = defaultdict(set)
     room_closed = defaultdict(set)
+    subject_closed = defaultdict(set)
+    for (t, eid), cells in ctx.avail.items():
+        target = {'teacher': teacher_closed, 'classroom': class_closed, 'room': room_closed,
+                  'subject': subject_closed}.get(t)
+        if target is not None:
+            target[eid] |= cells['closed']
     for c in data.get('constraints', []):
         if not c.get('hard'):
             continue
@@ -228,25 +387,28 @@ def check(data):
     teacher_hours = defaultdict(int)
     teacher_seen = defaultdict(set)
     room_hours = defaultdict(int)
+    subject_class_hours = defaultdict(int)
     for a in ctx.assignments:
         cn = ctx.canon[a['id']]
         h = int(a['hours'])
         if cn not in class_seen[a['classroom_id']]:
             class_seen[a['classroom_id']].add(cn)
-            class_hours[a['classroom_id']] += h
-        if a.get('teacher_id') and cn not in teacher_seen[a['teacher_id']]:
-            teacher_seen[a['teacher_id']].add(cn)
-            teacher_hours[a['teacher_id']] += h
+            class_hours[a['classroom_id']] = ctx.class_required_hours(a['classroom_id'])
+        for tid in ctx.teachers_of(a):
+            if cn not in teacher_seen[tid]:
+                teacher_seen[tid].add(cn)
+                teacher_hours[tid] += h
         if a.get('room_id'):
             room_hours[a['room_id']] += h
+        subject_class_hours[(a['subject_id'], a['classroom_id'])] += h
 
     for cid, h in class_hours.items():
-        avail = total_slots - len(class_closed[cid])
+        avail = total_slots - len(class_closed[cid] | school_closed)
         if h > avail:
-            add('error', f'{ctx.label_classroom(cid)}: haftalık {h} saat ders atanmış ama yalnızca {avail} boş saat var.',
+            add('error', f'{ctx.label_classroom(cid)}: haftalık {h} saat ders atanmış ama yalnızca {avail} açık saat var.',
                 classroom_id=cid)
     for tid, h in teacher_hours.items():
-        avail = total_slots - len(teacher_closed[tid])
+        avail = total_slots - len(teacher_closed[tid] | school_closed)
         if h > avail:
             add('error', f'{ctx.label_teacher(tid)}: haftalık {h} saat dersi var ama müsait olduğu saat sayısı {avail}.',
                 teacher_id=tid)
@@ -255,10 +417,28 @@ def check(data):
                 teacher_id=tid)
     for rid, h in room_hours.items():
         cap = int((ctx.rooms.get(rid) or {}).get('capacity') or 1)
-        avail = (total_slots - len(room_closed[rid])) * cap
+        avail = (total_slots - len(room_closed[rid] | school_closed)) * cap
         if h > avail:
             add('error', f'{ctx.label_room(rid)}: haftalık {h} saat kullanım isteniyor ama kapasite {avail} saat.',
                 room_id=rid)
+    for (sid, cid), h in subject_class_hours.items():
+        if not subject_closed[sid]:
+            continue
+        avail = total_slots - len(subject_closed[sid] | class_closed[cid] | school_closed)
+        if h > avail:
+            add('error', f'{ctx.label_classroom(cid)} {ctx.label_subject(sid)}: {h} saat ama dersin açık olduğu saat {avail}.',
+                classroom_id=cid)
+
+    for cid in sorted({a['classroom_id'] for a in ctx.assignments}):
+        _, _, profiles = ctx.class_structure(cid)
+        if profiles is None:
+            continue
+        chosen = set()
+        for prof in (data.get('elective_profiles') or {}).get(str(cid)) or []:
+            chosen |= {ctx.canon.get(i) for i in prof}
+        for a in ctx.assignments:
+            if a['classroom_id'] == cid and (a.get('elective_group') or '').strip() and ctx.canon[a['id']] not in chosen:
+                add('warning', f'{ctx.label_assignment(a)}: seçmeli ama seçen öğrenci girilmemiş.', assignment_ids=[a['id']])
 
     for lk in data.get('locked', []):
         if lk.get('assignment_id') not in ctx.by_id:
@@ -304,27 +484,54 @@ def build(ctx, with_assumptions=False):
     day_index = {d: i for i, d in enumerate(days)}
 
     # --- Blok değişkenleri (yalnızca kanonik atamalar) ---
+    # B1/B2 esnekliği olan atamalarda birden çok blok düzeni (varyant) vardır;
+    # tam olarak biri seçilir, seçilmeyenin blokları boş kalır.
     x = {}           # (block_key, d, p) -> var
     blocks = defaultdict(list)   # canon aid -> [(block_key, length)]
+    block_starts = {}            # block_key -> [(d, p, var)]
+    variants = defaultdict(list)  # canon aid -> [(sel|None, [(block_key, length)])]
     occ = defaultdict(list)      # (canon aid, d, p) -> [var]
-    starts_by_day = defaultdict(list)  # (canon aid, d) -> [var]
+    starts_by_day = defaultdict(list)  # (block_key[:2] -> variant, d) -> [var]
+    crossing = defaultdict(list)  # canon aid -> [öğle arasını aşan başlangıç değişkenleri]
 
     canon_ids = sorted({ctx.canon[a['id']] for a in ctx.assignments})
     for aid in canon_ids:
         a = ctx.by_id[aid]
-        for bi, length in enumerate(ctx.blocks_of(a)):
-            key = (aid, bi)
-            blocks[aid].append((key, length))
-            vs = []
-            for d in days:
-                for p in ctx.valid_starts(length):
-                    v = m.NewBoolVar(f'x_{aid}_{bi}_{d}_{p}')
-                    x[(key, d, p)] = v
-                    vs.append(v)
-                    starts_by_day[(aid, d)].append(v)
-                    for k in range(length):
-                        occ[(aid, d, p + k)].append(v)
-            m.AddExactlyOne(vs)
+        cid = a['classroom_id']
+        vlist = ctx.block_variants(a)
+        sels = []
+        for vi, (changes, vblocks) in enumerate(vlist):
+            sel = None
+            if len(vlist) > 1:
+                sel = m.NewBoolVar(f'var_{aid}_{vi}')
+                sels.append(sel)
+                if changes:
+                    b.terms['block_flex'].append((int(ctx.weights['block_flex']) * changes, sel))
+            vb = []
+            for bi, length in enumerate(vblocks):
+                key = (aid, vi, bi)
+                vb.append((key, length))
+                blocks[aid].append((key, length))
+                vs = []
+                block_starts[key] = []
+                for d in days:
+                    for p in ctx.valid_starts(length, cid):
+                        v = m.NewBoolVar(f'x_{aid}_{vi}_{bi}_{d}_{p}')
+                        x[(key, d, p)] = v
+                        vs.append(v)
+                        block_starts[key].append((d, p, v))
+                        starts_by_day[((aid, vi), d)].append(v)
+                        if ctx.crosses_lunch(p, length, cid):
+                            crossing[aid].append(v)
+                        for k in range(length):
+                            occ[(aid, d, p + k)].append(v)
+                if sel is None:
+                    m.AddExactlyOne(vs)
+                else:
+                    m.Add(sum(vs) == sel)
+            variants[aid].append((sel, vb))
+        if sels:
+            m.AddExactlyOne(sels)
 
     def occ_expr(aid, d, p):
         return sum(occ.get((ctx.canon[aid], d, p), []))
@@ -332,35 +539,65 @@ def build(ctx, with_assumptions=False):
     # --- Aynı atamanın blokları farklı günlere (mümkünse) ---
     spread_lit = enforce_lit('Aynı dersin blokları farklı günlere dağılsın')
     for aid in canon_ids:
-        bl = blocks[aid]
-        if len(bl) <= len(days):
+        for vi, (sel, vb) in enumerate(variants[aid]):
+            if len(vb) > len(days):
+                continue
+            cond = [spread_lit] + ([sel] if sel is not None else [])
             for d in days:
-                m.Add(sum(starts_by_day[(aid, d)]) <= 1).OnlyEnforceIf(spread_lit)
+                m.Add(sum(starts_by_day[((aid, vi), d)]) <= 1).OnlyEnforceIf(cond)
             # Simetri kırma: aynı uzunluktaki bloklar gün sırasına göre.
-            for (k1, l1), (k2, l2) in zip(bl, bl[1:]):
+            for (k1, l1), (k2, l2) in zip(vb, vb[1:]):
                 if l1 == l2:
-                    e1 = sum(day_index[d] * x[(k1, d, p)] for d in days for p in ctx.valid_starts(l1))
-                    e2 = sum(day_index[d] * x[(k2, d, p)] for d in days for p in ctx.valid_starts(l2))
-                    m.Add(e1 < e2).OnlyEnforceIf(spread_lit)
+                    e1 = sum(day_index[d] * v for d, _, v in block_starts[k1])
+                    e2 = sum(day_index[d] * v for d, _, v in block_starts[k2])
+                    m.Add(e1 < e2).OnlyEnforceIf(cond)
 
     # --- Şube / öğretmen meşguliyeti (senkron gruplar tekilleştirilir) ---
     class_canon = defaultdict(set)
     teacher_canon = defaultdict(set)
     room_members = defaultdict(list)
+    subject_canon = defaultdict(set)
     for a in ctx.assignments:
         cn = ctx.canon[a['id']]
         class_canon[a['classroom_id']].add(cn)
-        if a.get('teacher_id'):
-            teacher_canon[a['teacher_id']].add(cn)
+        subject_canon[a['subject_id']].add(cn)
+        for tid in ctx.teachers_of(a):
+            teacher_canon[tid].add(cn)
         if a.get('room_id'):
             room_members[a['room_id']].append(cn)
 
+    # Şube çakışması: çekirdek dersler her şeyle çakışır; seçmeliler öğrenci profiline
+    # (seçimler girildiyse) ya da seçmeli grubuna göre paralel işlenebilir.
     c_busy = {}
     for cid, cset in class_canon.items():
+        core, groups, profiles = ctx.class_structure(cid)
         for d in days:
             for p in periods:
+                def o(cn):
+                    return sum(occ.get((cn, d, p), []))
+                core_sum = sum(o(cn) for cn in core)
+                if profiles is not None:
+                    for prof in profiles:
+                        m.Add(core_sum + sum(o(cn) for cn in prof) <= 1)
+                    if not profiles:
+                        m.Add(core_sum <= 1)
+                else:
+                    gbusy = []
+                    for g, gset in sorted(groups.items()):
+                        items = [o(cn) for cn in gset]
+                        if len(items) == 1:
+                            gbusy.append(items[0])
+                            continue
+                        gv = m.NewBoolVar(f'gb_{cid}_{g}_{d}_{p}')
+                        for e in items:
+                            m.Add(gv >= e)
+                        gbusy.append(gv)
+                    m.Add(core_sum + sum(gbusy) <= 1)
                 v = m.NewBoolVar(f'cb_{cid}_{d}_{p}')
-                m.Add(v == sum(sum(occ.get((cn, d, p), [])) for cn in cset))
+                items = [o(cn) for cn in cset]
+                for e in items:
+                    m.Add(v >= e)
+                m.Add(v <= sum(items))
                 c_busy[(cid, d, p)] = v
     b.c_busy = c_busy
 
@@ -381,6 +618,31 @@ def build(ctx, with_assumptions=False):
                 e = sum(sum(occ.get((cn, d, p), [])) for cn in members)
                 m.Add(e <= cap)
                 r_use[(rid, d, p)] = e
+
+    # --- Zaman tablosu: kapalı hücre kesin, "istenmiyor" hücre cezalı ---
+    def cell_expr(t, eid, d, p):
+        if t == 'school':
+            return sum(c_busy[(cid, d, p)] for cid in class_canon)
+        if t == 'teacher':
+            return t_busy.get((eid, d, p), 0)
+        if t == 'classroom':
+            return c_busy.get((eid, d, p), 0)
+        if t == 'room':
+            return r_use.get((eid, d, p), 0) if eid in room_members else 0
+        return sum(sum(occ.get((cn, d, p), [])) for cn in subject_canon.get(eid, ()))
+
+    w_avoid = int(ctx.weights['availability_avoid'])
+    for (t, eid), cells in sorted(ctx.avail.items(), key=lambda kv: (kv[0][0], kv[0][1] or 0)):
+        if cells['closed']:
+            expr = sum(cell_expr(t, eid, d, p) for d, p in sorted(cells['closed']))
+            if not isinstance(expr, int):
+                lit = enforce_lit(f'{ctx.label_entity(t, eid)}: zaman tablosunda kapalı saatler')
+                m.Add(expr == 0).OnlyEnforceIf(lit)
+        if cells['avoid'] and w_avoid:
+            for d, p in sorted(cells['avoid']):
+                e = cell_expr(t, eid, d, p)
+                if not isinstance(e, int):
+                    b.terms['availability_avoid'].append((w_avoid, e))
 
     # --- Bir dersin şubedeki günlük üst sınırı ---
     subj_daily_lit = enforce_lit(f'Bir ders bir şubede günde en fazla {ctx.max_subject_daily} saat')
@@ -403,6 +665,22 @@ def build(ctx, with_assumptions=False):
         if locked_lit is None:
             locked_lit = enforce_lit('Kilitlenen dersler')
         m.Add(occ_expr(aid, d, p) >= 1).OnlyEnforceIf(locked_lit)
+
+    present_cache = {}
+
+    def day_present(cid_, sid_, d):
+        """Şubede o ders o gün var mı (0/1)."""
+        key = (cid_, sid_, d)
+        if key not in present_cache:
+            hours = sum(sum(occ.get((cn, d, pp), [])) for cn in cs_canon.get((cid_, sid_), ()) for pp in periods)
+            v = m.NewBoolVar(f'dp_{cid_}_{sid_}_{d}')
+            if isinstance(hours, int):
+                m.Add(v == 0)
+            else:
+                m.Add(hours >= v)
+                m.Add(hours <= ctx.P * v)
+            present_cache[key] = v
+        return present_cache[key]
 
     # --- Kullanıcı kısıtları ---
     soft_w = int(ctx.weights['soft_constraint'])
@@ -508,6 +786,42 @@ def build(ctx, with_assumptions=False):
                 for d in days:
                     at_most(sum(sum(occ.get((cn, d, pp), [])) for cn in cset for pp in periods), mx, f'smd_{cid}_{c_}_{d}')
 
+        elif ctype in ('subjects_not_same_day', 'subjects_same_day'):
+            sids = [s for s in (p.get('subject_ids') or []) if s in subject_canon]
+            cls = p.get('classroom_id')
+            for c_ in sorted(class_canon):
+                if cls and c_ != cls:
+                    continue
+                present = [s for s in sids if cs_canon.get((c_, s))]
+                if len(present) < 2:
+                    continue
+                if ctype == 'subjects_not_same_day':
+                    for d in days:
+                        at_most(sum(day_present(c_, s, d) for s in present), 1, f'nsd_{cid}_{c_}_{d}')
+                else:
+                    # En çok blok alan ders referans; diğerlerinin günleri onun günleri içinde kalır.
+                    ref = max(present, key=lambda s: max(len(vb) for cn in cs_canon[(c_, s)] for _, vb in variants[cn]))
+                    for s in present:
+                        if s == ref:
+                            continue
+                        for d in days:
+                            ps, pr = day_present(c_, s, d), day_present(c_, ref, d)
+                            if hard:
+                                m.Add(ps <= pr).OnlyEnforceIf(lit)
+                            else:
+                                ex = m.NewBoolVar(f'ssd_{cid}_{c_}_{s}_{d}')
+                                m.Add(ex >= ps - pr)
+                                b.violations[cid].append(ex)
+                                b.terms['soft_constraints'].append((w, ex))
+
+        elif ctype == 'subject_no_lunch_split':
+            sids = set(p.get('subject_ids') or [])
+            cls = p.get('classroom_id')
+            vars_ = [v for (c_, s_), cset in cs_canon.items() if s_ in sids and (not cls or c_ == cls)
+                     for cn in cset for v in crossing.get(cn, [])]
+            if vars_:
+                zero(sum(vars_))
+
     # --- Esnek genel kurallar ---
     def prefix_or(seq, name):
         """seq[i] için: önceki elemanlardan herhangi biri 1 mi."""
@@ -587,6 +901,7 @@ def build(ctx, with_assumptions=False):
         m.Minimize(sum(obj))
 
     b.x = x
+    b.block_starts = block_starts
     b.blocks = blocks
     if with_assumptions:
         m.AddAssumptions([lit for lit, _, _ in b.lits])
@@ -679,12 +994,11 @@ def solve(data, on_progress=None, should_stop=None):
     for a in ctx.assignments:
         cn = ctx.canon[a['id']]
         for key, length in b.blocks[cn]:
-            for d in ctx.days:
-                for p in ctx.valid_starts(length):
-                    if solver.Value(b.x[(key, d, p)]):
-                        for k in range(length):
-                            lessons.append({'assignment_id': a['id'], 'day': d, 'period': p + k,
-                                            'room_id': a.get('room_id')})
+            for d, p, v in b.block_starts[key]:
+                if solver.Value(v):
+                    for k in range(length):
+                        lessons.append({'assignment_id': a['id'], 'day': d, 'period': p + k,
+                                        'room_id': a.get('room_id')})
 
     def val(e):
         return int(solver.Value(e)) if not isinstance(e, int) else e

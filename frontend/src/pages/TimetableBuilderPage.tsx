@@ -26,6 +26,10 @@ import { ProjectSettingsTab } from '../components/timetable/ProjectSettingsTab'
 import { LessonPoolTab } from '../components/timetable/LessonPoolTab'
 import { RoomsTab } from '../components/timetable/RoomsTab'
 import { AssignmentsTab } from '../components/timetable/AssignmentsTab'
+import { ClassLessonsTab } from '../components/timetable/ClassLessonsTab'
+import { TeacherAssignTab } from '../components/timetable/TeacherAssignTab'
+import { AvailabilityTab } from '../components/timetable/AvailabilityTab'
+import { ElectivesTab } from '../components/timetable/ElectivesTab'
 import { ConstraintsTab } from '../components/timetable/ConstraintsTab'
 import { SolveTab } from '../components/timetable/SolveTab'
 import { TimetableGridTab } from '../components/timetable/TimetableGridTab'
@@ -36,6 +40,19 @@ const STATUS_TAG: Record<TimetableProject['status'], { label: string; color: str
   yayinda: { label: 'Yayında', color: 'green' },
   arsiv: { label: 'Arşiv', color: 'default' },
 }
+
+type CopyPart = 'assignments' | 'availability' | 'constraints'
+
+interface CreateValues extends TimetableProjectPayload {
+  copy_project_id?: number | null
+  copy_parts?: CopyPart[]
+}
+
+const COPY_PART_OPTIONS: Array<{ value: CopyPart; label: string }> = [
+  { value: 'assignments', label: 'Sınıf dersleri ve öğretmen atamaları' },
+  { value: 'availability', label: 'Zaman tablosu' },
+  { value: 'constraints', label: 'İstekler (kısıtlar)' },
+]
 
 function storageKey(schoolId: number) {
   return `timetable.project.${schoolId}`
@@ -56,7 +73,8 @@ export function TimetableBuilderPage() {
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState('settings')
   const [createOpen, setCreateOpen] = useState(false)
-  const [createForm] = Form.useForm<TimetableProjectPayload>()
+  const [createForm] = Form.useForm<CreateValues>()
+  const copySource = Form.useWatch('copy_project_id', createForm)
 
   const canCreate = hasPermission('schedule.create')
   const canUpdate = hasPermission('schedule.update')
@@ -152,15 +170,21 @@ export function TimetableBuilderPage() {
       days: [1, 2, 3, 4, 5],
       periods_per_day: 8,
       lunch_after: null,
+      copy_project_id: projects[0]?.id ?? null,
+      copy_parts: ['assignments', 'availability', 'constraints'],
     })
     setCreateOpen(true)
   }
 
   const onCreate = async () => {
     if (!activeSchoolId) return
-    const values = await createForm.validateFields()
+    const { copy_project_id: copyId, copy_parts: copyParts, ...values } = await createForm.validateFields()
     try {
-      const created = await createTimetableProject({ ...values, school_id: activeSchoolId })
+      const created = await createTimetableProject({
+        ...values,
+        school_id: activeSchoolId,
+        ...(copyId && copyParts?.length ? { copy_from: { project_id: copyId, parts: copyParts } } : {}),
+      })
       setCreateOpen(false)
       await loadProjects()
       setProjectId(created.id)
@@ -197,7 +221,8 @@ export function TimetableBuilderPage() {
             Otomatik Ders Programı
           </Typography.Title>
           <Typography.Text type="secondary">
-            Sırayla ilerleyin: okul saatleri, ders havuzu, hangi derse kim girecek, istekler, sonra programı oluşturun.
+            Sırayla ilerleyin: okul saatleri, ders havuzu, sınıfa ders verme, öğretmene atama, zaman tablosu, istekler,
+            sonra programı oluşturun.
           </Typography.Text>
         </div>
         <Space wrap>
@@ -265,22 +290,26 @@ export function TimetableBuilderPage() {
             destroyOnHidden
             items={[
               { key: 'settings', label: '1. Okul saatleri', children: <ProjectSettingsTab ctx={ctx} /> },
+              { key: 'rooms', label: `Özel derslik (${rooms.length})`, children: <RoomsTab ctx={ctx} /> },
               { key: 'pool', label: '2. Ders havuzu', children: <LessonPoolTab ctx={ctx} /> },
               {
-                key: 'assignments',
-                label: `3. Ders ve öğretmen (${project?.counts?.assignments ?? 0})`,
-                children: <AssignmentsTab ctx={ctx} />,
+                key: 'class-lessons',
+                label: `3. Sınıfa ders verme (${project?.counts?.assignments ?? 0})`,
+                children: <ClassLessonsTab ctx={ctx} />,
               },
-              { key: 'rooms', label: `Özel derslik (${rooms.length})`, children: <RoomsTab ctx={ctx} /> },
+              { key: 'teacher-assign', label: '4. Öğretmene ders atama', children: <TeacherAssignTab ctx={ctx} /> },
+              { key: 'assignments', label: 'Atama listesi', children: <AssignmentsTab ctx={ctx} /> },
+              { key: 'electives', label: 'Seçmeli öğrenciler', children: <ElectivesTab ctx={ctx} /> },
+              { key: 'availability', label: '5. Zaman tablosu', children: <AvailabilityTab ctx={ctx} /> },
               {
                 key: 'constraints',
-                label: `4. İstekler (${project?.counts?.constraints ?? 0})`,
+                label: `6. İstekler (${project?.counts?.constraints ?? 0})`,
                 children: <ConstraintsTab ctx={ctx} />,
               },
-              { key: 'solve', label: '5. Programı oluştur', children: <SolveTab ctx={ctx} onShowGrid={() => setTab('grid')} /> },
+              { key: 'solve', label: '7. Programı oluştur', children: <SolveTab ctx={ctx} onShowGrid={() => setTab('grid')} /> },
               {
                 key: 'grid',
-                label: `6. Ders programı${project?.counts?.lessons ? ` (${project.counts.lessons})` : ''}`,
+                label: `8. Ders programı${project?.counts?.lessons ? ` (${project.counts.lessons})` : ''}`,
                 children: <TimetableGridTab ctx={ctx} />,
               },
             ]}
@@ -315,6 +344,26 @@ export function TimetableBuilderPage() {
               <InputNumber min={1} max={11} />
             </Form.Item>
           </Space>
+          {projects.length > 0 && (
+            <>
+              <Form.Item
+                name="copy_project_id"
+                label="Başka çalışmadan kopyala"
+                extra="Geçen yılın ya da bir önceki taslağın verileri yeni çalışmaya aktarılır."
+              >
+                <Select
+                  allowClear
+                  placeholder="Kopyalama"
+                  options={projects.map((p) => ({ value: p.id, label: p.name }))}
+                />
+              </Form.Item>
+              {copySource && (
+                <Form.Item name="copy_parts" label="Kopyalanacaklar">
+                  <Checkbox.Group options={COPY_PART_OPTIONS} style={{ display: 'flex', flexDirection: 'column' }} />
+                </Form.Item>
+              )}
+            </>
+          )}
         </Form>
       </Modal>
     </AppLayout>

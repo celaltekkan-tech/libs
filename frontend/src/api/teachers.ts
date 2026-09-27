@@ -56,6 +56,7 @@ export async function exportTeachers(payload: {
   format: ExportFormat
   columns?: string[]
   filters?: TeacherFilters
+  ids?: number[]
 }): Promise<Blob> {
   const { data } = await client.post('/api/teachers/export', payload, {
     responseType: 'blob',

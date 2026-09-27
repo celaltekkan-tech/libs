@@ -40,6 +40,7 @@ const createTeacherSchema = Joi.object({
 const exportTeacherSchema = Joi.object({
   format: Joi.string().valid('xlsx', 'csv', 'pdf').required(),
   columns: Joi.array().items(Joi.string()).min(1).optional(),
+  ids: Joi.array().items(Joi.number().integer()).max(5000).optional(),
   filters: Joi.object({
     q: Joi.string().allow('').optional(),
     school_id: Joi.number().integer().optional(),

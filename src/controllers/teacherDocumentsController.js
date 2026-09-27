@@ -3,6 +3,14 @@
 const { TeacherDocument, Teacher } = require('../models');
 const audit = require('../services/auditService');
 
+const CATEGORY_DOC_TYPE = {
+  mevzuat: 'diger',
+  yillik_evrak: 'yillik_plan',
+  dilekce: 'diger',
+  sinif_rehberlik: 'sinif_rehberlik_plani',
+  maarif: 'maarif_modeli_raporu',
+};
+
 const DOC_TYPE_LABELS = {
   yillik_plan: 'Yıllık Plan',
   zumre_tutanagi: 'Zümre Tutanağı',
@@ -41,6 +49,7 @@ module.exports = {
       const where = {};
       if (tenantId) where.tenant_id = tenantId;
       if (req.query.teacher_id) where.teacher_id = Number(req.query.teacher_id);
+      if (req.query.category) where.category = req.query.category;
       if (req.query.doc_type) where.doc_type = req.query.doc_type;
       if (req.query.status) where.status = req.query.status;
 
@@ -62,9 +71,15 @@ module.exports = {
       const tenantId = req.user && req.user.tenant_id;
       if (tenantId) payload.tenant_id = tenantId;
 
-      const teacher = await Teacher.findByPk(payload.teacher_id);
-      if (!teacher || (tenantId && teacher.tenant_id !== tenantId)) {
-        return res.status(400).json({ success: false, message: 'Seçilen öğretmen bulunamadı' });
+      if (!payload.doc_type) payload.doc_type = CATEGORY_DOC_TYPE[payload.category] || 'diger';
+      let teacher = null;
+      if (payload.teacher_id) {
+        teacher = await Teacher.findByPk(payload.teacher_id);
+        if (!teacher || (tenantId && teacher.tenant_id !== tenantId)) {
+          return res.status(400).json({ success: false, message: 'Seçilen öğretmen bulunamadı' });
+        }
+      } else {
+        payload.teacher_id = null;
       }
 
       const row = await TeacherDocument.create(payload);
@@ -73,7 +88,7 @@ module.exports = {
         action: 'create',
         entityType: 'teacher_document',
         entityId: row.id,
-        summary: `Evrak oluşturuldu: ${teacher.first_name} ${teacher.last_name} - ${DOC_TYPE_LABELS[payload.doc_type]}`,
+        summary: `Evrak oluşturuldu: ${payload.title}`,
       });
       res.status(201).json({ success: true, data: full });
     } catch (err) {
@@ -143,6 +158,7 @@ module.exports = {
       const copy = await TeacherDocument.create({
         tenant_id: tenantId,
         teacher_id: source.teacher_id,
+        category: source.category || 'yillik_evrak',
         doc_type: source.doc_type,
         title: source.title,
         academic_year,

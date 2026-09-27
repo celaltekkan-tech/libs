@@ -182,6 +182,8 @@ module.exports = {
         typ_start_date,
         typ_end_date,
         school_id,
+        teacher_ids,
+        per_sheet,
       } = body;
 
       const y = Number(year);
@@ -207,9 +209,14 @@ module.exports = {
         ],
       });
 
-      // TYP personeli varsa yalnızca onları çizelgeye al; yoksa işçi+TYP
+      // Seçim yoksa TYP personeli varsa yalnızca onlar; seçim varsa işaretlenen işçi/TYP.
       const typOnly = teachers.filter((t) => t.personnel_type === 'typ');
-      const exportTeachers = typOnly.length > 0 ? typOnly : teachers;
+      const wantedIds = Array.isArray(teacher_ids) ? new Set(teacher_ids.map(Number)) : null;
+      const exportTeachers = wantedIds
+        ? teachers.filter((t) => wantedIds.has(t.id))
+        : typOnly.length > 0
+          ? typOnly
+          : teachers;
 
       const rows = await AttendanceRecord.findAll({
         where: {
@@ -262,6 +269,8 @@ module.exports = {
           typSubject: typ_subject || '',
           typStartDate: typ_start_date || '',
           typEndDate: typ_end_date || '',
+          teacherIds: teacher_ids,
+          perSheet: per_sheet,
           filename: `typ-gunluk-puantaj-${y}-${m}`,
         });
         return;

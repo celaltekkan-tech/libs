@@ -87,6 +87,8 @@ export function AttendancePage() {
   const [exportOpen, setExportOpen] = useState(false)
   const [holidays, setHolidays] = useState<Holiday[]>([])
   const [closedDays, setClosedDays] = useState<number[]>([])
+  const [exportTeacherIds, setExportTeacherIds] = useState<number[]>([])
+  const [perSheet, setPerSheet] = useState<3 | 4>(4)
   const [exportForm] = Form.useForm()
 
   const canCreate = hasPermission('payroll.create')
@@ -108,17 +110,15 @@ export function AttendancePage() {
   const daysInSelectedMonth = useMemo(() => new Date(year, month, 0).getDate(), [year, month])
 
   const openExportModal = () => {
-    const typTeacher = workerTeachers.find((t) => t.personnel_type === 'typ') || workerTeachers[0]
+    const typPeople = workerTeachers.filter((t) => t.personnel_type === 'typ')
+    const pool = typPeople.length > 0 ? typPeople : workerTeachers
     exportForm.setFieldsValue({
       typ_no: '',
-      typ_subject: typTeacher?.title_branch || '',
-      typ_start_date: typTeacher?.contract_start_date
-        ? dayjs(typTeacher.contract_start_date).format('DD/MM/YYYY')
-        : '',
-      typ_end_date: typTeacher?.contract_end_date
-        ? dayjs(typTeacher.contract_end_date).format('DD/MM/YYYY')
-        : '',
+      typ_subject: '',
+      typ_start_date: '',
+      typ_end_date: '',
     })
+    setExportTeacherIds(pool.map((t) => t.id))
     setClosedDays(autoClosedDays)
     setExportOpen(true)
   }
@@ -253,6 +253,10 @@ export function AttendancePage() {
     setSubmitting(true)
     try {
       const values = await exportForm.validateFields()
+      if (exportFormat === 'xlsx' && exportTeacherIds.length === 0) {
+        message.warning('Forma yazılacak en az bir personel seçin')
+        return
+      }
       const blob = await exportAttendance({
         format: exportFormat,
         year,
@@ -262,6 +266,8 @@ export function AttendancePage() {
         typ_subject: values.typ_subject || undefined,
         typ_start_date: values.typ_start_date || undefined,
         typ_end_date: values.typ_end_date || undefined,
+        teacher_ids: exportFormat === 'xlsx' ? exportTeacherIds : undefined,
+        per_sheet: exportFormat === 'xlsx' ? perSheet : undefined,
       })
       const base = exportFormat === 'xlsx' ? 'typ-gunluk-puantaj' : 'puantaj-cizelgesi'
       downloadBlob(blob, exportFilename(`${base}-${year}-${String(month).padStart(2, '0')}`, exportFormat))
@@ -608,7 +614,7 @@ export function AttendancePage() {
                 <Form.Item name="typ_no" label="TYP No" style={{ minWidth: 140 }}>
                   <Input placeholder="Opsiyonel" />
                 </Form.Item>
-                <Form.Item name="typ_subject" label="TYP Konusu" style={{ minWidth: 180 }}>
+                <Form.Item name="typ_subject" label="TYP Konusu" style={{ minWidth: 180 }} extra="Boşsa her grubun kendi konusu yazılır.">
                   <Input placeholder="Örn. GÜVENLİK" />
                 </Form.Item>
                 <Form.Item name="typ_start_date" label="Başlama Tarihi" style={{ minWidth: 140 }}>
@@ -654,6 +660,38 @@ export function AttendancePage() {
                 Tümünü kapat
               </Button>
             </Space>
+            <Typography.Text strong style={{ display: 'block', marginTop: 16 }}>
+              Forma yazılacak personel
+            </Typography.Text>
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
+              İşaretlenen kişiler indirilir. Form başına 3 veya 4 kişi seçebilirsiniz; fazlası sonraki sayfaya geçer.
+            </Typography.Paragraph>
+            <Space wrap style={{ marginBottom: 8 }}>
+              <Select
+                value={perSheet}
+                onChange={(value) => setPerSheet(value)}
+                options={[
+                  { value: 3, label: 'Form başına 3 kişi' },
+                  { value: 4, label: 'Form başına 4 kişi' },
+                ]}
+                style={{ width: 200 }}
+              />
+              <Button size="small" onClick={() => setExportTeacherIds(workerTeachers.map((t) => t.id))}>
+                Tümünü seç
+              </Button>
+              <Button size="small" onClick={() => setExportTeacherIds([])}>
+                Seçimi temizle
+              </Button>
+            </Space>
+            <Checkbox.Group
+              value={exportTeacherIds}
+              onChange={(vals) => setExportTeacherIds(vals as number[])}
+              style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 220, overflow: 'auto' }}
+              options={workerTeachers.map((t) => ({
+                value: t.id,
+                label: `${t.first_name} ${t.last_name}${t.typ_subject || t.title_branch ? ` — ${t.typ_subject || t.title_branch}` : ''}`,
+              }))}
+            />
           </>
         )}
       </Modal>

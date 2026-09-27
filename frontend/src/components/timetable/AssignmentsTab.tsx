@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   App,
@@ -28,7 +28,8 @@ import {
 } from '../../api/timetable'
 import { getErrorMessage } from '../../api/client'
 import type { TimetableAssignment, TimetableAssignmentPayload } from '../../types/timetable'
-import { shortClassroom, teacherFullName, type TimetableCtx } from './shared'
+import { useActiveSchool } from '../../auth/ActiveSchoolContext'
+import { assignmentTeacherIds, computeLoads, lessonTeacherOptions, shortClassroom, teacherFullName, teacherMatchesLesson, type TimetableCtx } from './shared'
 
 export function AssignmentsTab({ ctx }: { ctx: TimetableCtx }) {
   const { message } = App.useApp()
@@ -43,6 +44,15 @@ export function AssignmentsTab({ ctx }: { ctx: TimetableCtx }) {
   const [genOpen, setGenOpen] = useState(false)
   const [addForm] = Form.useForm<TimetableAssignmentPayload>()
   const { project } = ctx
+  const { activeSchool } = useActiveSchool()
+  const languages = useMemo(
+    () => ({
+      first: activeSchool?.meta?.first_foreign_language || null,
+      second: activeSchool?.meta?.second_foreign_language || null,
+    }),
+    [activeSchool],
+  )
+  const autoFilled = useRef(new Set<number>())
   const slotsPerWeek = project.days.length * project.periods_per_day
 
   const load = useCallback(async () => {
@@ -70,28 +80,11 @@ export function AssignmentsTab({ ctx }: { ctx: TimetableCtx }) {
   )
   const roomOptions = useMemo(() => ctx.rooms.map((r) => ({ value: r.id, label: r.name })), [ctx.rooms])
 
-  // Senkron gruplar bir öğretmen/şube için tek sayılır.
+  // Senkron gruplar bir öğretmen/şube için tek sayılır; ortak öğretmenler de yük alır.
   const { teacherLoad, classLoad } = useMemo(() => {
-    const t = new Map<number, { hours: number; seen: Set<string> }>()
-    const c = new Map<number, { hours: number; seen: Set<string> }>()
-    for (const a of rows) {
-      const key = a.sync_group ? `g:${a.sync_group}` : `a:${a.id}`
-      if (a.teacher_id) {
-        const cur = t.get(a.teacher_id) || { hours: 0, seen: new Set() }
-        if (!cur.seen.has(key)) {
-          cur.seen.add(key)
-          cur.hours += a.weekly_hours
-        }
-        t.set(a.teacher_id, cur)
-      }
-      const cc = c.get(a.classroom_id) || { hours: 0, seen: new Set() }
-      if (!cc.seen.has(key)) {
-        cc.seen.add(key)
-        cc.hours += a.weekly_hours
-      }
-      c.set(a.classroom_id, cc)
-    }
-    return { teacherLoad: t, classLoad: c }
+    const loads = computeLoads(rows)
+    const wrap = (m: Map<number, number>) => new Map([...m.entries()].map(([k, hours]) => [k, { hours }]))
+    return { teacherLoad: wrap(loads.teacher), classLoad: wrap(loads.classroom) }
   }, [rows])
 
   const filtered = useMemo(
@@ -99,7 +92,7 @@ export function AssignmentsTab({ ctx }: { ctx: TimetableCtx }) {
       rows.filter(
         (a) =>
           (!classroomFilter || a.classroom_id === classroomFilter) &&
-          (!teacherFilter || a.teacher_id === teacherFilter) &&
+          (!teacherFilter || assignmentTeacherIds(a).includes(teacherFilter)) &&
           (!onlyMissing || !a.teacher_id),
       ),
     [rows, classroomFilter, teacherFilter, onlyMissing],
@@ -113,6 +106,19 @@ export function AssignmentsTab({ ctx }: { ctx: TimetableCtx }) {
       message.error(getErrorMessage(err))
     }
   }
+
+  useEffect(() => {
+    if (!ctx.canUpdate || loading || ctx.teachers.length === 0) return
+    for (const row of rows) {
+      if (autoFilled.current.has(row.id)) continue
+      autoFilled.current.add(row.id)
+      if (row.teacher_id) continue
+      const matches = ctx.teachers.filter((teacher) =>
+        teacherMatchesLesson(teacher, row.Subject?.name || '', languages),
+      )
+      if (matches.length === 1) void patch(row, { teacher_id: matches[0].id })
+    }
+  }, [rows, loading, languages, ctx.teachers, ctx.canUpdate])
 
   const runGenerate = async (overwrite: boolean) => {
     setGenOpen(false)
@@ -258,7 +264,7 @@ export function AssignmentsTab({ ctx }: { ctx: TimetableCtx }) {
             dataSource={filtered}
             pagination={{ pageSize: 50, showSizeChanger: true, pageSizeOptions: [50, 100, 200] }}
             rowSelection={editable ? { selectedRowKeys: selected, onChange: (keys) => setSelected(keys as number[]) } : undefined}
-            scroll={{ x: 900 }}
+            scroll={{ x: 1120 }}
             columns={[
               {
                 title: 'Şube',
@@ -293,8 +299,32 @@ export function AssignmentsTab({ ctx }: { ctx: TimetableCtx }) {
                     disabled={!editable}
                     value={r.teacher_id ?? undefined}
                     onChange={(v) => patch(r, { teacher_id: v ?? null })}
-                    options={teacherOptions}
+                    options={lessonTeacherOptions(ctx.teachers, r.Subject?.name || '', languages)}
                     placeholder="Seçin"
+                  />
+                ),
+              },
+              {
+                title: 'Ortak öğretmen',
+                key: 'co',
+                width: 220,
+                render: (_, r) => (
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    size="small"
+                    style={{ width: '100%' }}
+                    maxCount={4}
+                    maxTagCount="responsive"
+                    disabled={!editable || !r.teacher_id}
+                    value={r.co_teacher_ids || []}
+                    onChange={(v: number[]) => patch(r, { co_teacher_ids: v })}
+                    options={lessonTeacherOptions(ctx.teachers, r.Subject?.name || '', languages).filter(
+                      (option) => option.value !== r.teacher_id,
+                    )}
+                    placeholder="—"
                   />
                 ),
               },

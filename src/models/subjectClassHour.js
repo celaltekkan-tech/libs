@@ -6,6 +6,7 @@ module.exports = (sequelize, DataTypes) => {
       subject_id: DataTypes.INTEGER,
       class_level: DataTypes.STRING,
       weekly_hours: DataTypes.INTEGER,
+      block_pattern: DataTypes.STRING,
     },
     {
       tableName: 'SubjectClassHours',

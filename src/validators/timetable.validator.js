@@ -8,6 +8,8 @@ const weights = Joi.object({
   teacher_single_hour_day: Joi.number().integer().min(0).max(1000),
   hard_subject_late: Joi.number().integer().min(0).max(1000),
   soft_constraint: Joi.number().integer().min(0).max(1000),
+  availability_avoid: Joi.number().integer().min(0).max(1000),
+  block_flex: Joi.number().integer().min(0).max(1000),
 });
 const dayBreak = Joi.object({
   day: Joi.number().integer().min(1).max(7).required(),
@@ -25,6 +27,8 @@ const settings = Joi.object({
   max_subject_daily: Joi.number().integer().min(1).max(8),
   weights,
   bell,
+  block_across_lunch: Joi.boolean(),
+  class_lunch: Joi.object().pattern(/^\d+$/, Joi.number().integer().min(1).max(11)),
 });
 
 const projectBase = {
@@ -40,6 +44,11 @@ const createProjectSchema = Joi.object({
   ...projectBase,
   school_id: id.required(),
   name: projectBase.name.required(),
+  // Başka bir çalışmadan kopyalanacak veriler
+  copy_from: Joi.object({
+    project_id: id.required(),
+    parts: Joi.array().items(Joi.string().valid('assignments', 'availability', 'constraints')).min(1).unique().required(),
+  }),
 });
 const updateProjectSchema = Joi.object(projectBase).min(1);
 
@@ -60,12 +69,25 @@ const assignmentBase = {
   block_pattern: Joi.string().allow('', null).max(40),
   room_id: id.allow(null),
   sync_group: Joi.string().allow('', null).max(50),
+  // Aynı gruptaki seçmeliler alternatif; boş = tüm şube girer
+  elective_group: Joi.string().trim().allow('', null).max(30),
+  // 2.-5. öğretmen
+  co_teacher_ids: Joi.array().items(id).max(4).unique(),
+  allow_split: Joi.boolean().allow(null),
+  allow_merge: Joi.boolean().allow(null),
 };
+// Saat verilmezse ders havuzundaki seviye saati kullanılır.
 const createAssignmentSchema = Joi.object({
   ...assignmentBase,
   classroom_id: id.required(),
   subject_id: id.required(),
-  weekly_hours: assignmentBase.weekly_hours.required(),
+});
+const copyAssignmentsSchema = Joi.object({
+  source_classroom_id: id.required(),
+  target_classroom_ids: Joi.array().items(id).min(1).max(200).unique().required(),
+  // replace: hedef şubenin mevcut dersleri silinir; aksi hâlde yalnız eksikler eklenir
+  replace: Joi.boolean().default(false),
+  with_teachers: Joi.boolean().default(false),
 });
 const updateAssignmentSchema = Joi.object(assignmentBase).min(1);
 const bulkAssignmentSchema = Joi.object({
@@ -75,6 +97,49 @@ const bulkAssignmentSchema = Joi.object({
   sync_group: Joi.string().allow('', null).max(50),
 }).or('teacher_id', 'room_id', 'sync_group');
 const generateAssignmentsSchema = Joi.object({ overwrite: Joi.boolean().default(false) });
+
+const cellsSchema = Joi.object().pattern(/^[1-7]-(?:[1-9]|1[0-2])$/, Joi.string().valid('closed', 'avoid', 'open'));
+const availabilitySchema = Joi.object({
+  entity_type: Joi.string().valid('school', 'teacher', 'classroom', 'room', 'subject').required(),
+  entity_ids: Joi.array().items(Joi.number().integer().min(0)).min(1).max(500).unique().required(),
+  // replace: hücreler baştan yazılır; patch: yalnız verilen hücreler değişir ("open" hücreyi açar)
+  mode: Joi.string().valid('replace', 'patch').default('patch'),
+  cells: cellsSchema.required(),
+});
+
+const electiveChoicesSchema = Joi.object({
+  classroom_id: id.required(),
+  // Şubenin tüm seçimleri baştan yazılır.
+  choices: Joi.array()
+    .items(Joi.object({ student_id: id.required(), assignment_ids: Joi.array().items(id).max(20).unique().required() }))
+    .max(200)
+    .required(),
+});
+
+const branchSchema = Joi.object({
+  code: Joi.string().trim().allow('', null).max(20),
+  name: Joi.string().trim().max(100),
+});
+const createBranchSchema = branchSchema.keys({ name: Joi.string().trim().max(100).required() });
+
+const poolSubjectSchema = Joi.object({
+  code: Joi.string().trim().allow('', null).max(20),
+  branch_id: id.allow(null),
+  difficulty_level: Joi.string().valid('kolay', 'orta', 'zor').allow(null),
+  allow_split: Joi.boolean(),
+  allow_merge: Joi.boolean(),
+  is_elective: Joi.boolean(),
+  elective_group: Joi.string().trim().allow('', null).max(30),
+  is_guidance: Joi.boolean(),
+  is_activity: Joi.boolean(),
+}).min(1);
+const poolHourSchema = Joi.object({
+  subject_id: id.required(),
+  class_level: Joi.string().trim().max(20).required(),
+  // 0: bu seviyeden kaldır
+  weekly_hours: Joi.number().integer().min(0).max(40).required(),
+  block_pattern: Joi.string().allow('', null).max(40),
+});
 
 const constraintItem = Joi.object({
   type: Joi.string().valid(...Object.keys(TYPES)).required(),
@@ -111,6 +176,13 @@ module.exports = {
   updateAssignmentSchema,
   bulkAssignmentSchema,
   generateAssignmentsSchema,
+  copyAssignmentsSchema,
+  availabilitySchema,
+  electiveChoicesSchema,
+  createBranchSchema,
+  updateBranchSchema: branchSchema.min(1),
+  poolSubjectSchema,
+  poolHourSchema,
   createConstraintsSchema,
   updateConstraintSchema,
   aiParseSchema,

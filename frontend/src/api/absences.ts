@@ -83,6 +83,7 @@ export async function exportAbsences(payload: {
   format: ExportFormat
   start_date?: string
   end_date?: string
+  student_ids?: number[]
 }): Promise<Blob> {
   const { data } = await client.post('/api/absences/export', payload, { responseType: 'blob', timeout: 60000 })
   return data as Blob

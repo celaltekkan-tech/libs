@@ -146,9 +146,13 @@ export function SchedulePage() {
     void loadHoursCheck()
   }, [loadHoursCheck])
 
+  // Paralel seçmelilerde aynı şube-saatte birden çok ders olabilir.
   const grid = useMemo(() => {
-    const map = new Map<string, ScheduleEntry>()
-    entries.forEach((entry) => map.set(`${entry.day_of_week}-${entry.period_no}`, entry))
+    const map = new Map<string, ScheduleEntry[]>()
+    entries.forEach((entry) => {
+      const key = `${entry.day_of_week}-${entry.period_no}`
+      map.set(key, [...(map.get(key) || []), entry])
+    })
     return map
   }, [entries])
 
@@ -327,8 +331,8 @@ export function SchedulePage() {
   }
 
   const renderCell = (day: number, period: number) => {
-    const entry = grid.get(`${day}-${period}`)
-    if (!entry) {
+    const list = grid.get(`${day}-${period}`) || []
+    if (!list.length) {
       return viewMode === 'classroom' && canCreate ? (
         <button className="schedule-cell schedule-cell-empty" onClick={() => openCreate(day, period)} type="button">
           +
@@ -338,28 +342,32 @@ export function SchedulePage() {
       )
     }
     return (
-      <div className="schedule-cell schedule-cell-filled">
-        <div className="schedule-cell-subject">{entry.Subject?.name || '—'}</div>
-        <div className="schedule-cell-detail">
-          {viewMode === 'classroom'
-            ? entry.Teacher
-              ? `${entry.Teacher.first_name} ${entry.Teacher.last_name}`
-              : ''
-            : entry.Classroom
-              ? classroomLabel(entry.Classroom)
-              : ''}
-        </div>
-        {canDelete && (
-          <Button
-            size="small"
-            type="text"
-            danger
-            icon={<DeleteOutlined />}
-            onClick={() => onDelete(entry)}
-            style={{ position: 'absolute', top: 0, right: 0 }}
-          />
-        )}
-      </div>
+      <>
+        {list.map((entry) => (
+          <div className="schedule-cell schedule-cell-filled" key={entry.id}>
+            <div className="schedule-cell-subject">{entry.Subject?.name || '—'}</div>
+            <div className="schedule-cell-detail">
+              {viewMode === 'classroom'
+                ? entry.Teacher
+                  ? `${entry.Teacher.first_name} ${entry.Teacher.last_name}`
+                  : ''
+                : entry.Classroom
+                  ? classroomLabel(entry.Classroom)
+                  : ''}
+            </div>
+            {canDelete && (
+              <Button
+                size="small"
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                onClick={() => onDelete(entry)}
+                style={{ position: 'absolute', top: 0, right: 0 }}
+              />
+            )}
+          </div>
+        ))}
+      </>
     )
   }
 

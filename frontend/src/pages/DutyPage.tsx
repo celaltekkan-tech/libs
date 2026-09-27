@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   App,
   Button,
+  Checkbox,
   DatePicker,
   Form,
   Input,
@@ -25,6 +26,7 @@ import isoWeek from 'dayjs/plugin/isoWeek'
 import { AppLayout } from '../components/AppLayout'
 import { useAuth } from '../auth/AuthContext'
 import {
+  copyDutyWeek,
   createDutyAssignment,
   createDutyLocation,
   deleteDutyAssignment,
@@ -32,9 +34,10 @@ import {
   exportDuty,
   listDutyAssignments,
   listDutyLocations,
+  updateDutyLocation,
 } from '../api/duty'
 import { listTeachers } from '../api/teachers'
-import { getErrorMessage } from '../api/client'
+import { ApiError, getErrorMessage } from '../api/client'
 import type { DutyAssignment, DutyLocation } from '../types/duty'
 import type { Teacher } from '../types/teacher'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
@@ -138,6 +141,10 @@ export function DutyPage() {
   const [setupOpen, setSetupOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx')
+  const [teacherQuery, setTeacherQuery] = useState('')
+  const [copyOpen, setCopyOpen] = useState(false)
+  const [shiftLocations, setShiftLocations] = useState(false)
+  const teacherListRef = useRef<HTMLDivElement>(null)
   const [submitting, setSubmitting] = useState(false)
   const [activeCell, setActiveCell] = useState<CellTarget | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -168,7 +175,12 @@ export function DutyPage() {
         listDutyAssignments({ start_date: startDate, end_date: endDate }),
       ])
       setLocations(
-        locationData.filter((l) => l.is_active).sort((a, b) => a.name.localeCompare(b.name, 'tr')),
+        locationData
+          .filter((l) => l.is_active)
+          .sort(
+            (a, b) =>
+              (a.sort_order || 0) - (b.sort_order || 0) || a.name.localeCompare(b.name, 'tr'),
+          ),
       )
       setTeachers([...teacherData].sort(compareTeachersTr))
       setAssignments(assignmentData)
@@ -255,10 +267,14 @@ export function DutyPage() {
 
         const existingByName = new Map(locations.map((l) => [l.name.toLocaleLowerCase('tr-TR'), l]))
 
-        for (const name of names) {
+        for (let index = 0; index < names.length; index += 1) {
+          const name = names[index]
           const key = name.toLocaleLowerCase('tr-TR')
-          if (!existingByName.has(key)) {
-            await createDutyLocation(tenantId, { name })
+          const existing = existingByName.get(key)
+          if (!existing) {
+            await createDutyLocation(tenantId, { name, sort_order: index })
+          } else if ((existing.sort_order || 0) !== index) {
+            await updateDutyLocation(existing.id, { sort_order: index })
           }
         }
 
@@ -293,6 +309,7 @@ export function DutyPage() {
 
   const openPicker = (locationId: number, date: dayjs.Dayjs, slot: number) => {
     if (!canCreate && !canDelete) return
+    setTeacherQuery('')
     setActiveCell({
       locationId,
       date: date.format('YYYY-MM-DD'),
@@ -387,6 +404,39 @@ export function DutyPage() {
     })
   }
 
+  const onCopyWeek = async (replace = false) => {
+    setSubmitting(true)
+    try {
+      const result = await copyDutyWeek({
+        start_date: startDate,
+        shift_locations: shiftLocations,
+        replace,
+      })
+      message.success(
+        shiftLocations
+          ? `Sonraki haftaya aktarıldı; nöbet yerleri bir sütun kaydı (${result.copied} atama)`
+          : `Sonraki haftaya aynı yerlerle aktarıldı (${result.copied} atama)`,
+      )
+      setCopyOpen(false)
+      setWeekStart((w) => w.add(1, 'week'))
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'TARGET_NONEMPTY' && !replace) {
+        modal.confirm({
+          title: 'Sonraki haftanın üzerine yaz',
+          content: 'Sonraki haftada nöbet var. Bu haftanın nöbeti onların yerine yazılsın mı?',
+          okText: 'Üzerine yaz',
+          okButtonProps: { danger: true },
+          cancelText: 'Vazgeç',
+          onOk: () => onCopyWeek(true),
+        })
+        return
+      }
+      message.error(getErrorMessage(err))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   const onExport = async () => {
     setSubmitting(true)
     try {
@@ -416,6 +466,28 @@ export function DutyPage() {
       ]
     : undefined
 
+  const visibleTeachers = useMemo(() => {
+    const q = teacherQuery.trim().toLocaleLowerCase('tr-TR')
+    if (!q) return teachers
+    return teachers.filter((t) => teacherLabel(t).toLocaleLowerCase('tr-TR').includes(q))
+  }, [teachers, teacherQuery])
+
+  useEffect(() => {
+    if (!pickerOpen) return
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return
+      if (event.key.length !== 1 || !/[a-zA-ZçğıöşüÇĞİÖŞÜ]/.test(event.key)) return
+      const key = event.key.toLocaleLowerCase('tr-TR')
+      const match = visibleTeachers.find((t) => t.first_name.toLocaleLowerCase('tr-TR').startsWith(key))
+      if (!match || !teacherListRef.current) return
+      const node = teacherListRef.current.querySelector(`[data-teacher-id="${match.id}"]`)
+      if (node instanceof HTMLElement) node.scrollIntoView({ block: 'nearest' })
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [pickerOpen, visibleTeachers])
+
   const pickerContent = (
     <div className="duty-teacher-picker">
       <div className="duty-teacher-picker-head">
@@ -426,8 +498,16 @@ export function DutyPage() {
           </Button>
         )}
       </div>
-      <div className="duty-teacher-picker-list">
-        {teachers.map((t) => {
+      <Input
+        allowClear
+        size="small"
+        placeholder="Öğretmen ara"
+        value={teacherQuery}
+        onChange={(event) => setTeacherQuery(event.target.value)}
+        style={{ marginBottom: 8 }}
+      />
+      <div className="duty-teacher-picker-list" ref={teacherListRef}>
+        {visibleTeachers.map((t) => {
           const days = teacherDayMap.get(t.id) || []
           const busyOther =
             teachersBusyOnActiveDay.has(t.id) && activeAssignment?.teacher_id !== t.id
@@ -436,6 +516,7 @@ export function DutyPage() {
             <button
               key={t.id}
               type="button"
+              data-teacher-id={t.id}
               className={`duty-teacher-picker-item${selected ? ' is-selected' : ''}${busyOther ? ' is-disabled' : ''}`}
               disabled={busyOther || submitting || !canCreate}
               onClick={() => void assignTeacher(t.id)}
@@ -495,6 +576,11 @@ export function DutyPage() {
         <Button type="link" onClick={() => setWeekStart(dayjs().startOf('isoWeek'))}>
           Bu hafta
         </Button>
+        {canCreate && (
+          <Button onClick={() => setCopyOpen(true)} disabled={assignments.length === 0}>
+            Sonraki haftaya aktar
+          </Button>
+        )}
       </Space>
 
       <Spin spinning={loading}>
@@ -641,6 +727,13 @@ export function DutyPage() {
         cancelText="Vazgeç"
         destroyOnHidden
         width={480}
+        afterOpenChange={(open) => {
+          if (!open) return
+          setupForm.setFieldsValue({
+            location_names: locations.map((l) => l.name).join('\n') || 'Nöbetçi İdareci',
+            capacity,
+          })
+        }}
       >
         <Typography.Paragraph type="secondary">
           Nöbet yeri isimlerini ve her gün kaç nöbetçi olabileceğini girin. Tablo boş hazırlanır; atamaları
@@ -650,7 +743,6 @@ export function DutyPage() {
           form={setupForm}
           layout="vertical"
           onFinish={onSetup}
-          initialValues={{ capacity, location_names: '' }}
         >
           <Form.Item
             name="location_names"
@@ -674,6 +766,27 @@ export function DutyPage() {
             Listeden çıkardığınız yerler silinir; o yerlere ait nöbet atamaları da kalkabilir.
           </Typography.Text>
         )}
+      </Modal>
+
+      <Modal
+        title="Sonraki haftaya aktar"
+        open={copyOpen}
+        onCancel={() => setCopyOpen(false)}
+        onOk={() => void onCopyWeek(false)}
+        confirmLoading={submitting}
+        okText="Aktar"
+        cancelText="Vazgeç"
+        destroyOnHidden
+      >
+        <Typography.Paragraph>
+          Bu haftanın nöbeti, aynı günlerde sonraki haftaya yazılır.
+        </Typography.Paragraph>
+        <Checkbox checked={shiftLocations} onChange={(event) => setShiftLocations(event.target.checked)}>
+          Nöbet yerlerini bir sütun kaydır
+        </Checkbox>
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 0, marginTop: 8 }}>
+          İşaretlenmezse kişiler aynı yerde kalır. İşaretlenirse günleri değişmez, tuttukları yer bir sonraki sütuna kayar.
+        </Typography.Paragraph>
       </Modal>
 
       <Modal

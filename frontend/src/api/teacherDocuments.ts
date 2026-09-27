@@ -6,7 +6,12 @@ interface Envelope<T> {
   data: T
 }
 
-export async function listTeacherDocuments(params?: { teacher_id?: number; doc_type?: string; status?: string }): Promise<TeacherDocument[]> {
+export async function listTeacherDocuments(params?: {
+  teacher_id?: number
+  category?: string
+  doc_type?: string
+  status?: string
+}): Promise<TeacherDocument[]> {
   const { data } = await client.get<Envelope<TeacherDocument[]>>('/api/teacher-documents', { params })
   return data.data
 }

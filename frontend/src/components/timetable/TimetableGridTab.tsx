@@ -9,6 +9,7 @@ import {
   UnlockOutlined,
 } from '@ant-design/icons'
 import {
+  listAvailability,
   listTimetableLessons,
   lockTimetableLessons,
   moveTimetableLesson,
@@ -18,8 +19,15 @@ import {
 import { getErrorMessage } from '../../api/client'
 import { DAY_LABELS } from '../../types/scheduleEntry'
 import { periodClock } from './bell'
-import type { TimetableLesson } from '../../types/timetable'
-import { shortClassroom, subjectBorder, subjectColor, teacherFullName, type TimetableCtx } from './shared'
+import type { TimetableAvailability, TimetableLesson } from '../../types/timetable'
+import {
+  assignmentTeacherIds,
+  shortClassroom,
+  subjectBorder,
+  subjectColor,
+  teacherFullName,
+  type TimetableCtx,
+} from './shared'
 
 type ViewMode = 'classroom' | 'teacher' | 'room'
 
@@ -33,11 +41,14 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
   const [dragId, setDragId] = useState<number | null>(null)
   const [dropKey, setDropKey] = useState<string | null>(null)
   const [publishing, setPublishing] = useState(false)
+  const [availability, setAvailability] = useState<TimetableAvailability[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      setLessons(await listTimetableLessons(project.id))
+      const [rows, avail] = await Promise.all([listTimetableLessons(project.id), listAvailability(project.id)])
+      setLessons(rows)
+      setAvailability(avail)
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
@@ -49,19 +60,33 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
     void load()
   }, [load])
 
+  const teacherById = useMemo(() => new Map(ctx.teachers.map((t) => [t.id, t])), [ctx.teachers])
+  const teacherNames = useCallback(
+    (a: TimetableLesson['Assignment']) =>
+      assignmentTeacherIds(a)
+        .map((id) => (id === a.teacher_id && a.Teacher ? teacherFullName(a.Teacher) : teacherFullName(teacherById.get(id))))
+        .join(', ') || '—',
+    [teacherById],
+  )
+
   // Görünüm seçenekleri: yalnızca taslakta geçen şube/öğretmen/mekanlar.
   const entities = useMemo(() => {
     const map = new Map<number, string>()
     for (const l of lessons) {
       const a = l.Assignment
       if (mode === 'classroom' && a.Classroom) map.set(a.classroom_id, shortClassroom(a.Classroom))
-      if (mode === 'teacher' && a.teacher_id && a.Teacher) map.set(a.teacher_id, teacherFullName(a.Teacher))
+      if (mode === 'teacher') {
+        for (const id of assignmentTeacherIds(a)) {
+          const name = id === a.teacher_id && a.Teacher ? teacherFullName(a.Teacher) : teacherFullName(teacherById.get(id))
+          map.set(id, name)
+        }
+      }
       if (mode === 'room' && l.room_id) map.set(l.room_id, ctx.rooms.find((r) => r.id === l.room_id)?.name || `#${l.room_id}`)
     }
     return [...map.entries()]
       .map(([value, label]) => ({ value, label }))
       .sort((a, b) => a.label.localeCompare(b.label, 'tr', { numeric: true }))
-  }, [lessons, mode, ctx.rooms])
+  }, [lessons, mode, ctx.rooms, teacherById])
 
   useEffect(() => {
     if (!entities.length) setEntityId(null)
@@ -73,7 +98,7 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
       lessons.filter((l) => {
         if (!entityId) return false
         if (mode === 'classroom') return l.Assignment.classroom_id === entityId
-        if (mode === 'teacher') return l.Assignment.teacher_id === entityId
+        if (mode === 'teacher') return assignmentTeacherIds(l.Assignment).includes(entityId)
         return l.room_id === entityId
       }),
     [lessons, mode, entityId],
@@ -95,7 +120,10 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
           const a = list[i].Assignment
           const b = list[j].Assignment
           if (a.sync_group && a.sync_group === b.sync_group) continue
-          if ((a.teacher_id && a.teacher_id === b.teacher_id) || a.classroom_id === b.classroom_id) {
+          const bt = assignmentTeacherIds(b)
+          // Aynı seçmeli grubundaki dersler aynı şubede paralel olabilir.
+          const parallel = Boolean(a.elective_group && a.elective_group === b.elective_group)
+          if (assignmentTeacherIds(a).some((id) => bt.includes(id)) || (a.classroom_id === b.classroom_id && !parallel)) {
             ids.add(list[i].id)
             ids.add(list[j].id)
           }
@@ -185,6 +213,20 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
   }
 
   const periods = Array.from({ length: project.periods_per_day }, (_, i) => i + 1)
+
+  // Zaman tablosunda kapalı / istenmiyor hücreler (okul + görünen kayıt).
+  const cellState = useMemo(() => {
+    const out: Record<string, 'closed' | 'avoid'> = {}
+    const entityType = mode === 'teacher' ? 'teacher' : mode === 'classroom' ? 'classroom' : 'room'
+    for (const row of availability) {
+      const match = row.entity_type === 'school' || (row.entity_type === entityType && row.entity_id === entityId)
+      if (!match) continue
+      for (const [k, v] of Object.entries(row.cells)) {
+        if (out[k] !== 'closed') out[k] = v
+      }
+    }
+    return out
+  }, [availability, mode, entityId])
   const cellLessons = (d: number, p: number) => visible.filter((l) => l.day_of_week === d && l.period_no === p)
   const lockedCount = lessons.filter((l) => l.is_locked).length
   const editable = ctx.canUpdate
@@ -213,10 +255,10 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
     const a = l.Assignment
     const detail =
       mode === 'classroom'
-        ? teacherFullName(a.Teacher)
+        ? teacherNames(a)
         : mode === 'teacher'
           ? shortClassroom(a.Classroom)
-          : `${shortClassroom(a.Classroom)} · ${teacherFullName(a.Teacher)}`
+          : `${shortClassroom(a.Classroom)} · ${teacherNames(a)}`
     const clash = clashIds.has(l.id)
     return (
       <div
@@ -374,6 +416,8 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
               {project.days.map((d) => {
                 const key = `${d}:${p}`
                 const items = cellLessons(d, p)
+                const state = cellState[`${d}-${p}`]
+                const idle = state === 'closed' ? '#f0f0f0' : state === 'avoid' ? '#fffbe6' : '#fff'
                 return (
                   <div
                     key={key}
@@ -390,7 +434,7 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
                     style={{
                       minHeight: 58,
                       border: `1px ${dropKey === key ? 'dashed #1677ff' : 'solid #e5e7eb'}`,
-                      background: dropKey === key ? '#e6f4ff' : '#fff',
+                      background: dropKey === key ? '#e6f4ff' : idle,
                       borderRadius: 6,
                       padding: 3,
                     }}
