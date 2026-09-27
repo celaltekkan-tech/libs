@@ -4,7 +4,7 @@ export const TYP_STATUS_CODES: Record<string, string> = {
   fazla_mesai: '',
   gelmedi: 'D',
   izinli: 'Ü',
-  raporlu: 'R',
+  raporlu: 'S',
   mazeretli: 'M',
   is_kazasi: 'İ',
 }
@@ -16,7 +16,7 @@ export const ATTENDANCE_STATUS_OPTIONS = [
   { value: 'geldi', label: 'Geldi' },
   { value: 'gelmedi', label: 'Gelmedi (D)' },
   { value: 'izinli', label: 'Ücretsiz İzin (Ü)' },
-  { value: 'raporlu', label: 'Raporlu (R)' },
+  { value: 'raporlu', label: 'Raporlu (S)' },
   { value: 'mazeretli', label: 'Mazeretli (M)' },
   { value: 'is_kazasi', label: 'İş Kazası (İ)' },
   { value: 'fazla_mesai', label: 'Fazla Mesai' },

@@ -85,9 +85,25 @@ function enhanceColumn<T extends object>(col: ColumnType<T> | ColumnGroupType<T>
   }
 }
 
-/** dataIndex (veya uygun key) olan sütunlara A-Z / Z-A sıralama ekler. */
+function isNameColumn(title: string): boolean {
+  return /ad|isim|personel|öğret|öğrenc|ders|branş|sınıf|şube|kurum|okul|konu/i.test(title)
+}
+
+/** dataIndex (veya uygun key) olan sütunlara A-Z / Z-A sıralama ekler. Ad sütunu varsa liste A'dan açılır. */
 export function withColumnSorters<T extends object>(columns: ColumnsType<T>): ColumnsType<T> {
-  return columns.map((col) => enhanceColumn(col)) as ColumnsType<T>
+  let defaulted = false
+  return columns.map((col) => {
+    const enhanced = enhanceColumn(col)
+    if (defaulted || !('sorter' in enhanced) || !enhanced.sorter) return enhanced
+    if (enhanced.defaultSortOrder) {
+      defaulted = true
+      return enhanced
+    }
+    const title = titleText((enhanced as ColumnType<T>).title as ColumnType<unknown>['title'])
+    if (!isNameColumn(title)) return enhanced
+    defaulted = true
+    return { ...enhanced, defaultSortOrder: 'ascend' as const }
+  }) as ColumnsType<T>
 }
 
 /** Render-only sütunlar için: sortValue ile sıralama. */

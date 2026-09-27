@@ -69,6 +69,86 @@ function holidayDaysForMonth(holidays: Holiday[], year: number, month: number): 
     .map((h) => h.day)
 }
 
+function TypPuantajPreview({
+  year,
+  month,
+  days,
+  people,
+  records,
+  closedDays,
+}: {
+  year: number
+  month: number
+  days: number
+  people: Teacher[]
+  records: AttendanceRecord[]
+  closedDays: number[]
+}) {
+  const closed = new Set(closedDays)
+  const statusByKey = new Map<string, string>()
+  for (const row of records) {
+    const day = Number(String(row.attendance_date).slice(8, 10))
+    statusByKey.set(`${row.teacher_id}:${day}`, row.status)
+  }
+  const sorted = [...people].sort((a, b) =>
+    `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`, 'tr'),
+  )
+  const dayList = Array.from({ length: days }, (_, i) => i + 1)
+  if (!sorted.length) {
+    return <Typography.Text type="secondary">Önizleme için en az bir personel seçin.</Typography.Text>
+  }
+  return (
+    <div style={{ overflowX: 'auto', maxHeight: 280, border: '1px solid #d9d9d9', borderRadius: 6 }}>
+      <table style={{ borderCollapse: 'collapse', fontSize: 11, minWidth: 720 }}>
+        <thead>
+          <tr>
+            <th style={{ position: 'sticky', left: 0, background: '#fafafa', padding: '4px 8px', textAlign: 'left' }}>
+              Personel
+            </th>
+            {dayList.map((day) => (
+              <th key={day} style={{ padding: '4px 2px', minWidth: 22, background: closed.has(day) ? '#808080' : '#fafafa', color: closed.has(day) ? '#fff' : undefined }}>
+                {day}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((person) => {
+            const start = (person.service_start_date || '').slice(0, 10)
+            return (
+              <tr key={person.id}>
+                <td style={{ position: 'sticky', left: 0, background: '#fff', padding: '4px 8px', whiteSpace: 'nowrap' }}>
+                  {person.first_name} {person.last_name}
+                </td>
+                {dayList.map((day) => {
+                  const key = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+                  const shut = closed.has(day) || (start ? key < start : false)
+                  const status = statusByKey.get(`${person.id}:${day}`)
+                  const code = shut ? '' : TYP_STATUS_CODES[status || ''] || ''
+                  return (
+                    <td
+                      key={day}
+                      style={{
+                        textAlign: 'center',
+                        background: shut ? '#808080' : '#fff',
+                        color: shut ? '#fff' : '#000',
+                        border: '1px solid #f0f0f0',
+                        fontWeight: code ? 700 : 400,
+                      }}
+                    >
+                      {code}
+                    </td>
+                  )
+                })}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 export function AttendancePage() {
   const { message, modal } = App.useApp()
   const { session, hasPermission } = useAuth()
@@ -81,6 +161,7 @@ export function AttendancePage() {
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [summary, setSummary] = useState<AttendanceMonthlySummaryRow[]>([])
   const [monthAbsences, setMonthAbsences] = useState<AttendanceRecord[]>([])
+  const [monthRecords, setMonthRecords] = useState<AttendanceRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx')
@@ -137,6 +218,7 @@ export function AttendancePage() {
       setRecords(recordData)
       setSummary(summaryData)
       setHolidays(holidayData)
+      setMonthRecords(monthAbsenceData)
       setMonthAbsences(monthAbsenceData.filter((r) => ABSENCE_STATUSES.has(r.status)))
       const nextDraft: Record<number, DraftEntry> = {}
       recordData.forEach((r) => {
@@ -579,7 +661,8 @@ export function AttendancePage() {
       >
         <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
           Excel çıktısı İŞKUR EK-2 formatındadır. Kapalı günler orta gri dolgu ile işaretlenir. İmza günleri
-          boş bırakılır; devamsızlık kodları (R, D, Ü, M, İ) ilgili hücrelere yazılır.
+          boş bırakılır; devamsızlık kodları (S rapor, D, Ü, M, İ) ilgili hücrelere yazılır. İndirmeden önce
+          aşağıdaki önizlemede kontrol edin.
         </Typography.Paragraph>
 
         <Space wrap style={{ marginBottom: 12 }}>
@@ -687,10 +770,29 @@ export function AttendancePage() {
               value={exportTeacherIds}
               onChange={(vals) => setExportTeacherIds(vals as number[])}
               style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 220, overflow: 'auto' }}
-              options={workerTeachers.map((t) => ({
-                value: t.id,
-                label: `${t.first_name} ${t.last_name}${t.typ_subject || t.title_branch ? ` — ${t.typ_subject || t.title_branch}` : ''}`,
-              }))}
+              options={[...workerTeachers]
+                .sort((a, b) =>
+                  `${a.first_name} ${a.last_name}`.localeCompare(`${b.first_name} ${b.last_name}`, 'tr'),
+                )
+                .map((t) => ({
+                  value: t.id,
+                  label: `${t.first_name} ${t.last_name}${t.typ_subject || t.title_branch ? ` — ${t.typ_subject || t.title_branch}` : ''}`,
+                }))}
+            />
+
+            <Typography.Text strong style={{ display: 'block', marginTop: 16 }}>
+              Önizleme
+            </Typography.Text>
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
+              Gri hücre kapalı gündür. Raporlu gün S yazar. Boş hücre imza içindir.
+            </Typography.Paragraph>
+            <TypPuantajPreview
+              year={year}
+              month={month}
+              days={daysInSelectedMonth}
+              people={workerTeachers.filter((t) => exportTeacherIds.includes(t.id))}
+              records={monthRecords}
+              closedDays={closedDays}
             />
           </>
         )}

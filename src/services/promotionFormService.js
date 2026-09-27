@@ -70,12 +70,11 @@ function collapsePromotionBlankRows(ws) {
   });
 }
 
-/** Arial Tur, Unicode metni bozuk gösterir. Okunur yazı tipi Arial'dir. */
+/** Arial Tur ve Helvetica, Türkçe karakteri bozuk gösterir. Tüm hücreler Arial olur. */
 function useReadableTurkishFonts(ws) {
-  ws.eachRow({ includeEmpty: false }, (row) => {
-    row.eachCell({ includeEmpty: false }, (cell) => {
+  ws.eachRow({ includeEmpty: true }, (row) => {
+    row.eachCell({ includeEmpty: true }, (cell) => {
       const font = cell.font || {};
-      if (font.name && font.name !== 'Arial Tur') return;
       cell.font = { ...font, name: 'Arial', charset: 162 };
     });
   });
@@ -337,6 +336,14 @@ async function fillSalaryChangeForm(promotionEntries, options) {
   writeRowBlock(ws, mapping.unionChangeRows, model.union_changes, (r) => r);
 
   useReadableTurkishFonts(ws);
+  ws.pageSetup = {
+    ...(ws.pageSetup || {}),
+    orientation: 'portrait',
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 1,
+    paperSize: 9,
+  };
   const buffer = await wb.xlsx.writeBuffer();
   return { buffer, truncated: model.truncated };
 }

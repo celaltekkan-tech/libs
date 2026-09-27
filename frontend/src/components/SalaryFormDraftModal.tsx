@@ -314,11 +314,12 @@ export function SalaryFormDraftModal({ open, onClose, canSave }: Props) {
               </Button>
             )}
             <Button
-              icon={<EyeOutlined />}
-              loading={exporting === 'preview'}
-              onClick={() => void onPreview()}
+              type="primary"
+              icon={<FileExcelOutlined />}
+              loading={exporting === 'xlsx'}
+              onClick={() => void onExport('xlsx')}
             >
-              Önizle / Yazdır
+              Excel indir
             </Button>
             <Button
               icon={<FilePdfOutlined />}
@@ -328,12 +329,11 @@ export function SalaryFormDraftModal({ open, onClose, canSave }: Props) {
               PDF indir
             </Button>
             <Button
-              type="primary"
-              icon={<FileExcelOutlined />}
-              loading={exporting === 'xlsx'}
-              onClick={() => void onExport('xlsx')}
+              icon={<EyeOutlined />}
+              loading={exporting === 'preview'}
+              onClick={() => void onPreview()}
             >
-              Excel indir
+              Önizle / Yazdır
             </Button>
           </Space>
         }
@@ -360,7 +360,7 @@ export function SalaryFormDraftModal({ open, onClose, canSave }: Props) {
                 ? `Terfi dönemi: ${periodLabel} · DB'den otomatik dolacak terfi kaydı: ${promotionCount}`
                 : `DB'den otomatik dolacak terfi kaydı: ${promotionCount}`
             }
-            description="Kurum bilgileri, personel sayıları ve B/C/E/F/G/H bölümleri buradan kaydedilir. D) Terfi satırları onaylanmış terfi kayıtlarından gelir. Önizleme ve PDF yazdırılabilir çıktı üretir."
+            description="Asıl indirme Excel'dir; sayfa dikeydir ve tek sayfaya sığdırılır. PDF yalnızca önizleme ve yazdırma içindir. G) Rapor satırları, yılda 7 günü aşan sağlık raporlarından kendiliğinden gelir."
           />
 
           <Form form={form} layout="vertical" disabled={loading}>

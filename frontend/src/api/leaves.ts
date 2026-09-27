@@ -37,17 +37,33 @@ export async function fetchLeaveCalendar(year: number, month: number): Promise<L
   return data.data
 }
 
-export async function createLeaveRecord(tenantId: number, payload: LeaveRecordPayload): Promise<LeaveRecord> {
-  const { data } = await client.post<Envelope<LeaveRecord>>('/api/leaves', {
+export interface ReportSalarySync {
+  yearDays: number
+  excessDays: number
+  forms: Array<{ month: number; year: number; days: number }>
+}
+
+interface LeaveWriteEnvelope extends Envelope<LeaveRecord> {
+  salary_sync?: ReportSalarySync | null
+}
+
+export async function createLeaveRecord(
+  tenantId: number,
+  payload: LeaveRecordPayload,
+): Promise<{ record: LeaveRecord; salary_sync: ReportSalarySync | null }> {
+  const { data } = await client.post<LeaveWriteEnvelope>('/api/leaves', {
     tenant_id: tenantId,
     ...payload,
   })
-  return data.data
+  return { record: data.data, salary_sync: data.salary_sync || null }
 }
 
-export async function updateLeaveRecord(id: number, payload: Partial<LeaveRecordPayload>): Promise<LeaveRecord> {
-  const { data } = await client.put<Envelope<LeaveRecord>>(`/api/leaves/${id}`, payload)
-  return data.data
+export async function updateLeaveRecord(
+  id: number,
+  payload: Partial<LeaveRecordPayload>,
+): Promise<{ record: LeaveRecord; salary_sync: ReportSalarySync | null }> {
+  const { data } = await client.put<LeaveWriteEnvelope>(`/api/leaves/${id}`, payload)
+  return { record: data.data, salary_sync: data.salary_sync || null }
 }
 
 export async function deleteLeaveRecord(id: number): Promise<void> {

@@ -33,16 +33,17 @@ function getSalaryPeriodRange(month, year) {
 
 function getSalaryPeriodForDate(refDate = new Date()) {
   const d = refDate instanceof Date ? refDate : new Date(refDate);
-  // Ayın 1–14 arası → bir önceki ayın formu; 15–son → bu ayın formu
-  const day = d.getUTCDate ? d.getDate() : d.getDate();
+  if (Number.isNaN(d.getTime())) throw new Error('Geçersiz tarih');
+  // Form, bitiş ayıyla anılır: 15 Eylül–14 Ekim → Ekim formu.
+  // Ayın 1–14'ü bu ayın formundadır; 15'inden sonrası bir sonraki ayın formuna girer.
+  const day = d.getDate();
   let month = d.getMonth() + 1;
   let year = d.getFullYear();
-  if (day <= 14) {
-    if (month === 1) {
-      month = 12;
-      year -= 1;
-    } else {
-      month -= 1;
+  if (day >= 15) {
+    month += 1;
+    if (month === 13) {
+      month = 1;
+      year += 1;
     }
   }
   return getSalaryPeriodRange(month, year);
