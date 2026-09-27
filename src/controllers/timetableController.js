@@ -28,6 +28,7 @@ const timetableExport = require('../services/timetableExportService');
 const gemini = require('../services/geminiService');
 const aiUsage = require('../services/aiUsageService');
 const branchService = require('../services/branchService');
+const commonLessons = require('../services/timetableCommonLessons');
 const { TYPES, DAY_NAMES, normalizeParams, describe } = require('../services/timetableConstraintCatalog');
 const {
   buildPayload,
@@ -566,6 +567,7 @@ module.exports = {
               allow_merge: a.allow_merge,
               room_id: a.room_id,
               elective_group: a.elective_group,
+              source: a.source,
               teacher_id: withTeachers ? a.teacher_id : null,
               co_teacher_ids: withTeachers ? a.co_teacher_ids || [] : [],
             });
@@ -584,7 +586,35 @@ module.exports = {
     try {
       const row = await loadChild(req, TimetableAssignment, 'Ders ataması');
       await row.destroy();
-      res.json({ success: true });
+      // Kaldırılan ortak ders otomatik eşitlemede geri gelmesin.
+      const excluded = await commonLessons.excludeOnDelete(row);
+      res.json({ success: true, data: { excluded } });
+    } catch (err) {
+      sendError(res, next, err);
+    }
+  },
+
+  // Ders havuzundaki ortak dersleri (seçmeli olmayan) şubelere ekler; kaldırılanlara dokunmaz.
+  async syncCommonAssignments(req, res, next) {
+    try {
+      const project = await loadProject(req);
+      const ids = req.validatedBody.classroom_ids;
+      const result = await commonLessons.syncCommonLessons(project, { classroomIds: ids });
+      res.json({ success: true, data: result });
+    } catch (err) {
+      sendError(res, next, err);
+    }
+  },
+
+  // Şubeden kaldırılmış ortak dersleri geri ekler.
+  async restoreCommonAssignments(req, res, next) {
+    try {
+      const project = await loadProject(req);
+      const { classroom_id: classroomId, subject_ids: subjectIds } = req.validatedBody;
+      const classroom = await Classroom.findByPk(classroomId);
+      if (!classroom || classroom.tenant_id !== project.tenant_id) throw httpError(400, 'Şube bulunamadı');
+      const result = await commonLessons.restoreCommon(project, classroomId, subjectIds);
+      res.json({ success: true, data: result });
     } catch (err) {
       sendError(res, next, err);
     }
@@ -1221,9 +1251,15 @@ async function copyProjectParts(source, target, parts, transaction) {
         room_id: a.room_id,
         sync_group: a.sync_group,
         elective_group: a.elective_group,
+        source: a.source,
       })),
       { transaction, returning: true }
     );
+    // Kaldırılmış ortak dersler de taşınır ki yeni çalışmada geri gelmesin.
+    const excluded = source.settings && source.settings.common_excluded;
+    if (excluded && Object.keys(excluded).length) {
+      await target.update({ settings: { ...(target.settings || {}), common_excluded: excluded } }, { transaction });
+    }
     // Öğrenci seçmeli seçimleri yeni atama kimliklerine taşınır.
     const idMap = new Map(rows.map((a, i) => [a.id, created[i].id]));
     const choices = await TimetableElectiveChoice.findAll({ where: { project_id: source.id }, transaction });

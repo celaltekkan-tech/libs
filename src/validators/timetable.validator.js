@@ -82,6 +82,13 @@ const createAssignmentSchema = Joi.object({
   classroom_id: id.required(),
   subject_id: id.required(),
 });
+// Boş: projenin tüm şubeleri
+const syncCommonSchema = Joi.object({ classroom_ids: Joi.array().items(id).max(500).unique() });
+// subject_ids boşsa şubenin kaldırılmış tüm ortak dersleri geri gelir
+const restoreCommonSchema = Joi.object({
+  classroom_id: id.required(),
+  subject_ids: Joi.array().items(id).max(200).unique(),
+});
 const copyAssignmentsSchema = Joi.object({
   source_classroom_id: id.required(),
   target_classroom_ids: Joi.array().items(id).min(1).max(200).unique().required(),
@@ -178,6 +185,8 @@ module.exports = {
   bulkAssignmentSchema,
   generateAssignmentsSchema,
   copyAssignmentsSchema,
+  syncCommonSchema,
+  restoreCommonSchema,
   availabilitySchema,
   electiveChoicesSchema,
   createBranchSchema,

@@ -595,6 +595,39 @@ p {
   font-weight: 600;
 }
 
+.legal {
+  padding: 48px 0 72px;
+}
+
+.legal h1 {
+  font-size: clamp(28px, 4vw, 40px);
+  margin-bottom: 12px;
+}
+
+.legal h2 {
+  font-size: 20px;
+  margin: 28px 0 10px;
+}
+
+.legal p,
+.legal li {
+  color: var(--muted);
+  max-width: 68ch;
+}
+
+.legal ol {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.legal li + li {
+  margin-top: 8px;
+}
+
+.legal .btn {
+  margin-top: 18px;
+}
+
 .footer-nav a:hover {
   color: var(--purple);
 }
