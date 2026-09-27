@@ -12,6 +12,8 @@ module.exports = (sequelize, DataTypes) => {
       room_id: DataTypes.INTEGER,
       sync_group: DataTypes.STRING,
       elective_group: DataTypes.STRING,
+      // 'pool': ders havuzundaki ortak dersten otomatik eklendi
+      source: DataTypes.STRING,
       co_teacher_ids: { type: DataTypes.ARRAY(DataTypes.INTEGER), allowNull: false, defaultValue: [] },
       allow_split: DataTypes.BOOLEAN,
       allow_merge: DataTypes.BOOLEAN,

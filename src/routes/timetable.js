@@ -42,6 +42,8 @@ router.put('/projects/:projectId/availability', update, validate(v.availabilityS
 
 router.get('/projects/:projectId/assignments', read, ctrl.listAssignments);
 router.post('/projects/:projectId/assignments/copy', create, validate(v.copyAssignmentsSchema), ctrl.copyAssignments);
+router.post('/projects/:projectId/assignments/sync-common', create, validate(v.syncCommonSchema), ctrl.syncCommonAssignments);
+router.post('/projects/:projectId/assignments/restore-common', create, validate(v.restoreCommonSchema), ctrl.restoreCommonAssignments);
 router.post('/projects/:projectId/assignments', create, validate(v.createAssignmentSchema), ctrl.createAssignment);
 router.post('/projects/:projectId/assignments/generate', create, validate(v.generateAssignmentsSchema), ctrl.generateAssignments);
 router.post('/projects/:projectId/assignments/bulk', update, validate(v.bulkAssignmentSchema), ctrl.bulkUpdateAssignments);

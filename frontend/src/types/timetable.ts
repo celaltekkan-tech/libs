@@ -89,6 +89,8 @@ export interface TimetableAssignment {
   sync_group: string | null
   co_teacher_ids: number[]
   elective_group: string | null
+  // 'pool': ders havuzundaki ortak dersten otomatik eklendi
+  source?: string | null
   allow_split: boolean | null
   allow_merge: boolean | null
   Classroom?: { id: number; class_level: string; section: string } | null
@@ -329,4 +331,13 @@ export interface ElectiveStudent {
 export interface ElectiveData {
   students: ElectiveStudent[]
   choices: Array<{ assignment_id: number; student_id: number }>
+}
+
+export interface CommonSyncResult {
+  created: number
+  classrooms: number
+  // bir seviyede birden fazla saati olan ortak dersler (kullanıcı seçmeli)
+  needs_choice: Array<{ classroom_id: number; subject_id: number; subject_name: string; options: number[] }>
+  // şube id -> kaldırılmış ortak ders id'leri
+  excluded: Record<string, number[]>
 }

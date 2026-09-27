@@ -20,11 +20,13 @@ import {
   Typography,
   theme,
 } from 'antd'
-import { CopyOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
+import { CopyOutlined, DeleteOutlined, PlusOutlined, UndoOutlined } from '@ant-design/icons'
 import {
   copyTimetableAssignments,
   createTimetableAssignment,
   deleteTimetableAssignment,
+  restoreCommonAssignments,
+  syncCommonAssignments,
   getLessonPool,
   listAvailability,
   listTimetableAssignments,
@@ -35,6 +37,7 @@ import { getErrorMessage } from '../../api/client'
 import { TypedPhraseConfirmModal } from '../TypedPhraseConfirmModal'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../../utils/bulkDelete'
 import type {
+  CommonSyncResult,
   LessonPool,
   PoolHour,
   PoolSubject,
@@ -137,11 +140,20 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
   const [copyTeachers, setCopyTeachers] = useState(false)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkLoading, setBulkLoading] = useState(false)
+  const [common, setCommon] = useState<CommonSyncResult | null>(null)
   const editable = ctx.canUpdate
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
+      // Havuzdaki ortak dersler eksik şubelere otomatik verilir (kaldırılanlar hariç).
+      if (ctx.canCreate) {
+        const sync = await syncCommonAssignments(project.id)
+        setCommon(sync)
+        if (sync.created) {
+          message.success(`Ders havuzundaki ortak dersler ${sync.classrooms} şubeye eklendi (${sync.created} ders)`)
+        }
+      }
       const [a, p, av] = await Promise.all([
         listTimetableAssignments(project.id),
         getLessonPool(project.id),
@@ -155,7 +167,7 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
     } finally {
       setLoading(false)
     }
-  }, [project.id, message])
+  }, [project.id, message, ctx.canCreate])
 
   useEffect(() => {
     void load()
@@ -186,6 +198,10 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
   }, [availability, ctx.classrooms, project.days.length, project.periods_per_day])
 
   const classRows = useMemo(() => rows.filter((a) => a.classroom_id === classId), [rows, classId])
+  const isCommon = (subjectId: number) => {
+    const s = subjectById.get(subjectId)
+    return Boolean(s && !s.is_elective)
+  }
   const inClass = useMemo(() => new Set(classRows.map((a) => a.subject_id)), [classRows])
 
   const poolRows = useMemo(() => {
@@ -231,6 +247,14 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
     try {
       await deleteTimetableAssignment(row.id)
       setRows((prev) => prev.filter((r) => r.id !== row.id))
+      if (isCommon(row.subject_id)) {
+        setCommon((prev) => {
+          if (!prev) return prev
+          const key = String(row.classroom_id)
+          const list = [...new Set([...(prev.excluded[key] || []), row.subject_id])]
+          return { ...prev, excluded: { ...prev.excluded, [key]: list } }
+        })
+      }
       await ctx.reloadProject()
     } catch (err) {
       message.error(getErrorMessage(err))
@@ -246,8 +270,8 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
       if (result.failed === 0) message.success(text)
       else message.warning(text)
       setBulkOpen(false)
-      if (result.failed === 0) setRows((prev) => prev.filter((r) => r.classroom_id !== classId))
-      else await load()
+      // Kaldırılan ortak derslerin listesi de güncellensin.
+      await load()
       await ctx.reloadProject()
     } finally {
       setBulkLoading(false)
@@ -292,6 +316,23 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
     }
   }
 
+  const restoreRemoved = async () => {
+    if (!classId) return
+    try {
+      const res = await restoreCommonAssignments(project.id, classId)
+      message.success(res.created ? `${res.created} ortak ders geri eklendi` : 'Geri eklenecek ders yok')
+      await load()
+      await ctx.reloadProject()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    }
+  }
+
+  const removedHere = classId ? (common?.excluded[String(classId)] || []).filter((id) => !inClass.has(id)) : []
+  const choiceHere = classId
+    ? (common?.needs_choice || []).filter((n) => n.classroom_id === classId && !inClass.has(n.subject_id))
+    : []
+
   const roomOptions = ctx.rooms.map((r) => ({ value: r.id, label: r.name }))
   const selectedLoad = classId ? loads.classroom.get(classId) || 0 : 0
   const selectedCap = classId ? capacity.get(classId) || 0 : 0
@@ -299,8 +340,10 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
   return (
     <>
       <Typography.Paragraph type="secondary">
-        Soldan şubeyi seçin, sağdaki ders havuzundan <PlusOutlined /> ile şubeye ders verin. Saat ve blok havuzdan
-        gelir, şubeye özel değiştirebilirsiniz. Bir şubenin ders listesini aynı seviyedeki diğer şubelere
+        Ders havuzundaki ortak dersler (seçmeli olmayanlar) şubelere kendiliğinden verilir; şubede okutulmayan bir
+        ortak dersi silerseniz o şubeye bir daha eklenmez, "Kaldırılanları geri ekle" ile geri alırsınız. Seçmeli
+        dersleri sağdaki ders havuzundan <PlusOutlined /> ile verin. Saat ve blok havuzdan gelir, şubeye özel
+        değiştirebilirsiniz. Bir şubenin ders listesini aynı seviyedeki diğer şubelere
         kopyalayabilirsiniz; öğretmenler bir sonraki adımda atanır. Şubenin öğrencileri seçmelilere bölünüyorsa
         alternatif seçmelilere aynı "Seçmeli grup" kodunu yazın: bu dersler aynı saatte paralel işlenebilir ve
         şube saatine bir kez sayılır. Boş bırakılan ders tüm şubenin dersidir.
@@ -396,6 +439,37 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
               ) : undefined
             }
           >
+            {removedHere.length > 0 && (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginBottom: 8 }}
+                message={`Bu şubeden kaldırılan ortak dersler: ${removedHere
+                  .map((id) => subjectById.get(id)?.name || `#${id}`)
+                  .join(', ')}`}
+                action={
+                  ctx.canCreate && (
+                    <Button size="small" icon={<UndoOutlined />} onClick={restoreRemoved}>
+                      Kaldırılanları geri ekle
+                    </Button>
+                  )
+                }
+              />
+            )}
+            {choiceHere.length > 0 && (
+              <Alert
+                type="info"
+                showIcon
+                style={{ marginBottom: 8 }}
+                message="Saati seçilmesi gereken ortak dersler"
+                description={
+                  <>
+                    {choiceHere.map((n) => `${n.subject_name} (${n.options.join(' veya ')} saat)`).join(', ')}. Sağdaki
+                    ders havuzundan saatini seçerek ekleyin.
+                  </>
+                }
+              />
+            )}
             {selectedLoad > selectedCap && (
               <Alert
                 type="error"
@@ -413,11 +487,13 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
                 loading={loading}
                 pagination={false}
                 dataSource={classRows}
-                scroll={{ x: 740, y: 520 }}
+                scroll={{ x: 830, y: 520 }}
                 columns={[
                   {
                     title: 'Ders',
                     key: 'subject',
+                    width: 230,
+                    fixed: 'left',
                     render: (_, r) => {
                       const s = subjectById.get(r.subject_id)
                       return (
@@ -425,6 +501,11 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
                           <span>
                             {s?.code && <b>{s.code} </b>}
                             {r.Subject?.name}
+                            {r.source === 'pool' && (
+                              <Tag color="blue" style={{ marginInlineStart: 6, fontSize: 11 }}>
+                                ortak · otomatik
+                              </Tag>
+                            )}
                           </span>
                           <span style={{ fontSize: 11, color: '#6b7280' }}>
                             {assignmentTeacherIds(r)

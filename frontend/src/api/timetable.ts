@@ -4,6 +4,7 @@ import type {
   AvailabilityCells,
   AvailabilityEntity,
   Branch,
+  CommonSyncResult,
   ElectiveData,
   LessonPool,
   PoolHour,
@@ -373,4 +374,24 @@ export async function saveElectives(
     choices,
   })
   return data.data.saved
+}
+
+// ---- ders havuzundaki ortak derslerin şubelere otomatik verilmesi
+export async function syncCommonAssignments(projectId: number, classroomIds?: number[]): Promise<CommonSyncResult> {
+  const { data } = await client.post<Envelope<CommonSyncResult>>(`${BASE}/projects/${projectId}/assignments/sync-common`, {
+    ...(classroomIds ? { classroom_ids: classroomIds } : {}),
+  })
+  return data.data
+}
+
+export async function restoreCommonAssignments(
+  projectId: number,
+  classroomId: number,
+  subjectIds?: number[],
+): Promise<CommonSyncResult> {
+  const { data } = await client.post<Envelope<CommonSyncResult>>(`${BASE}/projects/${projectId}/assignments/restore-common`, {
+    classroom_id: classroomId,
+    ...(subjectIds ? { subject_ids: subjectIds } : {}),
+  })
+  return data.data
 }
