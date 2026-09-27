@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Button, DatePicker, Descriptions, Form, Input, InputNumber, Modal, Select, Space, Tabs, Tag, Typography } from 'antd'
+import { App, Button, DatePicker, Descriptions, Form, Input, InputNumber, Modal, Select, Space, Tabs, Tag, Typography, theme } from 'antd'
 import { SortableTable } from '../components/SortableTable'
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -12,6 +12,7 @@ import {
   deleteLeaveRecord,
   listLeaveRecords,
   updateLeaveRecord,
+  type ReportSalarySync,
 } from '../api/leaves'
 import { listTeachers } from '../api/teachers'
 import { LeaveCalendarView } from '../components/LeaveCalendarView'
@@ -30,8 +31,24 @@ interface LeaveFormValues {
   reason?: string
 }
 
+const MONTHS = ['', 'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık']
+
+function personName(teacher: { first_name: string; last_name: string }) {
+  return `${teacher.first_name} ${teacher.last_name}`.trim()
+}
+
+function reportSyncText(sync: ReportSalarySync | null) {
+  if (!sync) return 'Rapor kaydedildi.'
+  if (sync.excessDays > 0 && sync.forms.length) {
+    const where = sync.forms.map((form) => `${MONTHS[form.month]} ${form.year} (${form.days} gün)`).join(', ')
+    return `Rapor kaydedildi. 7 günü aşan ${sync.excessDays} gün maaş değişikliği formuna yazıldı: ${where}.`
+  }
+  return `Rapor kaydedildi. Bu yıl ${sync.yearDays} gün rapor var. İlk 7 gün ücret kesintisine girmediği için maaş formuna yazılmadı.`
+}
+
 export function LeavesPage() {
   const { message, modal } = App.useApp()
+  const { token } = theme.useToken()
   const { session, hasPermission } = useAuth()
 
   const [teachers, setTeachers] = useState<Teacher[]>([])
@@ -63,7 +80,9 @@ export function LeavesPage() {
     setLoading(true)
     try {
       const data = await listTeachers()
-      const eligible = data.filter(isReportPerson)
+      const eligible = data
+        .filter(isReportPerson)
+        .sort((a, b) => personName(a).localeCompare(personName(b), 'tr'))
       setTeachers(eligible)
       setSelectedTeacherId((current) => current ?? eligible[0]?.id ?? null)
     } catch (err) {
@@ -143,11 +162,11 @@ export function LeavesPage() {
         reason: values.reason || null,
       }
       if (editing) {
-        await updateLeaveRecord(editing.id, payload)
-        message.success('Rapor kaydı güncellendi. 7 günü aşan kısım maaş değişikliği formuna işlenir.')
+        const saved = await updateLeaveRecord(editing.id, payload)
+        message.success(reportSyncText(saved.salary_sync))
       } else {
-        await createLeaveRecord(session.user.tenant_id, { ...payload, leave_type: 'rapor' })
-        message.success('Rapor kaydedildi. 7 günü aşan kısım maaş değişikliği formuna işlenir.')
+        const saved = await createLeaveRecord(session.user.tenant_id, { ...payload, leave_type: 'rapor' })
+        message.success(reportSyncText(saved.salary_sync))
       }
       setModalOpen(false)
       void loadForTeacher()
@@ -275,8 +294,9 @@ export function LeavesPage() {
         ]}
         onRow={(row) => ({
           onClick: () => setSelectedTeacherId(row.id),
-          style: { cursor: 'pointer', background: row.id === selectedTeacherId ? '#fffbe6' : undefined },
+          style: { cursor: 'pointer' },
         })}
+        rowClassName={(row) => (row.id === selectedTeacherId ? 'leave-person-selected' : '')}
       />
 
       {selectedTeacher && (
@@ -304,6 +324,18 @@ export function LeavesPage() {
 
   return (
     <AppLayout title="Rapor Takibi">
+      <style>{`
+        .leave-person-selected > td {
+          background: ${token.colorPrimary} !important;
+          color: ${token.colorTextLightSolid} !important;
+          font-weight: 600;
+        }
+        .leave-person-selected .ant-tag {
+          color: inherit;
+          background: transparent;
+          border-color: currentColor;
+        }
+      `}</style>
       <Typography.Title level={3} style={{ margin: 0 }}>
         Rapor Takibi
       </Typography.Title>

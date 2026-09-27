@@ -54,7 +54,7 @@ function blockPatternFor(hours, pattern) {
 
 /** Hücre haritasını temizler: yalnız proje gün/saat aralığındaki closed/avoid hücreler kalır. */
 function cleanCells(project, cells) {
-  const days = new Set(project.days || [1, 2, 3, 4, 5]);
+  const days = new Set([1, 2, 3, 4, 5, 6, 7]);
   const P = project.periods_per_day || 8;
   const out = {};
   for (const [key, state] of Object.entries(cells || {})) {

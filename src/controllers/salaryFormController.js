@@ -6,6 +6,7 @@ const audit = require('../services/auditService');
 const { fillSalaryChangeForm, buildSalaryFormModel } = require('../services/promotionFormService');
 const { buildSalaryChangePdf } = require('../services/salaryFormPdfService');
 const { getSalaryPeriodRange } = require('../utils/salaryPeriod');
+const { syncTenantReportYear } = require('../services/reportSalarySync');
 
 const EMPTY_PAYLOAD = {
   institution_name: '',
@@ -82,11 +83,19 @@ module.exports = {
       }
 
       const tenantId = req.user.tenant_id;
+      const range = getSalaryPeriodRange(period.month, period.year);
+      const years = new Set([range.start.getUTCFullYear(), range.endExclusive.getUTCFullYear(), period.year]);
+      for (const year of years) {
+        try {
+          await syncTenantReportYear(tenantId, year);
+        } catch (syncErr) {
+          console.error('[report-salary]', syncErr.message);
+        }
+      }
       const draft = await SalaryFormDraft.findOne({
         where: { tenant_id: tenantId, month: period.month, year: period.year },
       });
 
-      const range = getSalaryPeriodRange(period.month, period.year);
       const promotionCount = await PromotionHistory.count({
         where: {
           tenant_id: tenantId,

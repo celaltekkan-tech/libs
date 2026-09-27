@@ -42,8 +42,8 @@ function buildSalaryChangePdf(model) {
     const fonts = resolveFonts();
     const doc = new PDFDocument({
       size: 'A4',
-      layout: 'landscape',
-      margins: { top: 18, bottom: 18, left: 18, right: 18 },
+      layout: 'portrait',
+      margins: { top: 16, bottom: 16, left: 14, right: 14 },
       info: {
         Title: 'Maaş Değişikliği Bildirim Formu',
         Author: 'Norm Kadro',
@@ -139,31 +139,34 @@ function buildSalaryChangePdf(model) {
     y += 30;
 
     const drawTable = (title, columns, rows, minRows, hint) => {
-      if (y > doc.page.height - 90) {
+      const headerH = 14;
+      const rowH = 12;
+      const titleH = 13;
+      const bodyCount = Math.max(Array.isArray(rows) ? rows.length : 0, minRows);
+      const needed = titleH + headerH + bodyCount * rowH + 4;
+      if (y + needed > doc.page.height - doc.page.margins.bottom && y > doc.page.margins.top + 40) {
         doc.addPage();
         y = doc.page.margins.top;
       }
-      sectionTitle(title, 15);
+      sectionTitle(title, titleH);
       const widths = columns.map((c) => c.w * pageW);
-      const headerH = 18;
       let x = left;
       columns.forEach((col, i) => {
-        cell(x, y, widths[i], headerH, col.label, { bold: true, size: 6.5 });
+        cell(x, y, widths[i], headerH, col.label, { bold: true, size: 6 });
         x += widths[i];
       });
       y += headerH;
 
       const body = padRows(rows, minRows);
-      const rowH = 14;
       body.forEach((row) => {
-        if (y > doc.page.height - 40) {
+        if (y + rowH > doc.page.height - doc.page.margins.bottom) {
           doc.addPage();
           y = doc.page.margins.top;
         }
         x = left;
         columns.forEach((col, i) => {
           const value = i === columns.length - 1 && hint && !text(row[col.key]) ? hint : row[col.key];
-          cell(x, y, widths[i], rowH, value, { size: 7, align: col.align || 'center' });
+          cell(x, y, widths[i], rowH, value, { size: 6.5, align: col.align || 'center' });
           x += widths[i];
         });
         y += rowH;
@@ -182,7 +185,7 @@ function buildSalaryChangePdf(model) {
         { key: 'documents', label: 'Eklenecek Belgeler', w: 0.22 },
       ],
       model.departures,
-      3,
+      2,
       '(Kararname, Ayrılış yazısı, Maaş Nakil...)',
     );
 
@@ -198,7 +201,7 @@ function buildSalaryChangePdf(model) {
         { key: 'documents', label: 'Eklenecek Belgeler', w: 0.2 },
       ],
       model.starters,
-      3,
+      2,
       '(Kararname, Maaş Nakil, Göreve Başlama yazısı)',
     );
 
@@ -216,7 +219,7 @@ function buildSalaryChangePdf(model) {
         { key: 'documents', label: 'Eklenecek Belgeler', w: 0.18 },
       ],
       model.promotions,
-      4,
+      2,
       'Terfii Onayı',
     );
 
@@ -231,7 +234,7 @@ function buildSalaryChangePdf(model) {
         { key: 'documents', label: 'Eklenecek Belgeler', w: 0.2 },
       ],
       model.other_changes,
-      2,
+      1,
     );
 
     drawTable(
@@ -245,7 +248,7 @@ function buildSalaryChangePdf(model) {
         { key: 'documents', label: 'Eklenecek Belgeler', w: 0.22 },
       ],
       model.deductions,
-      2,
+      1,
     );
 
     drawTable(
@@ -259,7 +262,7 @@ function buildSalaryChangePdf(model) {
         { key: 'documents', label: 'Eklenecek Belgeler', w: 0.24 },
       ],
       model.report_days,
-      2,
+      1,
       'sağlık raporları',
     );
 
@@ -274,12 +277,12 @@ function buildSalaryChangePdf(model) {
         { key: 'documents', label: 'Eklenecek Belgeler', w: 0.2 },
       ],
       model.union_changes,
-      2,
+      1,
       '(Sendika giriş ve çıkış formları)',
     );
 
     // İmza
-    if (y > doc.page.height - 70) {
+    if (y > doc.page.height - 64) {
       doc.addPage();
       y = doc.page.margins.top;
     }

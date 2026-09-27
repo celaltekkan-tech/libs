@@ -446,8 +446,20 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
         >
           <div />
           {project.days.map((d) => (
-            <div key={d} style={{ fontWeight: 600, textAlign: 'center', padding: 6, color: token.colorText, whiteSpace: 'nowrap' }}>
-              {DAY_LABELS[d] || d}
+            <div
+              key={d}
+              style={{
+                fontWeight: 700,
+                fontSize: 13,
+                textAlign: 'center',
+                padding: '8px 4px',
+                color: token.colorText,
+                background: token.colorFillSecondary,
+                borderRadius: 6,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {DAY_LABELS[Number(d)] || d}
             </div>
           ))}
           {periods.map((p) => (

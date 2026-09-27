@@ -167,7 +167,7 @@ export function TimetableBuilderPage() {
     createForm.setFieldsValue({
       name: year ? `${year} Ders Programı` : 'Ders Programı',
       academic_year: year,
-      days: [1, 2, 3, 4, 5],
+      days: [1, 2, 3, 4, 5, 6, 7],
       periods_per_day: 8,
       lunch_after: null,
       copy_project_id: projects[0]?.id ?? null,

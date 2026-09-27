@@ -97,7 +97,12 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
             <Form.Item name="academic_year" label="Eğitim öğretim yılı" extra="Yayınlanınca ders programı bu yıla yazılır.">
               <Input placeholder="2026-2027" maxLength={20} />
             </Form.Item>
-            <Form.Item name="days" label="Ders günleri" rules={[{ required: true, message: 'En az bir gün seçin' }]}>
+            <Form.Item
+              name="days"
+              label="Ders günleri"
+              extra="Cumartesi ve pazar açık gelir. Ders konmasını istemediğiniz günün işaretini kaldırın."
+              rules={[{ required: true, message: 'En az bir gün seçin' }]}
+            >
               <Checkbox.Group options={DAY_OPTIONS} />
             </Form.Item>
             <Space size="large" wrap>

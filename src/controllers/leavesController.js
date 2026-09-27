@@ -193,8 +193,9 @@ module.exports = {
       payload.day_count = dayCount(payload.start_date, payload.end_date);
 
       const row = await LeaveRecord.create(payload);
+      let salarySync = null;
       try {
-        await syncTeacherReportDays({
+        salarySync = await syncTeacherReportDays({
           tenantId: teacher.tenant_id,
           teacherId: teacher.id,
           years: yearsBetween(payload.start_date, payload.end_date),
@@ -209,7 +210,7 @@ module.exports = {
         entityId: row.id,
         summary: `İzin kaydı oluşturuldu: ${teacher.first_name} ${teacher.last_name} (${LEAVE_TYPE_LABELS[payload.leave_type]})`,
       });
-      res.status(201).json({ success: true, data: full });
+      res.status(201).json({ success: true, data: full, salary_sync: salarySync });
     } catch (err) {
       next(err);
     }
@@ -245,10 +246,11 @@ module.exports = {
       const previousEnd = row.end_date;
       const previousTeacherId = row.teacher_id;
       await row.update(payload);
+      let salarySync = null;
       try {
         const teacherIds = new Set([previousTeacherId, row.teacher_id]);
         for (const teacherId of teacherIds) {
-          await syncTeacherReportDays({
+          const part = await syncTeacherReportDays({
             tenantId,
             teacherId,
             years: [
@@ -256,6 +258,7 @@ module.exports = {
               ...yearsBetween(row.start_date, row.end_date),
             ],
           });
+          if (teacherId === row.teacher_id) salarySync = part;
         }
       } catch (syncErr) {
         console.error('[report-salary]', syncErr.message);
@@ -267,7 +270,7 @@ module.exports = {
         entityId: row.id,
         summary: `İzin kaydı güncellendi (#${row.id})`,
       });
-      res.json({ success: true, data: full });
+      res.json({ success: true, data: full, salary_sync: salarySync });
     } catch (err) {
       next(err);
     }

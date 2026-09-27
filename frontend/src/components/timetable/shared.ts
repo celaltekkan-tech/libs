@@ -33,15 +33,13 @@ export function isGuidanceLesson(name?: string | null): boolean {
   return String(name || '').toLocaleLowerCase('tr-TR').includes('rehberlik')
 }
 
-// Ders adına göre sabit renk. Koyu temada açık pastel yerine tema ile uyumlu koyu ton.
-export function subjectColor(subjectId: number, dark = false): string {
-  const hue = (subjectId * 47) % 360
-  return dark ? `hsl(${hue} 32% 26%)` : `hsl(${hue} 70% 92%)`
+/** Ders programı sayfasıyla aynı dolgu: açık mavi, koyu temada tema yüzeyi. */
+export function subjectColor(_subjectId: number, dark = false): string {
+  return dark ? '#111a2c' : '#f0f5ff'
 }
 
-export function subjectBorder(subjectId: number, dark = false): string {
-  const hue = (subjectId * 47) % 360
-  return dark ? `hsl(${hue} 42% 58%)` : `hsl(${hue} 55% 60%)`
+export function subjectBorder(_subjectId: number, dark = false): string {
+  return dark ? '#3c89e8' : '#1677ff'
 }
 
 /** 1. öğretmen + ortak öğretmenler (tekrarsız). */

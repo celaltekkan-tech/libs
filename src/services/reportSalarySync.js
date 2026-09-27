@@ -3,6 +3,7 @@
 const { Op } = require('sequelize');
 const { LeaveRecord, Teacher, SalaryFormDraft, sequelize } = require('../models');
 const { formatDateTR } = require('./promotionFormService');
+const { getSalaryPeriodForDate } = require('../utils/salaryPeriod');
 
 const FREE_REPORT_DAYS = 7;
 
@@ -14,10 +15,25 @@ function isReportPayrollPerson(teacher) {
   return teacher.personnel_type === 'ogretmen' || teacher.personnel_type === 'memur';
 }
 
+function isoDate(value) {
+  if (!value) return '';
+  const text = String(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
+  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function eachDate(startIso, endIso) {
   const dates = [];
-  const cursor = new Date(`${String(startIso).slice(0, 10)}T12:00:00`);
-  const end = new Date(`${String(endIso).slice(0, 10)}T12:00:00`);
+  const startText = isoDate(startIso);
+  const endText = isoDate(endIso);
+  const cursor = new Date(`${startText}T12:00:00`);
+  const end = new Date(`${endText}T12:00:00`);
   if (Number.isNaN(cursor.getTime()) || Number.isNaN(end.getTime())) return dates;
   while (cursor <= end) {
     const y = cursor.getFullYear();
@@ -44,10 +60,33 @@ function yearsBetween(startIso, endIso) {
  */
 async function syncTeacherReportDays({ tenantId, teacherId, years }) {
   const teacher = await Teacher.findByPk(teacherId);
-  if (!teacher || (tenantId && teacher.tenant_id !== tenantId)) return;
+  if (!teacher || (tenantId && teacher.tenant_id !== tenantId)) return null;
   const uniqueYears = [...new Set((years || []).map(Number).filter((year) => year > 1900))];
+  const summary = { yearDays: 0, excessDays: 0, forms: [] };
   for (const year of uniqueYears) {
-    await syncYear({ tenantId: teacher.tenant_id, teacher, year });
+    const part = await syncYear({ tenantId: teacher.tenant_id, teacher, year });
+    summary.yearDays += part.yearDays;
+    summary.excessDays += part.excessDays;
+    summary.forms.push(...part.forms);
+  }
+  return summary;
+}
+
+async function syncTenantReportYear(tenantId, year) {
+  const y = Number(year);
+  if (!tenantId || !y) return;
+  const leaves = await LeaveRecord.findAll({
+    where: {
+      tenant_id: tenantId,
+      leave_type: 'rapor',
+      start_date: { [Op.lte]: `${y}-12-31` },
+      end_date: { [Op.gte]: `${y}-01-01` },
+    },
+    attributes: ['teacher_id'],
+  });
+  const teacherIds = [...new Set(leaves.map((row) => row.teacher_id).filter(Boolean))];
+  for (const teacherId of teacherIds) {
+    await syncTeacherReportDays({ tenantId, teacherId, years: [y] });
   }
 }
 
@@ -87,36 +126,45 @@ async function syncYear({ tenantId, teacher, year }) {
     byLeave.set(item.leaveId, bucket);
   }
 
-  const rowsByMonth = new Map();
+  const rowsByForm = new Map();
   if (isReportPayrollPerson(teacher)) {
     for (const [leaveId, days] of byLeave) {
-      const start = days[0];
-      const month = Number(start.slice(5, 7));
-      const list = rowsByMonth.get(month) || [];
-      list.push({
-        source_key: `${prefix}${leaveId}`,
-        personnel_no: teacher.personnel_no || '',
-        full_name: `${teacher.first_name || ''} ${teacher.last_name || ''}`.trim(),
-        national_id: teacher.national_id || '',
-        start_date: formatDateTR(start),
-        days_after_7: days.length,
-        documents: 'Sağlık raporu',
-      });
-      rowsByMonth.set(month, list);
+      const byPeriod = new Map();
+      for (const day of days) {
+        const period = getSalaryPeriodForDate(new Date(`${day}T12:00:00`));
+        const key = `${period.year}-${period.month}`;
+        const bucket = byPeriod.get(key) || { year: period.year, month: period.month, days: [] };
+        bucket.days.push(day);
+        byPeriod.set(key, bucket);
+      }
+      for (const bucket of byPeriod.values()) {
+        const list = rowsByForm.get(`${bucket.year}-${bucket.month}`) || [];
+        list.push({
+          source_key: `${prefix}${leaveId}:${bucket.year}-${bucket.month}`,
+          personnel_no: teacher.personnel_no || '',
+          full_name: `${teacher.first_name || ''} ${teacher.last_name || ''}`.trim(),
+          national_id: teacher.national_id || '',
+          start_date: formatDateTR(bucket.days[0]),
+          days_after_7: bucket.days.length,
+          documents: 'Sağlık raporu',
+        });
+        rowsByForm.set(`${bucket.year}-${bucket.month}`, list);
+      }
     }
   }
 
+  const forms = [];
   await sequelize.transaction(async (transaction) => {
     const drafts = await SalaryFormDraft.findAll({
-      where: { tenant_id: tenantId, year },
+      where: { tenant_id: tenantId, year: { [Op.in]: [year - 1, year, year + 1] } },
       transaction,
       lock: transaction.LOCK.UPDATE,
     });
-    const byMonth = new Map(drafts.map((draft) => [draft.month, draft]));
-    const months = new Set([...byMonth.keys(), ...rowsByMonth.keys()]);
-    for (const month of months) {
-      const incoming = rowsByMonth.get(month) || [];
-      let draft = byMonth.get(month);
+    const byKey = new Map(drafts.map((draft) => [`${draft.year}-${draft.month}`, draft]));
+    const keys = new Set([...byKey.keys(), ...rowsByForm.keys()]);
+    for (const key of keys) {
+      const incoming = rowsByForm.get(key) || [];
+      let draft = byKey.get(key);
       if (!draft && incoming.length === 0) continue;
       const payload = {
         departures: [],
@@ -130,13 +178,16 @@ async function syncYear({ tenantId, teacher, year }) {
       const kept = (Array.isArray(payload.report_days) ? payload.report_days : []).filter(
         (row) => !String(row?.source_key || '').startsWith(prefix),
       );
-      payload.report_days = [...kept, ...incoming];
+      const nextRows = [...kept, ...incoming];
+      if (JSON.stringify(payload.report_days || []) === JSON.stringify(nextRows)) continue;
+      payload.report_days = nextRows;
+      const [formYear, formMonth] = key.split('-').map(Number);
       if (!draft) {
         draft = await SalaryFormDraft.create(
           {
             tenant_id: tenantId,
-            month,
-            year,
+            month: formMonth,
+            year: formYear,
             payload,
           },
           { transaction },
@@ -144,12 +195,18 @@ async function syncYear({ tenantId, teacher, year }) {
       } else {
         await draft.update({ payload }, { transaction });
       }
+      if (incoming.length) {
+        forms.push({ month: formMonth, year: formYear, days: incoming.reduce((sum, row) => sum + Number(row.days_after_7 || 0), 0) });
+      }
     }
   });
+
+  return { yearDays: unique.length, excessDays: excess.length, forms };
 }
 
 module.exports = {
   syncTeacherReportDays,
+  syncTenantReportYear,
   isReportPayrollPerson,
   yearsBetween,
   FREE_REPORT_DAYS,

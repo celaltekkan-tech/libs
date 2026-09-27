@@ -54,7 +54,7 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
   const [range, setRange] = useState({ d1: project.days[0] || 1, d2: project.days[project.days.length - 1] || 5, p1: 1, p2: project.periods_per_day })
   const editable = ctx.canUpdate
   const periods = Array.from({ length: project.periods_per_day }, (_, i) => i + 1)
-  const schoolDays = (project.days.length ? [...project.days] : [1, 2, 3, 4, 5]).sort((a, b) => a - b)
+  const schoolDays = [1, 2, 3, 4, 5, 6, 7]
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -133,7 +133,7 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
   })
 
   const usable = (d: number, p: number) =>
-    project.days.includes(d) && p <= project.periods_per_day && (type === 'school' || schoolCells[`${d}-${p}`] !== 'closed')
+    p <= project.periods_per_day && (type === 'school' || schoolCells[`${d}-${p}`] !== 'closed')
 
   const startPaint = (key: string) => {
     if (!editable) return
@@ -155,7 +155,7 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
 
   const applyRange = (state: Brush) => {
     const out: Record<string, Brush> = {}
-    for (const d of project.days) {
+    for (const d of schoolDays) {
       if (d < Math.min(range.d1, range.d2) || d > Math.max(range.d1, range.d2)) continue
       for (let p = Math.min(range.p1, range.p2); p <= Math.max(range.p1, range.p2); p++) {
         if (usable(d, p)) out[`${d}-${p}`] = state
@@ -193,7 +193,7 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
   }, [lessons, currentId, type])
 
   const currentName = type === 'school' ? 'Okul geneli' : entities.find((e) => e.id === currentId)?.name || '—'
-  const dayOptions = DAY_OPTIONS.filter((d) => project.days.includes(d.value))
+  const dayOptions = DAY_OPTIONS
   const periodOptions = periods.map((p) => ({ value: p, label: `${p}. saat` }))
 
   const cellState = (d: number, p: number): CellState => {
@@ -206,8 +206,8 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
   return (
     <>
       <Typography.Paragraph type="secondary">
-        Yalnız okul saatlerinde seçilen ders günleri görünür. Cumartesi ve pazar kendiliğinden kapanmaz; ders günü
-        olarak işaretlemezseniz burada yer almazlar, işaretlerseniz açık gelir. Koyu renkli hücrede ders konmaz,
+        Cumartesi ve pazar kendiliğinden kapanmaz; yedi gün de açık gelir. Kapatmak istediğiniz saati siz boyarsınız.
+        Koyu renkli hücrede ders konmaz,
         sarı hücreye mümkünse konmaz, boş hücreler açıktır. Fırçayı seçip hücrelere tıklayın ya da sürükleyin; gün
         adına veya saat numarasına tıklamak tüm sütunu/satırı boyar.
       </Typography.Paragraph>

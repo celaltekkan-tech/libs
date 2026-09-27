@@ -22,14 +22,14 @@ const PERSON_STARTS = [2, 8, 14, 20]; // B, H, N, T
 
 /**
  * TYP EK-2 hücre kodları (İŞKUR açıklamalarına uyumlu).
- * Kodlar ileride güncellenebilir; raporlu için tek harf: R.
+ * Kodlar ileride güncellenebilir; raporlu için tek harf: S.
  */
 const STATUS_CODES = {
   geldi: '',
   fazla_mesai: '',
   gelmedi: 'D', // mazeretsiz / gerekçesiz
   izinli: 'Ü', // ücretsiz izin
-  raporlu: 'R', // sağlık raporu
+  raporlu: 'S', // sağlık raporu
   mazeretli: 'M', // mücbir mazeret (evlenme, doğum, vefat vb.)
   is_kazasi: 'İ', // iş kazası / meslek hastalığı
 };
@@ -320,7 +320,7 @@ function writeFooter(ws) {
     ws,
     46,
     2,
-    'Katılımcı ücretsiz izin almışsa Ü, sağlık raporu nedeniyle izinliyse R, evlenme-doğum ve 1. derece yakınlarının vefatı gibi mücbir nedenlerle mazeretli gelmemişse M (Belgeleri eklenecek), mazeret iş kazası ve meslek hastalığı ise İ, bu haller dışında mazeretsiz ve gerekçesiz devamsızlık yaptıysa D yazılacaktır.',
+    'Katılımcı ücretsiz izin almışsa Ü, sağlık raporu nedeniyle izinliyse S, evlenme-doğum ve 1. derece yakınlarının vefatı gibi mücbir nedenlerle mazeretli gelmemişse M (Belgeleri eklenecek), mazeret iş kazası ve meslek hastalığı ise İ, bu haller dışında mazeretsiz ve gerekçesiz devamsızlık yaptıysa D yazılacaktır.',
     {
       font: { size: 8, name: 'Calibri' },
       alignment: { horizontal: 'left', vertical: 'top', wrapText: true },
