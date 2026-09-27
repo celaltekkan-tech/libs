@@ -1,25 +1,7 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
 const PDFDocument = require('pdfkit');
-
-const FONT_REGULAR = 'SalaryFormSans';
-const FONT_BOLD = 'SalaryFormSans-Bold';
-
-function resolveFonts() {
-  const pairs = [
-    ['C:\\Windows\\Fonts\\arial.ttf', 'C:\\Windows\\Fonts\\arialbd.ttf'],
-    ['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'],
-    ['/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf', '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'],
-  ];
-  for (const [regular, bold] of pairs) {
-    if (fs.existsSync(regular) && fs.existsSync(bold)) {
-      return { regular, bold };
-    }
-  }
-  return null;
-}
+const { registerUnicodeFonts } = require('../utils/pdfFonts');
 
 function text(value) {
   if (value == null || value === '') return '';
@@ -39,7 +21,6 @@ function padRows(rows, minCount) {
  */
 function buildSalaryChangePdf(model) {
   return new Promise((resolve, reject) => {
-    const fonts = resolveFonts();
     const doc = new PDFDocument({
       size: 'A4',
       layout: 'portrait',
@@ -50,10 +31,7 @@ function buildSalaryChangePdf(model) {
       },
     });
 
-    if (fonts) {
-      doc.registerFont(FONT_REGULAR, fonts.regular);
-      doc.registerFont(FONT_BOLD, fonts.bold);
-    }
+    const fonts = registerUnicodeFonts(doc);
 
     const chunks = [];
     doc.on('data', (c) => chunks.push(c));
@@ -64,8 +42,8 @@ function buildSalaryChangePdf(model) {
     const left = doc.page.margins.left;
     let y = doc.page.margins.top;
 
-    const useBold = () => doc.font(fonts ? FONT_BOLD : 'Helvetica-Bold');
-    const useReg = () => doc.font(fonts ? FONT_REGULAR : 'Helvetica');
+    const useBold = () => doc.font(fonts.bold);
+    const useReg = () => doc.font(fonts.regular);
 
     const drawBox = (x, boxY, w, h) => {
       doc.rect(x, boxY, w, h).stroke();
@@ -308,5 +286,4 @@ function buildSalaryChangePdf(model) {
 
 module.exports = {
   buildSalaryChangePdf,
-  resolveFonts,
 };

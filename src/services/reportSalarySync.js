@@ -119,38 +119,26 @@ async function syncYear({ tenantId, teacher, year }) {
     unique.push(item);
   }
   const excess = unique.slice(FREE_REPORT_DAYS);
-  const byLeave = new Map();
-  for (const item of excess) {
-    const bucket = byLeave.get(item.leaveId) || [];
-    bucket.push(item.day);
-    byLeave.set(item.leaveId, bucket);
-  }
 
   const rowsByForm = new Map();
-  if (isReportPayrollPerson(teacher)) {
-    for (const [leaveId, days] of byLeave) {
-      const byPeriod = new Map();
-      for (const day of days) {
-        const period = getSalaryPeriodForDate(new Date(`${day}T12:00:00`));
-        const key = `${period.year}-${period.month}`;
-        const bucket = byPeriod.get(key) || { year: period.year, month: period.month, days: [] };
-        bucket.days.push(day);
-        byPeriod.set(key, bucket);
-      }
-      for (const bucket of byPeriod.values()) {
-        const list = rowsByForm.get(`${bucket.year}-${bucket.month}`) || [];
-        list.push({
-          source_key: `${prefix}${leaveId}:${bucket.year}-${bucket.month}`,
-          personnel_no: teacher.personnel_no || '',
-          full_name: `${teacher.first_name || ''} ${teacher.last_name || ''}`.trim(),
-          national_id: teacher.national_id || '',
-          start_date: formatDateTR(bucket.days[0]),
-          days_after_7: bucket.days.length,
-          documents: 'Sağlık raporu',
-        });
-        rowsByForm.set(`${bucket.year}-${bucket.month}`, list);
-      }
-    }
+  const excessCount = Math.max(0, unique.length - FREE_REPORT_DAYS);
+  // Rapor takibindeki "Maaşa yansıyan" ile aynı yazı: "5 gün"
+  const daysAfter7Text = excessCount > 0 ? `${excessCount} gün` : '';
+  if (isReportPayrollPerson(teacher) && excessCount > 0 && excess.length) {
+    const firstDay = excess[0].day;
+    const period = getSalaryPeriodForDate(new Date(`${firstDay}T12:00:00`));
+    const key = `${period.year}-${period.month}`;
+    const list = rowsByForm.get(key) || [];
+    list.push({
+      source_key: `${prefix}total`,
+      personnel_no: teacher.personnel_no || '',
+      full_name: `${teacher.first_name || ''} ${teacher.last_name || ''}`.trim(),
+      national_id: teacher.national_id || '',
+      start_date: formatDateTR(firstDay),
+      days_after_7: daysAfter7Text,
+      documents: 'Sağlık raporu',
+    });
+    rowsByForm.set(key, list);
   }
 
   const forms = [];
@@ -196,7 +184,11 @@ async function syncYear({ tenantId, teacher, year }) {
         await draft.update({ payload }, { transaction });
       }
       if (incoming.length) {
-        forms.push({ month: formMonth, year: formYear, days: incoming.reduce((sum, row) => sum + Number(row.days_after_7 || 0), 0) });
+        forms.push({
+          month: formMonth,
+          year: formYear,
+          days: incoming.reduce((sum, row) => sum + (parseInt(String(row.days_after_7), 10) || 0), 0),
+        });
       }
     }
   });

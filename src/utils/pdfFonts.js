@@ -1,11 +1,16 @@
 'use strict';
 
 const fs = require('fs');
+const path = require('path');
 
 const FONT_REGULAR = 'AppUnicodeSans';
 const FONT_BOLD = 'AppUnicodeSans-Bold';
 
+const BUNDLED_REGULAR = path.join(__dirname, '..', 'fonts', 'DejaVuSans.ttf');
+const BUNDLED_BOLD = path.join(__dirname, '..', 'fonts', 'DejaVuSans-Bold.ttf');
+
 const FONT_PAIRS = [
+  [BUNDLED_REGULAR, BUNDLED_BOLD],
   ['C:\\Windows\\Fonts\\arial.ttf', 'C:\\Windows\\Fonts\\arialbd.ttf'],
   ['/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'],
   ['/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf', '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'],
