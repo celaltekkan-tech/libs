@@ -630,7 +630,7 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
         </Typography.Text>
         {subjects.length === 0 ? (
           <Empty
-            description="Ders programında kayıt yok. Ders Programı sayfasından Excel ile içe yükleyin."
+            description="Ders programında kayıt yok. Otomatik Ders Programı sayfasından programı oluşturup yayınlayın."
             image={Empty.PRESENTED_IMAGE_SIMPLE}
           />
         ) : (

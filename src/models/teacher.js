@@ -38,6 +38,8 @@ module.exports = (sequelize, DataTypes) => {
     union_name: DataTypes.STRING,
     personnel_category_id: DataTypes.INTEGER,
     employment_type: DataTypes.STRING(20),
+    // Dış kurum görevlendirmesi: ders_tamamlama | tam_zamanli (null = kurumun öğretmeni)
+    duty_assignment_type: DataTypes.STRING(20),
     typ_subject: DataTypes.STRING(120),
     meta: DataTypes.JSONB
     }, {

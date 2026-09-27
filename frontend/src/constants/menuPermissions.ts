@@ -14,7 +14,6 @@ export const MENU_PATH_PERMISSION: Record<string, string> = {
   '/duty': 'duty.read',
   '/extra-lessons': 'payroll.read',
   '/attendance': 'payroll.read',
-  '/schedule': 'schedule.read',
   '/schedule-builder': 'schedule.read',
   '/exams': 'exams.read',
   '/kelebek': 'exams.read',

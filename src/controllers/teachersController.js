@@ -59,6 +59,7 @@ const COLUMN_LABELS = {
   durum: 'Durum',
   seviye_unvani: 'Seviye unvanı',
   employment_type: 'Çalışma biçimi',
+  duty_assignment_type: 'Görevlendirme',
   signature: 'İmza',
   signature_morning: 'Sabah imza',
   signature_noon: 'Öğle imza',
@@ -73,6 +74,11 @@ const SIGNATURE_KEYS = new Set([
   'signature_evening',
   'signature_timed',
 ]);
+
+const DUTY_ASSIGNMENT_LABELS = {
+  ders_tamamlama: 'Görevlendirme (ders tamamlama)',
+  tam_zamanli: 'Görevlendirme (tam zamanlı)',
+};
 
 const EMPLOYMENT_LABELS = {
   kadrolu: 'Kadrolu',
@@ -220,6 +226,9 @@ function formatDateCell(value) {
 
 function formatTeacherCell(teacher, key) {
   if (String(key).startsWith('signature')) return '';
+  if (key === 'duty_assignment_type') {
+    return DUTY_ASSIGNMENT_LABELS[teacher.duty_assignment_type] || '';
+  }
   if (key === 'employment_type') {
     return EMPLOYMENT_LABELS[teacher.employment_type] || teacher.employment_type || '';
   }

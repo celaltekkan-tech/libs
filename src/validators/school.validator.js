@@ -1,5 +1,6 @@
 const Joi = require('joi');
 const { SCHOOL_CODE_PATTERN, SCHOOL_CODE_MESSAGE } = require('../utils/schoolCode');
+const { PROGRAM_TYPES } = require('../utils/schoolProgram');
 
 const SCHOOL_TYPES = ['ilkokul', 'ortaokul', 'lise'];
 
@@ -14,6 +15,9 @@ const createSchoolSchema = Joi.object({
   name: Joi.string().required().min(2).max(200),
   code: schoolCodeSchema.empty('').optional(),
   school_type: Joi.string().valid(...SCHOOL_TYPES).default('lise'),
+  program_type: Joi.string().valid(...PROGRAM_TYPES).allow(null).empty(''),
+  has_prep_class: Joi.boolean().default(false),
+  is_special_program: Joi.boolean().default(false),
   daily_period_count: Joi.number().integer().min(1).max(12).default(8),
   province_id: optionalId,
   district_id: optionalId,
@@ -26,6 +30,9 @@ const updateSchoolSchema = Joi.object({
   name: Joi.string().min(2).max(200),
   code: schoolCodeSchema,
   school_type: Joi.string().valid(...SCHOOL_TYPES),
+  program_type: Joi.string().valid(...PROGRAM_TYPES).allow(null).empty(''),
+  has_prep_class: Joi.boolean(),
+  is_special_program: Joi.boolean(),
   daily_period_count: Joi.number().integer().min(1).max(12),
   province_id: optionalId,
   district_id: optionalId,

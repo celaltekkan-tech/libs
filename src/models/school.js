@@ -21,6 +21,20 @@ module.exports = (sequelize, DataTypes) => {
           allowNull: false,
           defaultValue: 'lise',
         },
+        program_type: {
+          type: DataTypes.STRING(40),
+          allowNull: true,
+        },
+        has_prep_class: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
+        },
+        is_special_program: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
+        },
         daily_period_count: {
           type: DataTypes.INTEGER,
           allowNull: false,

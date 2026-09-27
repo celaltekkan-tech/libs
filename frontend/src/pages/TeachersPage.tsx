@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Button, Checkbox, Col, DatePicker, Descriptions, Dropdown, Form, Input, InputNumber, Modal, Row, Select, Space, Typography } from 'antd'
+import { App, Button, Checkbox, Col, DatePicker, Descriptions, Dropdown, Form, Input, InputNumber, Modal, Radio, Row, Select, Space, Tag, Typography } from 'antd'
 import { SortableTable } from '../components/SortableTable'
 import {
   DeleteOutlined,
@@ -215,7 +215,13 @@ interface TeacherFormValues {
   contract_start_date?: Dayjs | null
   contract_end_date?: Dayjs | null
   add_to_salary_form?: boolean
+  duty_assignment_type?: 'ders_tamamlama' | 'tam_zamanli' | null
 }
+
+const DUTY_ASSIGNMENT_OPTIONS = [
+  { value: 'ders_tamamlama', label: 'Ders tamamlama' },
+  { value: 'tam_zamanli', label: 'Tam zamanlı' },
+]
 
 export function TeachersPage() {
   const { message, modal } = App.useApp()
@@ -243,6 +249,7 @@ export function TeachersPage() {
   )
   const [form] = Form.useForm<TeacherFormValues>()
   const employmentType = Form.useWatch('employment_type', form)
+  const addToSalaryForm = Form.useWatch('add_to_salary_form', form)
   const [moveTarget, setMoveTarget] = useState<Teacher | null>(null)
   const [moveCategoryId, setMoveCategoryId] = useState<number | null>(null)
   const [categories, setCategories] = useState<PersonnelCategory[]>([])
@@ -347,6 +354,7 @@ export function TeachersPage() {
     form.setFieldsValue({
       employment_type: kind,
       add_to_salary_form: kind !== 'ucretli',
+      duty_assignment_type: 'ders_tamamlama',
       school_id: activeSchoolId ?? undefined,
       kariyer: kind === 'ucretli' ? undefined : 'Öğretmen',
       city: activeSchool?.Province?.name || undefined,
@@ -384,6 +392,7 @@ export function TeachersPage() {
       annual_leave_quota: teacher.annual_leave_quota,
       union_name: teacher.union_name || undefined,
       employment_type: teacher.employment_type || 'kadrolu',
+      duty_assignment_type: teacher.duty_assignment_type ?? null,
       contract_start_date: teacher.contract_start_date ? dayjs(teacher.contract_start_date) : null,
       contract_end_date: teacher.contract_end_date ? dayjs(teacher.contract_end_date) : null,
     })
@@ -409,6 +418,15 @@ export function TeachersPage() {
         service_start_date: values.service_start_date ? values.service_start_date.format('YYYY-MM-DD') : null,
         first_duty_date: values.first_duty_date ? values.first_duty_date.format('YYYY-MM-DD') : null,
         employment_type: values.employment_type || 'kadrolu',
+        // Maaş değişikliği formuna eklenmeyen kadrolu/sözleşmeli öğretmen dış kurum görevlendirmesidir.
+        duty_assignment_type:
+          values.employment_type === 'ucretli'
+            ? null
+            : editing
+              ? values.duty_assignment_type || null
+              : add_to_salary_form
+                ? null
+                : values.duty_assignment_type || 'ders_tamamlama',
         contract_start_date: values.contract_start_date
           ? values.contract_start_date.format('YYYY-MM-DD')
           : null,
@@ -571,7 +589,17 @@ export function TeachersPage() {
       title: 'Ad soyad',
       sorter: personNameSorter<Teacher>(),
       sortDirections: [...SORT_AZ],
-      render: (_: unknown, record) => `${record.first_name} ${record.last_name}`,
+      render: (_: unknown, record) => (
+        <Space size={4}>
+          {`${record.first_name} ${record.last_name}`}
+          {record.employment_type === 'ucretli' && <Tag color="gold">Ücretli</Tag>}
+          {record.duty_assignment_type && (
+            <Tag color="purple">
+              {record.duty_assignment_type === 'tam_zamanli' ? 'Görevlendirme (tam zamanlı)' : 'Görevlendirme (ders tamamlama)'}
+            </Tag>
+          )}
+        </Space>
+      ),
     },
     { title: 'Cep telefonu', dataIndex: 'phone', render: (v: string | null) => v || '—' },
     { title: 'E-posta', dataIndex: 'email', render: (v: string | null) => v || '—' },
@@ -984,6 +1012,20 @@ export function TeachersPage() {
                 Maaş Değişikliği Bildirim Formuna ekle (C - Başlayan Personel). İşaret kaldırılırsa
                 görevlendirme kabul edilir.
               </Checkbox>
+            </Form.Item>
+          )}
+          {!editing && employmentType !== 'ucretli' && !addToSalaryForm && (
+            <Form.Item name="duty_assignment_type" label="Görevlendirme türü" extra="Dış kurum öğretmeni; ek ders puantajı hazırlanır.">
+              <Radio.Group options={DUTY_ASSIGNMENT_OPTIONS} />
+            </Form.Item>
+          )}
+          {editing && employmentType !== 'ucretli' && (
+            <Form.Item
+              name="duty_assignment_type"
+              label="Görevlendirme"
+              extra="Başka kurumdan görevlendirilen (maaşı bu kurumdan ödenmeyen) öğretmenler için seçin; ek ders puantajı hazırlanır."
+            >
+              <Select allowClear placeholder="Kurumun öğretmeni" options={DUTY_ASSIGNMENT_OPTIONS} />
             </Form.Item>
           )}
         </Form>
