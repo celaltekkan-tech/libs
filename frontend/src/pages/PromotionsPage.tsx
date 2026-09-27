@@ -341,35 +341,39 @@ export function PromotionsPage() {
       ? [
           {
             title: 'İşlemler',
-            render: (_: unknown, r: UpcomingPromotion) => (
-              <Space wrap size="small">
-                {!r.at_ceiling && (r.days_remaining == null || r.days_remaining >= 0) && (
-                  <Button size="small" onClick={() => openApply(r, 'yillik')}>
-                    Terfiyi Uygula
-                  </Button>
-                )}
-                {!r.at_ceiling && r.days_remaining != null && r.days_remaining < 0 && (
-                  <Button size="small" type="primary" onClick={() => markAppliedOutside(r)}>
-                    Terfi uygulandı
-                  </Button>
-                )}
-                {!r.at_ceiling && r.eight_year_due && (
-                  <Button size="small" onClick={() => openEightYear(r)}>
-                    8 Yıl Kontrolü
-                  </Button>
-                )}
-                {r.kariyer_eligible && (
-                  <Button size="small" onClick={() => openApply(r, 'kariyer')}>
-                    Kariyer Terfisi Uygula
-                  </Button>
-                )}
-                {!r.at_ceiling && (
-                  <Button size="small" onClick={() => openApply(r, 'manuel')}>
-                    Terfi Tarihini Değiştir
-                  </Button>
-                )}
-              </Space>
-            ),
+            render: (_: unknown, r: UpcomingPromotion) => {
+              const overdue = r.days_remaining != null && r.days_remaining < 0
+              const canApplyAnnual = !r.at_ceiling && (!overdue || r.personnel_type === 'ogretmen')
+              return (
+                <Space wrap size="small">
+                  {canApplyAnnual && (
+                    <Button size="small" onClick={() => openApply(r, 'yillik')}>
+                      Terfiyi Uygula
+                    </Button>
+                  )}
+                  {!r.at_ceiling && overdue && (
+                    <Button size="small" type="primary" onClick={() => markAppliedOutside(r)}>
+                      Terfi uygulandı
+                    </Button>
+                  )}
+                  {!r.at_ceiling && r.eight_year_due && (
+                    <Button size="small" onClick={() => openEightYear(r)}>
+                      8 Yıl Kontrolü
+                    </Button>
+                  )}
+                  {r.kariyer_eligible && (
+                    <Button size="small" onClick={() => openApply(r, 'kariyer')}>
+                      Kariyer Terfisi Uygula
+                    </Button>
+                  )}
+                  {!r.at_ceiling && (
+                    <Button size="small" onClick={() => openApply(r, 'manuel')}>
+                      Terfi Tarihini Değiştir
+                    </Button>
+                  )}
+                </Space>
+              )
+            },
           },
         ]
       : []),

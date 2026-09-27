@@ -29,6 +29,7 @@ export interface SalaryFormDeductionRow extends SalaryFormPersonRow {
 export interface SalaryFormReportDayRow extends SalaryFormPersonRow {
   start_date?: string
   days_after_7?: number | string
+  source_key?: string | null
 }
 
 export interface SalaryFormUnionChangeRow extends SalaryFormPersonRow {

@@ -4,6 +4,8 @@ export interface TimetableWeights {
   teacher_single_hour_day: number
   hard_subject_late: number
   soft_constraint: number
+  availability_avoid: number
+  block_flex: number
 }
 
 export interface DayBreak {
@@ -24,6 +26,8 @@ export interface TimetableSettings {
   max_subject_daily: number
   weights: TimetableWeights
   bell?: BellSchedule
+  block_across_lunch?: boolean
+  class_lunch?: Record<string, number>
 }
 
 export const DEFAULT_BELL: BellSchedule = {
@@ -48,7 +52,7 @@ export interface TimetableProject {
   status: TimetableProjectStatus
   published_at: string | null
   School?: { id: number; name: string } | null
-  counts?: { assignments: number; constraints: number; lessons: number }
+  counts?: { assignments: number; constraints: number; lessons: number; availability?: number }
   created_at: string
   updated_at: string
 }
@@ -61,6 +65,7 @@ export interface TimetableProjectPayload {
   periods_per_day?: number
   lunch_after?: number | null
   settings?: Partial<TimetableSettings>
+  copy_from?: { project_id: number; parts: Array<'assignments' | 'availability' | 'constraints'> }
 }
 
 export interface TimetableRoom {
@@ -82,6 +87,10 @@ export interface TimetableAssignment {
   block_pattern: string | null
   room_id: number | null
   sync_group: string | null
+  co_teacher_ids: number[]
+  elective_group: string | null
+  allow_split: boolean | null
+  allow_merge: boolean | null
   Classroom?: { id: number; class_level: string; section: string } | null
   Subject?: { id: number; name: string; code: string | null; difficulty_level: string | null } | null
   Teacher?: { id: number; first_name: string; last_name: string; brans: string | null } | null
@@ -96,6 +105,10 @@ export interface TimetableAssignmentPayload {
   block_pattern?: string | null
   room_id?: number | null
   sync_group?: string | null
+  co_teacher_ids?: number[]
+  elective_group?: string | null
+  allow_split?: boolean | null
+  allow_merge?: boolean | null
 }
 
 export type ConstraintType =
@@ -107,6 +120,9 @@ export type ConstraintType =
   | 'teacher_max_consecutive'
   | 'subject_period_preference'
   | 'subject_max_daily'
+  | 'subjects_not_same_day'
+  | 'subjects_same_day'
+  | 'subject_no_lunch_split'
 
 export interface ConstraintSlot {
   day: number
@@ -118,6 +134,7 @@ export interface ConstraintParams {
   classroom_id?: number | null
   room_id?: number | null
   subject_id?: number | null
+  subject_ids?: number[]
   slots?: ConstraintSlot[]
   max?: number
   count?: number
@@ -219,6 +236,8 @@ export const SCORE_LABELS: Record<string, string> = {
   teacher_single_hour_day: 'Öğretmenin tek saatlik günleri',
   hard_subject_late: 'Zor derslerin son saatlere düşmesi',
   soft_constraints: 'Esnek kısıt ihlalleri',
+  availability_avoid: 'İstenmeyen saatlere düşen dersler',
+  block_flex: 'Bölünen / birleştirilen bloklar',
 }
 
 export const WEIGHT_LABELS: Record<keyof TimetableWeights, string> = {
@@ -227,6 +246,8 @@ export const WEIGHT_LABELS: Record<keyof TimetableWeights, string> = {
   teacher_single_hour_day: 'Öğretmenin okula tek ders için gelmesi',
   hard_subject_late: 'Zor dersin son saatlere düşmesi',
   soft_constraint: 'Esnek kısıt varsayılan ağırlığı',
+  availability_avoid: 'Zaman tablosunda "istenmiyor" saate ders',
+  block_flex: 'Blok bölme / birleştirme (B1/B2)',
 }
 
 export const RUN_STATUS_LABELS: Record<RunStatus, { label: string; color: string }> = {
@@ -246,3 +267,66 @@ export const ROOM_TYPES = [
   { value: 'resim', label: 'Resim atölyesi' },
   { value: 'diger', label: 'Diğer' },
 ]
+
+// ---- branş, ders havuzu, zaman tablosu
+
+export interface Branch {
+  id: number
+  tenant_id: number
+  code: string | null
+  name: string
+}
+
+export interface PoolSubject {
+  id: number
+  name: string
+  code: string | null
+  difficulty_level: string | null
+  branch_id: number | null
+  allow_split: boolean
+  allow_merge: boolean
+  is_elective: boolean
+  elective_group: string | null
+  is_guidance: boolean
+  is_activity: boolean
+  is_active: boolean
+}
+
+export interface PoolHour {
+  id: number
+  subject_id: number
+  class_level: string
+  weekly_hours: number
+  block_pattern: string | null
+}
+
+export interface LessonPool {
+  subjects: PoolSubject[]
+  hours: PoolHour[]
+  branches: Branch[]
+}
+
+export type AvailabilityEntity = 'school' | 'teacher' | 'classroom' | 'room' | 'subject'
+export type CellState = 'closed' | 'avoid'
+// "gün-saat" -> durum; listede olmayan hücre açıktır
+export type AvailabilityCells = Record<string, CellState>
+
+export interface TimetableAvailability {
+  id: number
+  project_id: number
+  entity_type: AvailabilityEntity
+  entity_id: number
+  cells: AvailabilityCells
+}
+
+export interface ElectiveStudent {
+  id: number
+  student_number: string | null
+  first_name: string
+  last_name: string
+}
+
+export interface ElectiveData {
+  students: ElectiveStudent[]
+  choices: Array<{ assignment_id: number; student_id: number }>
+}

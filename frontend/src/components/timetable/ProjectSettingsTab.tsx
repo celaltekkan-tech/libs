@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { App, Button, Card, Checkbox, Col, Form, Input, InputNumber, Row, Select, Space, TimePicker, Typography } from 'antd'
+import { App, Button, Card, Checkbox, Col, Form, Input, InputNumber, Row, Select, Space, Switch, TimePicker, Typography } from 'antd'
 import { MinusCircleOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { updateTimetableProject } from '../../api/timetable'
@@ -17,6 +17,7 @@ interface FormValues {
   lunch_after: number | null
   time_limit: number
   max_subject_daily: number
+  block_across_lunch: boolean
   weights: TimetableWeights
   bell: BellSchedule
 }
@@ -27,6 +28,8 @@ const WEIGHT_HELP: Record<keyof TimetableWeights, string> = {
   teacher_single_hour_day: 'Öğretmenin bir gün yalnızca 1 saat dersi olması',
   hard_subject_late: 'Zorluk seviyesi "zor" olan derslerin son iki saate düşmesi',
   soft_constraint: 'Ağırlığı belirtilmeyen esnek kısıtların ihlal cezası',
+  availability_avoid: 'Zaman tablosunda sarı ("istenmiyor") işaretli saate ders konması',
+  block_flex: 'Havuzda B1/B2 işaretli dersin bloğunun bölünmesi veya birleştirilmesi',
 }
 
 export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
@@ -44,6 +47,7 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
       lunch_after: project.lunch_after,
       time_limit: project.settings.time_limit,
       max_subject_daily: project.settings.max_subject_daily,
+      block_across_lunch: Boolean(project.settings.block_across_lunch),
       weights: project.settings.weights,
       bell: {
         ...DEFAULT_BELL,
@@ -65,6 +69,7 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
         settings: {
           time_limit: values.time_limit,
           max_subject_daily: values.max_subject_daily,
+          block_across_lunch: values.block_across_lunch,
           weights: values.weights,
           bell: {
             ...values.bell,
@@ -150,11 +155,19 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
               <Form.Item
                 name="lunch_after"
                 label="Öğle arası (kaçıncı dersten sonra)"
-                extra="Boş bırakılabilir. Peş peşe dersler öğle arasına bölünmez."
+                extra="Boş bırakılabilir. Şubeye özel öğle arası 'Sınıfa ders verme' adımında girilir."
               >
                 <InputNumber min={1} max={11} />
               </Form.Item>
             </Space>
+            <Form.Item
+              name="block_across_lunch"
+              label="Peş peşe dersler öğle arasını aşabilir"
+              valuePropName="checked"
+              extra="Kapalıyken hiçbir blok öğle arasıyla bölünmez. Açıkken yalnız 'Öğle arasıyla bölünmesin' isteğindeki dersler korunur."
+            >
+              <Switch />
+            </Form.Item>
           </Card>
           <Card title="Programı ne kadar uğraştırsın?" size="small" style={{ marginBottom: 16 }}>
             <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>

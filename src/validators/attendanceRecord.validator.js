@@ -31,6 +31,8 @@ const exportAttendanceSchema = Joi.object({
   typ_start_date: Joi.string().allow('', null).max(40).optional(),
   typ_end_date: Joi.string().allow('', null).max(40).optional(),
   school_id: Joi.number().integer().optional(),
+  teacher_ids: Joi.array().items(Joi.number().integer()).max(500).optional(),
+  per_sheet: Joi.number().integer().valid(3, 4).optional(),
 });
 
 module.exports = {

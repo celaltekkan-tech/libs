@@ -494,6 +494,10 @@ export function TeachersPage() {
       message.warning('En az bir sütun seçin')
       return
     }
+    if (hasActiveFilters && filteredTeachers.length === 0) {
+      message.warning('Seçili filtreye uyan öğretmen yok')
+      return
+    }
     setSubmitting(true)
     try {
       const blob = await exportTeachers({
@@ -501,8 +505,10 @@ export function TeachersPage() {
         columns: exportColumns,
         filters: {
           scope: 'teachers',
-          ...(searchQuery.trim() ? { q: searchQuery.trim() } : {}),
+          ...(activeSchoolId ? { school_id: activeSchoolId } : {}),
+          ...(!hasActiveFilters && searchQuery.trim() ? { q: searchQuery.trim() } : {}),
         },
+        ...(hasActiveFilters ? { ids: filteredTeachers.map((teacher) => teacher.id) } : {}),
       })
       downloadBlob(blob, exportFilename('ogretmenler', exportFormat))
       message.success('Dışa aktarma indirildi')

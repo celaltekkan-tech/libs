@@ -271,10 +271,11 @@ module.exports = {
   async exportFile(req, res, next) {
     try {
       const tenantId = req.user && req.user.tenant_id;
-      const { format, start_date, end_date } = req.validatedBody || req.body || {};
+      const { format, start_date, end_date, student_ids } = req.validatedBody || req.body || {};
       const where = {};
       if (tenantId) where.tenant_id = tenantId;
       if (start_date && end_date) where.absence_date = { [Op.gte]: start_date, [Op.lte]: end_date };
+      if (Array.isArray(student_ids)) where.student_id = { [Op.in]: student_ids.length ? student_ids : [0] };
 
       const rows = await StudentAbsence.findAll({
         where,

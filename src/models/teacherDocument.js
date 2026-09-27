@@ -3,7 +3,8 @@ module.exports = (sequelize, DataTypes) => {
     'TeacherDocument',
     {
       tenant_id: DataTypes.INTEGER,
-      teacher_id: DataTypes.INTEGER,
+      teacher_id: { type: DataTypes.INTEGER, allowNull: true },
+      category: { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'yillik_evrak' },
       doc_type: DataTypes.STRING,
       title: DataTypes.STRING,
       academic_year: DataTypes.STRING,

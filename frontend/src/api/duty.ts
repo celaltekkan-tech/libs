@@ -91,6 +91,18 @@ export async function fetchDutyFairness(params?: { start_date?: string; end_date
   return data.data
 }
 
+export async function copyDutyWeek(payload: {
+  start_date: string
+  shift_locations?: boolean
+  replace?: boolean
+}): Promise<{ copied: number; start_date: string; end_date: string }> {
+  const { data } = await client.post<Envelope<{ copied: number; start_date: string; end_date: string }>>(
+    '/api/duty/copy-week',
+    payload,
+  )
+  return data.data
+}
+
 export async function exportDuty(payload: {
   format: ExportFormat
   start_date?: string

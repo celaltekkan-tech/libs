@@ -6,6 +6,13 @@ module.exports = (sequelize, DataTypes) => {
       name: DataTypes.STRING,
       code: DataTypes.STRING,
       difficulty_level: DataTypes.STRING,
+      branch_id: DataTypes.INTEGER,
+      allow_split: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+      allow_merge: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+      is_elective: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+      elective_group: DataTypes.STRING,
+      is_guidance: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+      is_activity: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
       is_active: {
         type: DataTypes.BOOLEAN,
         allowNull: false,
@@ -22,6 +29,7 @@ module.exports = (sequelize, DataTypes) => {
 
   Subject.associate = function (models) {
     Subject.belongsTo(models.Tenant, { foreignKey: 'tenant_id' });
+    Subject.belongsTo(models.Branch, { foreignKey: 'branch_id' });
     Subject.hasMany(models.ScheduleEntry, { foreignKey: 'subject_id' });
     Subject.hasMany(models.DykCourse, { foreignKey: 'subject_id' });
     Subject.hasMany(models.Exam, { foreignKey: 'subject_id' });

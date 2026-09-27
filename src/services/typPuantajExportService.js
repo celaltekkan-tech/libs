@@ -153,7 +153,7 @@ function writeSheetHeader(ws, meta) {
   });
 
   merge(ws, 2, 2, 2, 24);
-  setCell(ws, 2, 2, '(4 kişilik)', {
+  setCell(ws, 2, 2, `(${meta.personCount || 4} kişilik)`, {
     font: { bold: true, size: 7, color: { argb: 'FF0070C0' }, name: 'Times New Roman' },
     alignment: { horizontal: 'center', vertical: 'middle' },
   });
@@ -382,6 +382,8 @@ function setupColumns(ws) {
  *   typSubject?: string,
  *   typStartDate?: string,
  *   typEndDate?: string,
+ *   teacherIds?: number[],
+ *   perSheet?: number,
  * }} opts
  */
 async function buildTypPuantajWorkbook(opts) {
@@ -398,7 +400,10 @@ async function buildTypPuantajWorkbook(opts) {
     typSubject = '',
     typStartDate = '',
     typEndDate = '',
+    teacherIds,
+    perSheet: rawPerSheet,
   } = opts;
+  const perSheet = rawPerSheet === 3 ? 3 : 4;
 
   const closedDays = buildClosedDaySet(year, month, holidays, extraClosedDays);
 
@@ -409,11 +414,15 @@ async function buildTypPuantajWorkbook(opts) {
     attendanceMap.get(row.teacher_id)[day] = row.status;
   });
 
-  const wantedSubject = String(typSubject || '').trim().toLocaleLowerCase('tr-TR');
+  const idOrder = Array.isArray(teacherIds) ? teacherIds.map((id) => Number(id)) : null;
+  const byId = new Map((teachers || []).map((teacher) => [teacher.id, teacher]));
+  const selected = idOrder
+    ? idOrder.map((id) => byId.get(id)).filter(Boolean)
+    : teachers || [];
+
   const groups = new Map();
-  for (const teacher of teachers) {
+  for (const teacher of selected) {
     const subject = String(teacher.typ_subject || teacher.title_branch || 'TYP').trim() || 'TYP';
-    if (wantedSubject && subject.toLocaleLowerCase('tr-TR') !== wantedSubject) continue;
     const list = groups.get(subject) || [];
     list.push(teacher);
     groups.set(subject, list);
@@ -426,8 +435,8 @@ async function buildTypPuantajWorkbook(opts) {
 
   for (const [subject, people] of groups) {
     const chunks = [];
-    for (let i = 0; i < Math.max(people.length, 1); i += 4) {
-      chunks.push(people.slice(i, i + 4));
+    for (let i = 0; i < Math.max(people.length, 1); i += perSheet) {
+      chunks.push(people.slice(i, i + perSheet));
     }
     if (people.length === 0) chunks.splice(0, chunks.length, [null, null, null, null]);
 
@@ -450,9 +459,10 @@ async function buildTypPuantajWorkbook(opts) {
         schoolName,
         principalName,
         typNo,
-        typSubject: subject,
+        typSubject: typSubject || subject,
         typStartDate: inferredStart,
         typEndDate: inferredEnd,
+        personCount: perSheet,
       });
 
       PERSON_STARTS.forEach((startCol, personIdx) => {

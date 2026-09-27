@@ -29,6 +29,7 @@ module.exports = (sequelize, DataTypes) => {
     TimetableProject.hasMany(models.TimetableConstraint, { foreignKey: 'project_id' });
     TimetableProject.hasMany(models.TimetableRun, { foreignKey: 'project_id' });
     TimetableProject.hasMany(models.TimetableLesson, { foreignKey: 'project_id' });
+    TimetableProject.hasMany(models.TimetableAvailability, { foreignKey: 'project_id' });
   };
 
   return TimetableProject;

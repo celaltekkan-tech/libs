@@ -57,6 +57,7 @@ const RESPONSE_SCHEMA = {
               classroom_id: idProp,
               room_id: idProp,
               subject_id: idProp,
+              subject_ids: intList,
               slots: {
                 type: 'ARRAY',
                 items: {
@@ -125,6 +126,9 @@ Kısıt türleri ve params alanları:
 - teacher_max_consecutive: teacher_id (null=tümü), max. Üst üste en fazla kaç saat.
 - subject_period_preference: subject_id, classroom_id (null=tüm şubeler), mode ("only"=yalnızca bu saatlerde, "avoid"=bu saatlere konmasın), periods, days (boş=tüm günler).
 - subject_max_daily: subject_id, classroom_id (null=tümü), max.
+- subjects_not_same_day: subject_ids (en az 2), classroom_id (null=tüm şubeler). "Fizik ile kimya aynı güne gelmesin".
+- subjects_same_day: subject_ids (en az 2), classroom_id (null=tümü). Dersler her hafta aynı günlerde olsun.
+- subject_no_lunch_split: subject_ids, classroom_id (null=tümü). Peş peşe blok öğle arasıyla ikiye bölünmesin.
 
 is_hard: Kullanıcı "kesinlikle, asla, olmasın, gelemez, izinli, raporlu" gibi kesin ifade kullanırsa true.
 "Tercihen, mümkünse, olursa iyi olur, istiyor, rica etti" gibi yumuşak ifadelerde false ve weight 10-50 arası (önem arttıkça yüksek).
@@ -238,6 +242,9 @@ async function parseConstraints(ctx, userText) {
         if (params[key] != null && !set.has(params[key])) {
           throw new Error(`listede olmayan ${key}=${params[key]}`);
         }
+      }
+      for (const sid of params.subject_ids || []) {
+        if (!ids.subject_id.has(sid)) throw new Error(`listede olmayan subject_id=${sid}`);
       }
       if (params.slots) {
         params.slots = params.slots.filter((s) => ctx.days.includes(s.day));

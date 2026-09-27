@@ -132,7 +132,12 @@ module.exports = {
         return res.status(400).json({ success: false, message: 'teacher_id, year ve month zorunludur' });
       }
 
-      const entries = await ScheduleEntry.findAll({ where: { tenant_id: tenantId, teacher_id: teacherId } });
+      const entries = await ScheduleEntry.findAll({
+        where: {
+          tenant_id: tenantId,
+          [Op.or]: [{ teacher_id: teacherId }, { co_teacher_ids: { [Op.contains]: [teacherId] } }],
+        },
+      });
       const daysInMonth = new Date(year, month, 0).getDate();
       let totalSlots = 0;
       for (let day = 1; day <= daysInMonth; day += 1) {

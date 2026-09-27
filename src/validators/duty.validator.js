@@ -42,6 +42,12 @@ const generateDutySchema = Joi.object({
   mode: Joi.string().valid('fair', 'weekly_rotate').default('fair'),
 });
 
+const copyDutyWeekSchema = Joi.object({
+  start_date: Joi.date().iso().required(),
+  shift_locations: Joi.boolean().default(false),
+  replace: Joi.boolean().default(false),
+});
+
 const exportDutySchema = Joi.object({
   format: Joi.string().valid('xlsx', 'csv', 'pdf').required(),
   start_date: Joi.date().iso().optional(),
@@ -54,5 +60,6 @@ module.exports = {
   createDutyAssignmentSchema,
   updateDutyAssignmentSchema,
   generateDutySchema,
+  copyDutyWeekSchema,
   exportDutySchema,
 };

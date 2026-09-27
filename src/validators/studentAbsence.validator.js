@@ -23,6 +23,7 @@ const exportAbsenceSchema = Joi.object({
   format: Joi.string().valid('xlsx', 'csv', 'pdf').required(),
   start_date: Joi.date().iso().optional(),
   end_date: Joi.date().iso().optional(),
+  student_ids: Joi.array().items(Joi.number().integer()).max(5000).optional(),
 });
 
 module.exports = { bulkAbsenceSchema, exportAbsenceSchema, ABSENCE_TYPES };

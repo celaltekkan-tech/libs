@@ -196,7 +196,15 @@ export function AbsencesPage() {
   const onExport = async () => {
     setSubmitting(true)
     try {
-      const blob = await exportAbsences({ format: exportFormat })
+      const filtered = Boolean(search.trim() || classroomFilter)
+      if (filtered && filteredStudents.length === 0) {
+        message.warning('Seçili filtreye uyan öğrenci yok')
+        return
+      }
+      const blob = await exportAbsences({
+        format: exportFormat,
+        ...(filtered ? { student_ids: filteredStudents.map((student) => student.id) } : {}),
+      })
       downloadBlob(blob, exportFilename('devamsizlik-raporu', exportFormat))
       message.success('Dışa aktarma indirildi')
     } catch (err) {

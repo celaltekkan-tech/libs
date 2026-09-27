@@ -811,7 +811,7 @@ module.exports = {
   async exportFile(req, res, next) {
     try {
       const tenantId = req.user && req.user.tenant_id;
-      const { format, columns, filters } = req.validatedBody || req.body;
+      const { format, columns, filters, ids } = req.validatedBody || req.body;
       const requested = Array.isArray(columns) && columns.length ? columns : DEFAULT_COLUMNS;
       const headers = [];
       const allowed = [];
@@ -831,6 +831,7 @@ module.exports = {
 
       const where = {};
       if (tenantId) where.tenant_id = tenantId;
+      if (Array.isArray(ids)) where.id = { [Op.in]: ids.length ? ids : [0] };
       if (filters?.school_id) where.school_id = Number(filters.school_id);
       applyPersonnelScope(where, filters || {});
 

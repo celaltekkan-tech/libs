@@ -70,6 +70,17 @@ function collapsePromotionBlankRows(ws) {
   });
 }
 
+/** Arial Tur, Unicode metni bozuk gösterir. Okunur yazı tipi Arial'dir. */
+function useReadableTurkishFonts(ws) {
+  ws.eachRow({ includeEmpty: false }, (row) => {
+    row.eachCell({ includeEmpty: false }, (cell) => {
+      const font = cell.font || {};
+      if (font.name && font.name !== 'Arial Tur') return;
+      cell.font = { ...font, name: 'Arial', charset: 162 };
+    });
+  });
+}
+
 function writeMapped(ws, cell, value) {
   if (!cell) return;
   ws.getCell(cell).value = value == null || value === '' ? '' : value;
@@ -176,6 +187,7 @@ async function fillPromotionForm(history, teacher, options = {}) {
     writeMapped(ws, shifted, values[field]);
   });
 
+  useReadableTurkishFonts(ws);
   return wb.xlsx.writeBuffer();
 }
 
@@ -324,6 +336,7 @@ async function fillSalaryChangeForm(promotionEntries, options) {
   writeRowBlock(ws, mapping.reportDayRows, model.report_days, (r) => r);
   writeRowBlock(ws, mapping.unionChangeRows, model.union_changes, (r) => r);
 
+  useReadableTurkishFonts(ws);
   const buffer = await wb.xlsx.writeBuffer();
   return { buffer, truncated: model.truncated };
 }

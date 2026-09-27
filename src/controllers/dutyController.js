@@ -1,7 +1,7 @@
 'use strict';
 
 const { Op } = require('sequelize');
-const { DutyLocation, DutyAssignment, Teacher, LeaveRecord } = require('../models');
+const { DutyLocation, DutyAssignment, Teacher, LeaveRecord, sequelize } = require('../models');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
 
@@ -622,6 +622,90 @@ module.exports = {
           by_teacher: Array.from(byTeacher.values()).sort((a, b) => b.count - a.count),
           by_location: Array.from(byLocation.values()).sort((a, b) => b.count - a.count),
         },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async copyWeek(req, res, next) {
+    try {
+      const tenantId = req.user && req.user.tenant_id;
+      const { start_date, shift_locations, replace } = req.validatedBody || req.body;
+      const monday = weekMonday(String(start_date).slice(0, 10));
+      const plusDays = (iso, days) => {
+        const d = new Date(`${iso}T12:00:00`);
+        d.setDate(d.getDate() + days);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      };
+      const sourceEnd = plusDays(monday, 4);
+      const targetStart = plusDays(monday, 7);
+      const targetEnd = plusDays(monday, 11);
+
+      const locations = await DutyLocation.findAll({
+        where: { tenant_id: tenantId, is_active: true },
+      });
+      const ordered = [...locations].sort(
+        (a, b) =>
+          (a.sort_order || 0) - (b.sort_order || 0) ||
+          String(a.name).localeCompare(String(b.name), 'tr'),
+      );
+      const nextLocation = new Map();
+      ordered.forEach((loc, index) => {
+        const target = ordered[(index + 1) % ordered.length];
+        nextLocation.set(loc.id, target ? target.id : loc.id);
+      });
+
+      const sourceRows = await DutyAssignment.findAll({
+        where: {
+          tenant_id: tenantId,
+          duty_date: { [Op.gte]: monday, [Op.lte]: sourceEnd },
+        },
+      });
+      if (sourceRows.length === 0) {
+        return res.status(400).json({ success: false, message: 'Bu haftada aktarılacak nöbet yok' });
+      }
+
+      const targetRows = await DutyAssignment.findAll({
+        where: {
+          tenant_id: tenantId,
+          duty_date: { [Op.gte]: targetStart, [Op.lte]: targetEnd },
+        },
+      });
+      if (targetRows.length > 0 && !replace) {
+        return res.status(409).json({
+          success: false,
+          code: 'TARGET_NONEMPTY',
+          message: 'Sonraki haftada nöbet var. Üzerine yazmak için onaylayın.',
+        });
+      }
+
+      const created = await sequelize.transaction(async (transaction) => {
+        if (replace && targetRows.length > 0) {
+          await DutyAssignment.destroy({
+            where: { id: targetRows.map((row) => row.id) },
+            transaction,
+          });
+        }
+        const payload = sourceRows.map((row) => ({
+          tenant_id: tenantId,
+          school_id: row.school_id,
+          teacher_id: row.teacher_id,
+          duty_location_id: shift_locations
+            ? nextLocation.get(row.duty_location_id) || row.duty_location_id
+            : row.duty_location_id,
+          duty_date: plusDays(String(row.duty_date).slice(0, 10), 7),
+          notes: row.notes,
+        }));
+        return DutyAssignment.bulkCreate(payload, { transaction });
+      });
+
+      res.json({
+        success: true,
+        data: { copied: created.length, start_date: targetStart, end_date: targetEnd },
       });
     } catch (err) {
       next(err);

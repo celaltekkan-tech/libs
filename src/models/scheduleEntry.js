@@ -10,6 +10,7 @@ module.exports = (sequelize, DataTypes) => {
       day_of_week: DataTypes.INTEGER,
       period_no: DataTypes.INTEGER,
       academic_year: DataTypes.STRING,
+      co_teacher_ids: { type: DataTypes.ARRAY(DataTypes.INTEGER), allowNull: false, defaultValue: [] },
     },
     {
       tableName: 'ScheduleEntries',

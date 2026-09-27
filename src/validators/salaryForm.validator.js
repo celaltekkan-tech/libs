@@ -60,6 +60,7 @@ const salaryFormPayloadSchema = Joi.object({
         ...rowPerson,
         start_date: Joi.string().allow('', null).max(20),
         days_after_7: Joi.alternatives().try(Joi.number(), Joi.string().allow('', null)).optional(),
+        source_key: Joi.string().allow('', null).max(80),
       })
     )
     .max(20),
@@ -112,6 +113,7 @@ const APPEND_ROW_SCHEMAS = {
     ...rowPerson,
     start_date: Joi.string().allow('', null).max(20),
     days_after_7: Joi.alternatives().try(Joi.number(), Joi.string().allow('', null)).optional(),
+    source_key: Joi.string().allow('', null).max(80),
   }),
   union_changes: Joi.object({
     ...rowPerson,

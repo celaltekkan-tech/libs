@@ -3,6 +3,7 @@
 const { Op } = require('sequelize');
 const { LeaveRecord, Teacher, Holiday } = require('../models');
 const audit = require('../services/auditService');
+const { syncTeacherReportDays, yearsBetween } = require('../services/reportSalarySync');
 const { sendTableExport } = require('../services/exportService');
 
 // 657 sayılı Devlet Memurları Kanunu madde 102: hizmeti 1-10 yıl (10 dahil) olanlara
@@ -192,6 +193,15 @@ module.exports = {
       payload.day_count = dayCount(payload.start_date, payload.end_date);
 
       const row = await LeaveRecord.create(payload);
+      try {
+        await syncTeacherReportDays({
+          tenantId: teacher.tenant_id,
+          teacherId: teacher.id,
+          years: yearsBetween(payload.start_date, payload.end_date),
+        });
+      } catch (syncErr) {
+        console.error('[report-salary]', syncErr.message);
+      }
       const full = await LeaveRecord.findByPk(row.id, { include: [teacherInclude] });
       await audit.log(req, {
         action: 'create',
@@ -231,7 +241,25 @@ module.exports = {
         }
       }
 
+      const previousStart = row.start_date;
+      const previousEnd = row.end_date;
+      const previousTeacherId = row.teacher_id;
       await row.update(payload);
+      try {
+        const teacherIds = new Set([previousTeacherId, row.teacher_id]);
+        for (const teacherId of teacherIds) {
+          await syncTeacherReportDays({
+            tenantId,
+            teacherId,
+            years: [
+              ...yearsBetween(previousStart, previousEnd),
+              ...yearsBetween(row.start_date, row.end_date),
+            ],
+          });
+        }
+      } catch (syncErr) {
+        console.error('[report-salary]', syncErr.message);
+      }
       const full = await LeaveRecord.findByPk(row.id, { include: [teacherInclude] });
       await audit.log(req, {
         action: 'update',
@@ -253,7 +281,19 @@ module.exports = {
         return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
       }
       const id = row.id;
+      const removedTeacherId = row.teacher_id;
+      const removedStart = row.start_date;
+      const removedEnd = row.end_date;
       await row.destroy();
+      try {
+        await syncTeacherReportDays({
+          tenantId: row.tenant_id,
+          teacherId: removedTeacherId,
+          years: yearsBetween(removedStart, removedEnd),
+        });
+      } catch (syncErr) {
+        console.error('[report-salary]', syncErr.message);
+      }
       await audit.log(req, {
         action: 'delete',
         entityType: 'leave_record',
