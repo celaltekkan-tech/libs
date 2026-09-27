@@ -41,7 +41,7 @@ async function readRememberedLogin(): Promise<{ email: string; password: string 
   }
 }
 
-// Kayıtlı öğretmen e-posta + şifre ile girer. Yeni kayıt Register ekranındadır.
+// Kayıtlı kullanıcı e-posta + şifre ile girer. Yeni kayıt T.C. ve soyad eşleşmesiyle açılır.
 export function LoginScreen({ navigation }: Props) {
   const { login } = useAuth();
   const { resetApiBaseUrl } = useServerConfig();

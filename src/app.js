@@ -62,6 +62,14 @@ const db = require('./models');
 
 const app = express();
 
+// Prod'da istekler Nginx Proxy Manager üzerinden gelir; gerçek istemci IP'si
+// X-Forwarded-For'dadır. Aksi hâlde istek limiti herkesi proxy IP'si sayar.
+// TRUST_PROXY: güvenilen proxy sayısı (varsayılan prod'da 1, geliştirmede kapalı).
+const trustProxy = process.env.TRUST_PROXY ?? (process.env.NODE_ENV === 'production' ? '1' : '');
+if (trustProxy !== '' && trustProxy !== 'false') {
+  app.set('trust proxy', /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
+}
+
 // Frontend ayrı bir origin'de (varsayılan Vite portu) çalıştığı için
 // izin verilen adresler CORS_ORIGIN ile virgüllü olarak tanımlanır.
 const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')

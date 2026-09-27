@@ -28,6 +28,7 @@ function uploadSingle(req, res, next) {
   upload.single('file')(req, res, (err) => {
     if (!err) return next();
     const status = err.status || (err.code === 'LIMIT_FILE_SIZE' ? 400 : 500);
+    console.warn('[lesson-pools] yükleme reddedildi:', err.code || '', err.message);
     const message = err.code === 'LIMIT_FILE_SIZE' ? 'Dosya 15 MB sınırını aşıyor' : err.message;
     return res.status(status).json({ success: false, message });
   });
