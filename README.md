@@ -124,6 +124,69 @@ PLATFORM_ADMIN_PASSWORD=SuperAdmin1234
 
 `JWT_SECRET` production ortamında tanımlı değilse sunucu başlamaz.
 
+## Yapay Zekâ ve Ders Programı Çözücüsü Ayarları
+
+"Otomatik Ders Programı" sayfasında programı **Google OR-Tools** (`solver` servisi) üretir.
+Yapay zekâ (Google Gemini) yalnızca kullanıcının Türkçe yazdığı isteği ("Ayşe Hoca cuma
+gelemiyor") ders programı kısıtına çevirir; kullanıcı onaylamadan hiçbir şey eklenmez.
+Yapay zekâ **yalnızca ders programı işleri** için kullanılır; kapsam dışı istekler sunucuda
+reddedilir ve denetim kaydına yazılır.
+
+### Anahtar ve faturalandırma
+
+Tek bir **ücretli** Gemini anahtarı tüm kiracılarca kullanılır.
+
+1. https://aistudio.google.com/apikey adresinden anahtar oluşturun (bir Google Cloud projesine bağlanır).
+2. Aynı projede faturalandırmayı açın (AI Studio → "Set up billing" veya Cloud Console → Billing).
+   Ücretsiz katmanda gönderilen içerik Google tarafından model geliştirmede kullanılabilir ve
+   insan incelemesine açıktır; öğretmen adları gönderildiği için (KVKK) **ücretsiz anahtar kullanmayın**.
+   Ücretli katmanda istekler bu amaçla kullanılmaz.
+3. Cloud Console → Billing → Budgets & alerts altında aylık bütçe uyarısı kurun (ör. $20).
+
+### .env değişkenleri
+
+```env
+# --- Yapay zekâ (Gemini, ücretli anahtar) ---
+GEMINI_API_KEY=buraya_anahtar
+# Sabit model adı yazın; "gemini-flash-latest" gibi takma adlar yeni sürümde
+# sessizce değişir (fiyat/davranış değişebilir).
+GEMINI_MODEL=gemini-3.5-flash-lite
+# İsteğe bağlı, varsayılan 45000 ms
+# GEMINI_TIMEOUT_MS=45000
+# Lisansa özel sınır girilmemiş kiracılar için günlük istek sınırı (0 = sınırsız)
+AI_DAILY_LIMIT_PER_TENANT=30
+
+# --- Ders programı çözücüsü (8 GB RAM için) ---
+SOLVER_MAX_JOBS=1        # aynı anda çalışan çözüm işi
+SOLVER_WORKERS=4         # iş başına CPU iş parçacığı
+SOLVER_MEMORY_LIMIT=2g   # solver container bellek sınırı
+# Docker'da gerekmez (backend http://solver:8000 kullanır); yerelde:
+# SOLVER_URL=http://127.0.0.1:8000
+```
+
+`GEMINI_API_KEY` boşsa yapay zekâ kutusu "yapılandırılmamış" uyarısı gösterir; program
+oluşturma bundan etkilenmez. `.env` değiştikten sonra backend yeniden başlatılmalıdır
+(`docker compose up -d --build`).
+
+### Lisans ve kota
+
+- Yapay zekâyı yalnızca **"Yapay Zekâ" eklenti lisansı** olan kiracılar kullanabilir
+  (Platform → Lisanslar → Yeni Lisans → Eklentiler). Ana lisansı ve SMS eklentisini iptal etmez.
+- Günlük istek sınırı lisansa özel girilebilir (lisans listesinde kalem ikonu); boş bırakılırsa
+  `AI_DAILY_LIMIT_PER_TENANT` geçerlidir, 0 sınırsızdır. Kullanım `AiUsageDaily` tablosunda
+  gün bazında tutulur; Gemini hata verirse düşülen hak iade edilir.
+
+### Maliyet (Eylül 2026 fiyatları, 1M token başına)
+
+| Model | Girdi | Çıktı |
+|---|---|---|
+| `gemini-3.5-flash-lite` (önerilen) | $0,30 | $2,50 |
+| `gemini-3.8-flash` | $0,75 | $3,75 (31.12.2026'ya kadar indirimli; 2027'de iki katı) |
+
+Bir istek yaklaşık 3–5 bin girdi + 1–2 bin çıktı token'ı kullanır: Flash-Lite ile istek başına
+≈ $0,005. Örnek: 30 okul × ayda 100 istek ≈ ayda $15. Güncel fiyatlar:
+https://ai.google.dev/gemini-api/docs/pricing
+
 ## Demo Kullanıcı
 
 `npm run seed` komutu bir demo kiracı, okul ve **Müdür** rolüne sahip yönetici hesabı oluşturur:
