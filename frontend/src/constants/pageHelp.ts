@@ -513,7 +513,7 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
     topics: [
       {
         title: 'Yeni hesap',
-        body: 'Sihirbaz ile kurum, okul ve yönetici kullanıcısını oluşturabilirsiniz.',
+        body: 'Sihirbaz ile kurum, okul ve yönetici kullanıcısını oluşturabilirsiniz. Plan ve süre Lisans Yönetimi sayfasından tanımlanır.',
       },
       {
         title: 'Detay',

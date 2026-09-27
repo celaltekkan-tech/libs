@@ -107,6 +107,7 @@ module.exports = {
         { transaction }
       );
 
+      await licenseService.syncTenantPlan(payload.tenant_id, { transaction });
       await transaction.commit();
       res.status(201).json({ success: true, data: license });
     } catch (err) {
@@ -140,6 +141,7 @@ module.exports = {
       }
 
       await license.update({ status: 'cancelled', cancelled_at: new Date() });
+      await licenseService.syncTenantPlan(license.tenant_id);
       res.json({ success: true, data: license });
     } catch (err) {
       next(err);

@@ -1,8 +1,7 @@
 import { useState } from 'react'
-import { App, Divider, Form, Input, Modal, Select } from 'antd'
+import { App, Divider, Form, Input, Modal } from 'antd'
 import { ApiError, getErrorMessage } from '../../api/client'
 import { createTenant } from '../../api/tenants'
-import { LICENSE_PLANS } from '../../constants/licensePlans'
 import { SCHOOL_CODE_RULES } from '../../types/school'
 import { SchoolCatalogFields } from '../../components/SchoolCatalogFields'
 import type { CreateTenantWizardPayload } from '../../types/tenant'
@@ -80,13 +79,6 @@ export function CreateTenantWizardModal({ open, onClose, onCreated }: CreateTena
           rules={[MOBILE_PHONE_RULE]}
         >
           <Input placeholder="05xx xxx xx xx" maxLength={30} />
-        </Form.Item>
-        <Form.Item label="Plan" name={['tenant', 'plan']}>
-          <Select
-            allowClear
-            placeholder="Plan seçin (opsiyonel)"
-            options={LICENSE_PLANS.map((plan) => ({ value: plan.name, label: plan.name }))}
-          />
         </Form.Item>
 
         <Divider titlePlacement="left" plain>
