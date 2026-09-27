@@ -2,6 +2,7 @@
 
 const fs = require('fs');
 const fsp = require('fs/promises');
+const os = require('os');
 const path = require('path');
 const zlib = require('zlib');
 const { spawn } = require('child_process');
@@ -10,6 +11,8 @@ const { pipeline } = require('stream/promises');
 const { StringDecoder } = require('string_decoder');
 const cron = require('node-cron');
 const { BackupSetting, BackupLog, sequelize } = require('../models');
+const { encryptFile } = require('./backupCrypto');
+const { describeDriveConfig, uploadEncryptedBackup } = require('./googleDriveBackup');
 
 const TIMEZONE = 'Europe/Istanbul';
 const DEFAULT_SCHEDULE = '03:30';
@@ -213,6 +216,21 @@ function backupFilePath(dir, filename) {
   return full;
 }
 
+function publicDriveStatus() {
+  const cfg = describeDriveConfig();
+  if (cfg.mode === 'ready') {
+    return {
+      enabled: true,
+      message:
+        'Her yedekten sonra sıkıştırılmış dosya AES-256-GCM ile şifrelenip Google Drive klasörüne yüklenir. Şifre sunucudaki BACKUP_ENCRYPTION_PASSWORD değeridir.',
+    };
+  }
+  if (cfg.mode === 'incomplete') {
+    return { enabled: false, message: `Google Drive kopyası kapalı. Eksik: ${cfg.missing.join(', ')}` };
+  }
+  return { enabled: false, message: null };
+}
+
 function serializeSettings(row) {
   const dir = path.resolve(row.backup_dir || defaultBackupDir());
   return {
@@ -224,6 +242,7 @@ function serializeSettings(row) {
     last_run_message: row.last_run_message,
     cron_enabled: cronEnabled(),
     dir_warning: persistenceIssue(dir),
+    drive_upload: publicDriveStatus(),
   };
 }
 
@@ -597,6 +616,65 @@ function assertNotBusy() {
   }
 }
 
+async function mirrorBackupToDrive({ filePath, filename, retentionDays, trigger, user }) {
+  const cfg = describeDriveConfig();
+  if (cfg.mode === 'off') return '';
+  const actor = actorFrom(user);
+  if (cfg.mode === 'incomplete') {
+    const message = `Google Drive yüklemesi atlandı. Eksik: ${cfg.missing.join(', ')}`;
+    await writeLog({ action: 'drive', trigger, status: 'skipped', filename, message, ...actor });
+    return ` ${message}`;
+  }
+
+  const remoteName = `${filename}.enc`;
+  const encPath = path.join(os.tmpdir(), `${remoteName}.${process.pid}.tmp`);
+  const started = Date.now();
+  try {
+    await encryptFile(filePath, encPath, cfg.password);
+    const stat = await fsp.stat(encPath);
+    const uploaded = await uploadEncryptedBackup({
+      filePath: encPath,
+      remoteName,
+      folderId: cfg.folderId,
+      auth: cfg.auth,
+      retentionDays,
+      dbSlug: safeDbName(dbConfig().database),
+      minKeep: MIN_KEEP_SCHEDULED,
+    });
+    const prunedNote = uploaded.pruned.length ? ` (${uploaded.pruned.length} eski Drive yedeği silindi)` : '';
+    const pruneNote = uploaded.pruneError ? ` Eski Drive yedekleri silinemedi: ${uploaded.pruneError}` : '';
+    const message = `Şifreli yedek Google Drive'a yüklendi: ${remoteName}${prunedNote}${pruneNote}`;
+    await writeLog({
+      action: 'drive',
+      trigger,
+      status: uploaded.pruneError ? 'warning' : 'success',
+      filename: remoteName,
+      size_bytes: stat.size,
+      backup_dir: 'google-drive',
+      duration_ms: Date.now() - started,
+      message,
+      ...actor,
+    });
+    return ` ${message}`;
+  } catch (err) {
+    const message = `Google Drive yüklenemedi: ${err.message}`;
+    await writeLog({
+      action: 'drive',
+      trigger,
+      status: 'error',
+      filename: remoteName,
+      backup_dir: 'google-drive',
+      duration_ms: Date.now() - started,
+      message,
+      ...actor,
+    });
+    console.error('[backup]', message);
+    return ` ${message}`;
+  } finally {
+    await fsp.unlink(encPath).catch(() => {});
+  }
+}
+
 async function runBackup(trigger = 'manual', user = null) {
   if (running) {
     await writeLog({
@@ -627,11 +705,19 @@ async function runBackup(trigger = 'manual', user = null) {
     const stamp = formatStamp(started);
     filename = trigger === 'manual' ? `${db}_manuel_${stamp}.sql.gz` : `${db}_${stamp}.sql.gz`;
     filename = await uniqueFilename(dir, filename);
-    const size = await dumpDatabase(path.join(dir, filename));
+    const filePath = path.join(dir, filename);
+    const size = await dumpDatabase(filePath);
     const pruned = await pruneOldBackups(dir, settings.retention_days, filename);
+    const driveNote = await mirrorBackupToDrive({
+      filePath,
+      filename,
+      retentionDays: settings.retention_days,
+      trigger,
+      user,
+    });
 
     const label = trigger === 'scheduled' ? 'Zamanlanmış yedek alındı' : 'Manuel yedek alındı';
-    const message = `${label}: ${filename}${pruned.length ? ` (${pruned.length} eski yedek silindi)` : ''}`;
+    const message = `${label}: ${filename}${pruned.length ? ` (${pruned.length} eski yedek silindi)` : ''}${driveNote}`;
     await settings.update({ last_run_status: 'success', last_run_at: new Date(), last_run_message: message });
     await finishLog(log, {
       action: 'backup',
@@ -1116,6 +1202,12 @@ async function startBackupCron() {
     await ensurePersistentDir(await getOrCreateSettings());
   } catch (err) {
     console.error('[backup] başlangıç kontrolü başarısız:', err.message);
+  }
+  const drive = describeDriveConfig();
+  if (drive.mode === 'ready') {
+    console.log('[backup] şifreli Google Drive kopyası açık');
+  } else if (drive.mode === 'incomplete') {
+    console.warn(`[backup] Google Drive kopyası kapalı, eksik: ${drive.missing.join(', ')}`);
   }
   if (!cronEnabled()) {
     console.log('DB backup cron disabled (BACKUP_CRON_ENABLED=false)');

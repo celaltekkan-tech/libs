@@ -2,7 +2,7 @@ module.exports = (sequelize, DataTypes) => {
   const BackupLog = sequelize.define(
     'BackupLog',
     {
-      // backup | prune | delete | import | restore | download | config | host
+      // backup | prune | delete | import | restore | download | config | host | drive
       action: { type: DataTypes.STRING(20), allowNull: false },
       // scheduled | manual | host | system
       trigger: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'system' },
