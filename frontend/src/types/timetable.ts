@@ -247,7 +247,7 @@ export const WEIGHT_LABELS: Record<keyof TimetableWeights, string> = {
   hard_subject_late: 'Zor dersin son saatlere düşmesi',
   soft_constraint: 'Esnek kısıt varsayılan ağırlığı',
   availability_avoid: 'Zaman tablosunda "istenmiyor" saate ders',
-  block_flex: 'Blok bölme / birleştirme (B1/B2)',
+  block_flex: 'Blok esnekliği',
 }
 
 export const RUN_STATUS_LABELS: Record<RunStatus, { label: string; color: string }> = {

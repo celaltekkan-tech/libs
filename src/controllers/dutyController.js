@@ -632,7 +632,11 @@ module.exports = {
     try {
       const tenantId = req.user && req.user.tenant_id;
       const { start_date, shift_locations, replace } = req.validatedBody || req.body;
-      const monday = weekMonday(String(start_date).slice(0, 10));
+      // Joi tarihi Date nesnesine çevirir; String(date) "Mon Sep 21" olur ve sorgu patlar.
+      const monday = weekMonday(dateStr(start_date));
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(monday)) {
+        return res.status(400).json({ success: false, message: 'Geçersiz hafta tarihi' });
+      }
       const plusDays = (iso, days) => {
         const d = new Date(`${iso}T12:00:00`);
         d.setDate(d.getDate() + days);
@@ -697,7 +701,7 @@ module.exports = {
           duty_location_id: shift_locations
             ? nextLocation.get(row.duty_location_id) || row.duty_location_id
             : row.duty_location_id,
-          duty_date: plusDays(String(row.duty_date).slice(0, 10), 7),
+          duty_date: plusDays(dateStr(row.duty_date), 7),
           notes: row.notes,
         }));
         return DutyAssignment.bulkCreate(payload, { transaction });

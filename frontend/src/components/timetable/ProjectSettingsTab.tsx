@@ -29,7 +29,7 @@ const WEIGHT_HELP: Record<keyof TimetableWeights, string> = {
   hard_subject_late: 'Zorluk seviyesi "zor" olan derslerin son iki saate düşmesi',
   soft_constraint: 'Ağırlığı belirtilmeyen esnek kısıtların ihlal cezası',
   availability_avoid: 'Zaman tablosunda sarı ("istenmiyor") işaretli saate ders konması',
-  block_flex: 'Havuzda B1/B2 işaretli dersin bloğunun bölünmesi veya birleştirilmesi',
+  block_flex: 'Blok düzeni tutmuyorsa programın ne kadar esneyeceği',
 }
 
 export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
@@ -150,14 +150,14 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
             </Form.Item>
             <Space size="large" wrap>
               <Form.Item name="periods_per_day" label="Günlük ders saati" rules={[{ required: true }]}>
-                <InputNumber min={1} max={12} />
+                <InputNumber min={1} max={12} addonAfter="ders" />
               </Form.Item>
               <Form.Item
                 name="lunch_after"
-                label="Öğle arası (kaçıncı dersten sonra)"
+                label="Öğle arası"
                 extra="Boş bırakılabilir. Şubeye özel öğle arası 'Sınıfa ders verme' adımında girilir."
               >
-                <InputNumber min={1} max={11} />
+                <InputNumber min={1} max={11} addonAfter=". dersten sonra" />
               </Form.Item>
             </Space>
             <Form.Item
@@ -190,12 +190,26 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
         <Col xs={24} lg={12}>
           <Card title="Neyi daha çok önemseyelim?" size="small" style={{ marginBottom: 16 }}>
             <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-              0 kuralı kapatır. Büyük sayı, program hazırlanırken o isteğe daha çok uyar. Öğretmen ve şube
-              çakışmaması ile haftalık saatler her zaman korunur.
+              Sayılar önem puanıdır, birimi yoktur: birbirine göre kıyaslanır. Puanı 60 olan istek, puanı 6 olandan
+              10 kat daha önemli sayılır. 0 kuralı kapatır. Öğretmen ve şube çakışmaması ile haftalık saatler her
+              zaman korunur.
             </Typography.Paragraph>
-            {(Object.keys(WEIGHT_LABELS) as Array<keyof TimetableWeights>).map((k) => (
-              <Form.Item key={k} name={['weights', k]} label={WEIGHT_LABELS[k]} extra={WEIGHT_HELP[k]}>
-                <InputNumber min={0} max={1000} />
+            {(Object.keys(WEIGHT_LABELS) as Array<keyof TimetableWeights>)
+              .filter((k) => k !== 'block_flex')
+              .map((k) => (
+              <Form.Item
+                key={k}
+                name={['weights', k]}
+                label={WEIGHT_LABELS[k]}
+                tooltip={WEIGHT_HELP[k]}
+                layout="horizontal"
+                labelCol={{ flex: 'auto' }}
+                wrapperCol={{ flex: '150px' }}
+                labelAlign="left"
+                colon={false}
+                style={{ marginBottom: 8 }}
+              >
+                <InputNumber min={0} max={1000} addonAfter="puan" style={{ width: '100%' }} />
               </Form.Item>
             ))}
           </Card>

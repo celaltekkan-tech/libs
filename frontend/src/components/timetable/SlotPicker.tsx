@@ -1,4 +1,5 @@
 import { Fragment, useMemo } from 'react'
+import { theme } from 'antd'
 import { DAY_LABELS } from '../../types/scheduleEntry'
 import type { ConstraintSlot } from '../../types/timetable'
 
@@ -31,6 +32,7 @@ function toSlots(cells: Set<string>, days: number[], periods: number): Constrain
 
 /** Gün x ders saati ızgarasından hücre seçimi. Gün başlığı tüm günü, saat numarası tüm satırı seçer. */
 export function SlotPicker({ days, periods, value, onChange }: Props) {
+  const { token } = theme.useToken()
   const cells = useMemo(() => toCells(value, periods), [value, periods])
   const periodList = Array.from({ length: periods }, (_, i) => i + 1)
 
@@ -49,8 +51,8 @@ export function SlotPicker({ days, periods, value, onChange }: Props) {
   const cellStyle = (on: boolean): React.CSSProperties => ({
     height: 28,
     borderRadius: 4,
-    border: '1px solid #d9d9d9',
-    background: on ? '#ff4d4f' : '#fff',
+    border: `1px solid ${on ? token.colorPrimary : token.colorBorder}`,
+    background: on ? token.colorPrimary : token.colorBgContainer,
     cursor: 'pointer',
   })
 
@@ -69,9 +71,17 @@ export function SlotPicker({ days, periods, value, onChange }: Props) {
           type="button"
           key={d}
           onClick={() => toggleMany(periodList.map((p) => `${d}:${p}`))}
-          style={{ border: 'none', background: 'none', fontWeight: 600, fontSize: 12, cursor: 'pointer', padding: 2 }}
+          style={{
+            border: 'none',
+            background: 'none',
+            fontWeight: 600,
+            fontSize: 12,
+            cursor: 'pointer',
+            padding: 2,
+            color: token.colorText,
+          }}
         >
-          {DAY_LABELS[d]?.slice(0, 3) || d}
+          {DAY_LABELS[d] || d}
         </button>
       ))}
       {periodList.map((p) => (
@@ -79,7 +89,7 @@ export function SlotPicker({ days, periods, value, onChange }: Props) {
           <button
             type="button"
             onClick={() => toggleMany(days.map((d) => `${d}:${p}`))}
-            style={{ border: 'none', background: 'none', fontSize: 12, color: '#6b7280', cursor: 'pointer' }}
+            style={{ border: 'none', background: 'none', fontSize: 12, color: token.colorText, cursor: 'pointer' }}
           >
             {p}.
           </button>

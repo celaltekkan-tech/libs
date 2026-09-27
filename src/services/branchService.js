@@ -4,6 +4,11 @@ const { Op } = require('sequelize');
 const { Branch, Subject, Teacher } = require('../models');
 const { branchFromTeacher, normalizeSubjectName } = require('./subjectFromBranchService');
 
+/** Rehberlik başlı başına bir derstir; branşı ne olursa olsun her öğretmen girebilir. */
+function isGuidanceName(name) {
+  return String(name || '').toLocaleLowerCase('tr-TR').includes('rehberlik');
+}
+
 /** Branş adlarını karşılaştırmak için anahtar (Türkçe küçük harf, tek boşluk). */
 function branchKey(name) {
   return normalizeSubjectName(name).toLocaleLowerCase('tr-TR');
@@ -47,9 +52,17 @@ async function syncBranches(tenantId) {
     attributes: ['id', 'name'],
   });
   for (const s of unlinked) {
+    if (isGuidanceName(s.name)) continue;
     const id = keys.get(branchKey(s.name));
     if (id) await Subject.update({ branch_id: id }, { where: { id: s.id } });
   }
+
+  const linked = await Subject.findAll({
+    where: { tenant_id: tenantId, branch_id: { [Op.ne]: null } },
+    attributes: ['id', 'name', 'is_guidance'],
+  });
+  const openIds = linked.filter((s) => s.is_guidance || isGuidanceName(s.name)).map((s) => s.id);
+  if (openIds.length) await Subject.update({ branch_id: null }, { where: { id: openIds } });
 }
 
 async function listBranches(tenantId) {
@@ -67,4 +80,4 @@ async function nameTaken(tenantId, name, exceptId) {
   return rows.some((b) => branchKey(b.name) === key);
 }
 
-module.exports = { branchKey, teacherBranchKey, syncBranches, listBranches, nameTaken };
+module.exports = { branchKey, teacherBranchKey, isGuidanceName, syncBranches, listBranches, nameTaken };

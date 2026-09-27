@@ -27,6 +27,8 @@ import {
   updateTimetableAssignment,
 } from '../../api/timetable'
 import { getErrorMessage } from '../../api/client'
+import { TypedPhraseConfirmModal } from '../TypedPhraseConfirmModal'
+import { bulkDeleteByIds, bulkDeleteResultMessage } from '../../utils/bulkDelete'
 import type { TimetableAssignment, TimetableAssignmentPayload } from '../../types/timetable'
 import { useActiveSchool } from '../../auth/ActiveSchoolContext'
 import { assignmentTeacherIds, computeLoads, lessonTeacherOptions, shortClassroom, teacherFullName, teacherMatchesLesson, type TimetableCtx } from './shared'
@@ -42,6 +44,8 @@ export function AssignmentsTab({ ctx }: { ctx: TimetableCtx }) {
   const [bulkTeacher, setBulkTeacher] = useState<number | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const [genOpen, setGenOpen] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
   const [addForm] = Form.useForm<TimetableAssignmentPayload>()
   const { project } = ctx
   const { activeSchool } = useActiveSchool()
@@ -213,6 +217,11 @@ export function AssignmentsTab({ ctx }: { ctx: TimetableCtx }) {
                 }}
               >
                 Atama Ekle
+              </Button>
+            )}
+            {ctx.canDelete && filtered.length > 0 && (
+              <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+                Toplu sil ({filtered.length})
               </Button>
             )}
             <Select
@@ -492,6 +501,30 @@ export function AssignmentsTab({ ctx }: { ctx: TimetableCtx }) {
         Şube seviyelerine göre "Ders Saatleri" tanımlarından atama üretilir. Öğretmen, mevcut ders programından
         (Excel ile yüklenen) tahmin edilir. "Eksikleri ekle" mevcut atamalara dokunmaz.
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Atamaları toplu sil"
+        description={`Listede görünen ${filtered.length} ders ataması silinecek. Bağlı taslak ders saatleri de kalkar.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={async () => {
+          setBulkLoading(true)
+          try {
+            const ids = new Set(filtered.map((row) => row.id))
+            const result = await bulkDeleteByIds([...ids], (id) => deleteTimetableAssignment(Number(id)))
+            const text = bulkDeleteResultMessage(result, 'atama')
+            if (result.failed === 0) message.success(text)
+            else message.warning(text)
+            setBulkOpen(false)
+            setSelected((prev) => prev.filter((id) => !ids.has(id)))
+            if (result.failed === 0) setRows((prev) => prev.filter((row) => !ids.has(row.id)))
+            else await load()
+            await ctx.reloadProject()
+          } finally {
+            setBulkLoading(false)
+          }
+        }}
+      />
 
       <Modal
         open={addOpen}
@@ -518,7 +551,7 @@ export function AssignmentsTab({ ctx }: { ctx: TimetableCtx }) {
           </Form.Item>
           <Space>
             <Form.Item name="weekly_hours" label="Haftalık saat" rules={[{ required: true, message: 'Saat girin' }]}>
-              <InputNumber min={1} max={40} />
+              <InputNumber min={1} max={40} addonAfter="saat" />
             </Form.Item>
             <Form.Item name="block_pattern" label="Blok düzeni">
               <Input placeholder="2+2+1" style={{ width: 110 }} />

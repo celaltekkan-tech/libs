@@ -3,6 +3,8 @@ import { App, Button, Form, Input, InputNumber, Modal, Select, Space, Switch, Ta
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import { createTimetableRoom, deleteTimetableRoom, updateTimetableRoom } from '../../api/timetable'
 import { getErrorMessage } from '../../api/client'
+import { TypedPhraseConfirmModal } from '../TypedPhraseConfirmModal'
+import { bulkDeleteByIds, bulkDeleteResultMessage } from '../../utils/bulkDelete'
 import { ROOM_TYPES, type TimetableRoom } from '../../types/timetable'
 import type { TimetableCtx } from './shared'
 
@@ -12,6 +14,8 @@ export function RoomsTab({ ctx }: { ctx: TimetableCtx }) {
   const [editing, setEditing] = useState<TimetableRoom | null>(null)
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [bulkLoading, setBulkLoading] = useState(false)
 
   const openForm = (room: TimetableRoom | null) => {
     setEditing(room)
@@ -60,11 +64,18 @@ export function RoomsTab({ ctx }: { ctx: TimetableCtx }) {
         işleneceğini "Ders Atamaları" sekmesinden seçin. Mekanın kapalı olduğu saatler için "Kısıtlar" sekmesini
         kullanın. Mekanlar okul geneli içindir; tüm program çalışmalarında ortaktır.
       </Typography.Paragraph>
-      {ctx.canCreate && (
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openForm(null)} style={{ marginBottom: 12 }}>
-          Yeni Mekan
-        </Button>
-      )}
+      <Space wrap style={{ marginBottom: 12 }}>
+        {ctx.canCreate && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openForm(null)}>
+            Yeni Mekan
+          </Button>
+        )}
+        {ctx.canDelete && ctx.rooms.length > 0 && (
+          <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
+            Toplu sil ({ctx.rooms.length})
+          </Button>
+        )}
+      </Space>
       <Table<TimetableRoom>
         rowKey="id"
         size="small"
@@ -110,13 +121,36 @@ export function RoomsTab({ ctx }: { ctx: TimetableCtx }) {
             <Select options={ROOM_TYPES} allowClear />
           </Form.Item>
           <Form.Item name="capacity" label="Aynı anda kullanabilecek şube sayısı" rules={[{ required: true }]}>
-            <InputNumber min={1} max={20} />
+            <InputNumber min={1} max={20} addonAfter="şube" />
           </Form.Item>
           <Form.Item name="is_active" label="Aktif" valuePropName="checked">
             <Switch />
           </Form.Item>
         </Form>
       </Modal>
+      <TypedPhraseConfirmModal
+        open={bulkOpen}
+        title="Mekanları toplu sil"
+        description={`Listedeki ${ctx.rooms.length} mekan silinecek. Bu mekanlara bağlı derslerin mekan bilgisi kalkar.`}
+        loading={bulkLoading}
+        onCancel={() => setBulkOpen(false)}
+        onConfirm={async () => {
+          setBulkLoading(true)
+          try {
+            const result = await bulkDeleteByIds(
+              ctx.rooms.map((room) => room.id),
+              (id) => deleteTimetableRoom(Number(id)),
+            )
+            const text = bulkDeleteResultMessage(result, 'mekan')
+            if (result.failed === 0) message.success(text)
+            else message.warning(text)
+            setBulkOpen(false)
+            await ctx.reloadRooms()
+          } finally {
+            setBulkLoading(false)
+          }
+        }}
+      />
     </>
   )
 }

@@ -219,11 +219,9 @@ export function SolveTab({ ctx, onShowGrid }: Props) {
                 </Space>
               </>
             ) : (
-              <Space wrap align="end">
-                <div>
-                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Ne kadar uğraşsın?</div>
-                  <EffortPicker value={timeLimit} onChange={setTimeLimit} />
-                </div>
+              <div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Ne kadar uğraşsın?</div>
+                <EffortPicker value={timeLimit} onChange={setTimeLimit} />
                 {ctx.canCreate && (
                   <Button
                     type="primary"
@@ -232,11 +230,12 @@ export function SolveTab({ ctx, onShowGrid }: Props) {
                     loading={starting}
                     onClick={onStart}
                     disabled={!ctx.meta.solver_available}
+                    style={{ marginTop: 8 }}
                   >
                     Programı Oluştur
                   </Button>
                 )}
-              </Space>
+              </div>
             )}
             {!active && (project.counts?.lessons ?? 0) > 0 && (
               <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 12, marginBottom: 0 }}>

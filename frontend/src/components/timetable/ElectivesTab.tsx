@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, App, Button, Card, Checkbox, Col, Empty, Row, Space, Table, Tag, Typography } from 'antd'
+import { Alert, App, Button, Card, Checkbox, Col, Empty, Row, Space, Table, Tag, Typography, theme } from 'antd'
 import { SaveOutlined, UndoOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { getElectives, listTimetableAssignments, saveElectives } from '../../api/timetable'
@@ -11,6 +11,7 @@ type Choices = Record<number, number[]>
 
 export function ElectivesTab({ ctx }: { ctx: TimetableCtx }) {
   const { message } = App.useApp()
+  const { token } = theme.useToken()
   const { project } = ctx
   const [rows, setRows] = useState<TimetableAssignment[]>([])
   const [classId, setClassId] = useState<number | null>(null)
@@ -205,7 +206,7 @@ export function ElectivesTab({ ctx }: { ctx: TimetableCtx }) {
                     }
                     setClassId(c.id)
                   },
-                  style: { cursor: 'pointer', background: c.id === classId ? '#e6f4ff' : undefined },
+                  style: { cursor: 'pointer', background: c.id === classId ? token.colorPrimaryBg : undefined, color: token.colorText },
                 })}
                 columns={[
                   { title: 'Şube', key: 'n', render: (_, c) => shortClassroom(c) },

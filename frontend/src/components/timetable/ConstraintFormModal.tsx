@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { Checkbox, Form, InputNumber, Modal, Radio, Select, Space, Switch } from 'antd'
+import { Checkbox, Form, InputNumber, Modal, Radio, Select, Switch } from 'antd'
 import { DAY_OPTIONS } from '../../types/scheduleEntry'
 import type { ConstraintInput, ConstraintParams, ConstraintType, TimetableConstraint } from '../../types/timetable'
 import { SlotPicker } from './SlotPicker'
@@ -60,7 +60,7 @@ export function ConstraintFormModal({ ctx, open, editing, onCancel, onSubmit }: 
       width={640}
       destroyOnHidden
     >
-      <Form form={form} layout="vertical">
+      <Form form={form} layout="horizontal" labelCol={{ flex: '150px' }} wrapperCol={{ flex: 1 }} labelAlign="left" labelWrap colon={false}>
         <Form.Item name="type" label="Kısıt türü" rules={[{ required: true }]}>
           <Select
             disabled={Boolean(editing)}
@@ -135,7 +135,7 @@ export function ConstraintFormModal({ ctx, open, editing, onCancel, onSubmit }: 
           <Form.Item
             name="slots"
             label="Saatler"
-            extra="Kırmızı hücreler seçilidir. Gün adına tıklamak tüm günü, saat numarasına tıklamak tüm satırı seçer."
+            extra="Seçili hücreler mavi olur. Gün adına tıklamak tüm günü, saat numarasına tıklamak tüm satırı seçer."
             rules={[{ required: true, message: 'En az bir hücre seçin' }]}
           >
             <SlotPicker days={project.days} periods={project.periods_per_day} />
@@ -170,21 +170,19 @@ export function ConstraintFormModal({ ctx, open, editing, onCancel, onSubmit }: 
           </Form.Item>
         )}
 
-        <Space size="large" align="start">
-          <Form.Item
-            name="is_hard"
-            label="Kesin kural"
-            valuePropName="checked"
-            extra={isHard ? 'Asla ihlal edilmez.' : 'Mümkün olduğunca uyulur.'}
-          >
-            <Switch />
+        <Form.Item
+          name="is_hard"
+          label="Kesin kural"
+          valuePropName="checked"
+          extra={isHard ? 'Asla ihlal edilmez.' : 'Mümkün olduğunca uyulur.'}
+        >
+          <Switch />
+        </Form.Item>
+        {!isHard && (
+          <Form.Item name="weight" label="Önem (1-100)">
+            <InputNumber min={1} max={100} addonAfter="puan" />
           </Form.Item>
-          {!isHard && (
-            <Form.Item name="weight" label="Önem (1-100)">
-              <InputNumber min={1} max={100} />
-            </Form.Item>
-          )}
-        </Space>
+        )}
       </Form>
     </Modal>
   )

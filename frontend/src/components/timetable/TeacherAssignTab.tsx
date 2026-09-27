@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { App, Button, Card, Col, Empty, Input, Row, Select, Space, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
+import { App, Button, Card, Col, Empty, Input, Row, Select, Space, Table, Tabs, Tag, Tooltip, Typography, theme } from 'antd'
 import { CloseOutlined, PlusOutlined, UsergroupAddOutlined } from '@ant-design/icons'
 import { getLessonPool, listTimetableAssignments, updateTimetableAssignment } from '../../api/timetable'
 import { getErrorMessage } from '../../api/client'
@@ -9,6 +9,7 @@ import { useActiveSchool } from '../../auth/ActiveSchoolContext'
 import {
   assignmentTeacherIds,
   branchKey,
+  isGuidanceLesson,
   computeLoads,
   lessonTeacherOptions,
   shortClassroom,
@@ -21,6 +22,7 @@ const MAX_TEACHERS = 5
 
 export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
   const { message } = App.useApp()
+  const { token } = theme.useToken()
   const { project } = ctx
   const { activeSchool } = useActiveSchool()
   const languages = useMemo(
@@ -94,7 +96,7 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
     const key = branchKey(teacher.brans)
     if (!key) return []
     return rows
-      .filter((a) => branchKey(subjectBranch.get(a.subject_id)) === key)
+      .filter((a) => isGuidanceLesson(a.Subject?.name) || branchKey(subjectBranch.get(a.subject_id)) === key)
       .sort((a, b) => Number(Boolean(a.teacher_id)) - Number(Boolean(b.teacher_id)) || shortClassroom(a.Classroom).localeCompare(shortClassroom(b.Classroom), 'tr', { numeric: true }))
   }, [rows, teacher, subjectBranch])
 
@@ -232,7 +234,11 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
               scroll={{ y: 300 }}
               onRow={(t) => ({
                 onClick: () => setTeacherId(t.id),
-                style: { cursor: 'pointer', background: t.id === teacherId ? '#e6f4ff' : undefined },
+                style: {
+                  cursor: 'pointer',
+                  background: t.id === teacherId ? token.colorPrimaryBg : undefined,
+                  color: token.colorText,
+                },
               })}
               columns={[
                 { title: 'Adı Soyadı', key: 'name', render: (_, t) => teacherFullName(t) },
@@ -308,7 +314,7 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
                         scroll={{ y: 520 }}
                         onRow={(c) => ({
                           onClick: () => setClassId(c.id),
-                          style: { cursor: 'pointer', background: c.id === classId ? '#e6f4ff' : undefined },
+                          style: { cursor: 'pointer', background: c.id === classId ? token.colorPrimaryBg : undefined, color: token.colorText },
                         })}
                         columns={[
                           { title: 'Şube', key: 'name', render: (_, c) => shortClassroom(c) },
@@ -335,7 +341,7 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
                         scroll={{ y: 330 }}
                         onRow={(r) => ({
                           onClick: () => setLessonId(r.id),
-                          style: { cursor: 'pointer', background: r.id === lessonId ? '#fffbe6' : undefined },
+                          style: { cursor: 'pointer', background: r.id === lessonId ? token.colorWarningBg : undefined, color: token.colorText },
                         })}
                         columns={lessonColumns(false)}
                         locale={{ emptyText: 'Bu şubeye henüz ders verilmedi ("Sınıfa ders verme" adımı).' }}

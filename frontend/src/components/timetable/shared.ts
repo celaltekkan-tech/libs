@@ -28,15 +28,20 @@ export function teacherFullName(t?: { first_name: string; last_name: string } | 
   return t ? `${t.first_name} ${t.last_name}`.trim() : '—'
 }
 
-// Ders adına göre sabit, açık tonlu bir renk (ızgarada dersleri ayırt etmek için).
-export function subjectColor(subjectId: number): string {
-  const hue = (subjectId * 47) % 360
-  return `hsl(${hue} 70% 92%)`
+/** Rehberlik ayrı bir derstir; branşı ne olursa olsun her öğretmen girebilir. */
+export function isGuidanceLesson(name?: string | null): boolean {
+  return String(name || '').toLocaleLowerCase('tr-TR').includes('rehberlik')
 }
 
-export function subjectBorder(subjectId: number): string {
+// Ders adına göre sabit renk. Koyu temada açık pastel yerine tema ile uyumlu koyu ton.
+export function subjectColor(subjectId: number, dark = false): string {
   const hue = (subjectId * 47) % 360
-  return `hsl(${hue} 55% 60%)`
+  return dark ? `hsl(${hue} 32% 26%)` : `hsl(${hue} 70% 92%)`
+}
+
+export function subjectBorder(subjectId: number, dark = false): string {
+  const hue = (subjectId * 47) % 360
+  return dark ? `hsl(${hue} 42% 58%)` : `hsl(${hue} 55% 60%)`
 }
 
 /** 1. öğretmen + ortak öğretmenler (tekrarsız). */

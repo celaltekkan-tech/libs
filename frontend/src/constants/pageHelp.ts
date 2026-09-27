@@ -281,11 +281,12 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       {
         title: 'Adımlar',
         steps: [
-          'Okul saatlerinde başlangıç saatini, ders ve teneffüs dakikasını, gerekirse cuma namazı gibi güne özel arayı girin. Pazar günü de seçilebilir.',
-          'Ders havuzunda bir dersin hangi sınıfta kaç saat okutulabileceğini yazın. Bu, her şubeye otomatik ders eklemez.',
+          'Okul saatlerinde başlangıç saatini, ders ve teneffüs dakikasını, gerekirse cuma namazı gibi güne özel arayı girin. Cumartesi ve pazar kapalı değildir; ders günü olarak işaretlerseniz programa girer.',
+          'Ders havuzunda ders ekleyin. Aynı sınıf için birden fazla saat yazabilirsiniz (örneğin 12. sınıfta Türk dili 3 veya 5 saat). Bu, her şubeye otomatik ders eklemez.',
           'Ders ve öğretmen adımında hangi şubede kimin gireceğini seçin.',
           'İsteklerde örneğin "Ayşe Hoca cuma gelemiyor" yazın.',
           'Programı oluşturun, ders programında sürükleyerek düzeltin ve yayınlayın.',
+          'Ders programı sekmesindeki Excel menüsünden şube, öğretmen, öğrenci veya mekân programını indirin.',
         ],
       },
       {
