@@ -31,6 +31,7 @@ import { TypedPhraseConfirmModal } from '../TypedPhraseConfirmModal'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../../utils/bulkDelete'
 import type { TimetableAssignment, TimetableAssignmentPayload } from '../../types/timetable'
 import { useActiveSchool } from '../../auth/ActiveSchoolContext'
+import { blockPatternChoices } from './blocks'
 import { assignmentTeacherIds, computeLoads, lessonTeacherOptions, shortClassroom, teacherFullName, teacherMatchesLesson, type TimetableCtx } from './shared'
 
 export function AssignmentsTab({ ctx }: { ctx: TimetableCtx }) {
@@ -47,6 +48,7 @@ export function AssignmentsTab({ ctx }: { ctx: TimetableCtx }) {
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkLoading, setBulkLoading] = useState(false)
   const [addForm] = Form.useForm<TimetableAssignmentPayload>()
+  const addHours = Form.useWatch('weekly_hours', addForm)
   const { project } = ctx
   const { activeSchool } = useActiveSchool()
   const languages = useMemo(
@@ -359,17 +361,19 @@ export function AssignmentsTab({ ctx }: { ctx: TimetableCtx }) {
               {
                 title: 'Blok',
                 dataIndex: 'block_pattern',
-                width: 100,
+                width: 150,
                 render: (v: string | null, r) => (
-                  <Input
+                  <Select
                     size="small"
-                    defaultValue={v || ''}
-                    key={`${r.id}-${v}`}
-                    placeholder="oto"
+                    allowClear
+                    placeholder="Otomatik"
                     disabled={!editable}
-                    onBlur={(e) => {
-                      const next = e.target.value.trim()
-                      if (next !== (v || '')) void patch(r, { block_pattern: next || null })
+                    style={{ width: '100%' }}
+                    value={v || undefined}
+                    options={blockPatternChoices(r.weekly_hours, v)}
+                    onChange={(next) => {
+                      const value = next || null
+                      if (value !== (v || null)) void patch(r, { block_pattern: value })
                     }}
                   />
                 ),
@@ -554,7 +558,13 @@ export function AssignmentsTab({ ctx }: { ctx: TimetableCtx }) {
               <InputNumber min={1} max={40} addonAfter="saat" />
             </Form.Item>
             <Form.Item name="block_pattern" label="Blok düzeni">
-              <Input placeholder="2+2+1" style={{ width: 110 }} />
+              <Select
+                allowClear
+                placeholder="Otomatik"
+                style={{ width: 180 }}
+                disabled={!addHours}
+                options={blockPatternChoices(Number(addHours) || 0)}
+              />
             </Form.Item>
           </Space>
           <Form.Item name="room_id" label="Mekan">

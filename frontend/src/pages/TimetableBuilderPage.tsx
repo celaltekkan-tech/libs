@@ -167,7 +167,7 @@ export function TimetableBuilderPage() {
     createForm.setFieldsValue({
       name: year ? `${year} Ders Programı` : 'Ders Programı',
       academic_year: year,
-      days: [1, 2, 3, 4, 5, 6, 7],
+      days: [1, 2, 3, 4, 5],
       periods_per_day: 8,
       lunch_after: null,
       copy_project_id: projects[0]?.id ?? null,
@@ -294,7 +294,7 @@ export function TimetableBuilderPage() {
               { key: 'pool', label: '2. Ders havuzu', children: <LessonPoolTab ctx={ctx} /> },
               {
                 key: 'class-lessons',
-                label: `3. Sınıfa ders verme (${project?.counts?.assignments ?? 0})`,
+                label: `3. Sınıfa ders verme (${project?.counts?.assignments ?? 0} saat)`,
                 children: <ClassLessonsTab ctx={ctx} />,
               },
               { key: 'teacher-assign', label: '4. Öğretmene ders atama', children: <TeacherAssignTab ctx={ctx} /> },

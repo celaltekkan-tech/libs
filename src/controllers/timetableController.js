@@ -294,8 +294,8 @@ module.exports = {
   async getProject(req, res, next) {
     try {
       const project = await loadProject(req);
-      const [assignmentCount, constraintCount, lessonCount, availabilityCount] = await Promise.all([
-        TimetableAssignment.count({ where: { project_id: project.id } }),
+      const [assignmentHours, constraintCount, lessonCount, availabilityCount] = await Promise.all([
+        TimetableAssignment.sum('weekly_hours', { where: { project_id: project.id } }),
         TimetableConstraint.count({ where: { project_id: project.id } }),
         TimetableLesson.count({ where: { project_id: project.id } }),
         TimetableAvailability.count({ where: { project_id: project.id } }),
@@ -306,7 +306,7 @@ module.exports = {
           ...project.toJSON(),
           settings: projectSettings(project),
           counts: {
-            assignments: assignmentCount,
+            assignments: Number(assignmentHours) || 0,
             constraints: constraintCount,
             lessons: lessonCount,
             availability: availabilityCount,

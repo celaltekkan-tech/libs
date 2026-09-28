@@ -206,7 +206,7 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
   return (
     <>
       <Typography.Paragraph type="secondary">
-        Cumartesi ve pazar kendiliğinden kapanmaz; yedi gün de açık gelir. Kapatmak istediğiniz saati siz boyarsınız.
+        Cumartesi ve pazar müsaitlikte açık görünür; kapatmak istediğiniz saati siz boyarsınız. Bu günler ders günü değildir, şubenin haftalık saatine eklenmez.
         Koyu renkli hücrede ders konmaz,
         sarı hücreye mümkünse konmaz, boş hücreler açıktır. Fırçayı seçip hücrelere tıklayın ya da sürükleyin; gün
         adına veya saat numarasına tıklamak tüm sütunu/satırı boyar.
