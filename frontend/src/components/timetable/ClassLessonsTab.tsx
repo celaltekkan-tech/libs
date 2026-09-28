@@ -21,6 +21,7 @@ import {
   theme,
 } from 'antd'
 import { CopyOutlined, DeleteOutlined, PlusOutlined, UndoOutlined } from '@ant-design/icons'
+import { blockPatternChoices } from './blocks'
 import {
   copyTimetableAssignments,
   createTimetableAssignment,
@@ -340,9 +341,11 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
   return (
     <>
       <Typography.Paragraph type="secondary">
-        Ders havuzundaki ortak dersler (seçmeli olmayanlar) şubelere kendiliğinden verilir; şubede okutulmayan bir
-        ortak dersi silerseniz o şubeye bir daha eklenmez, "Kaldırılanları geri ekle" ile geri alırsınız. Seçmeli
-        dersleri sağdaki ders havuzundan <PlusOutlined /> ile verin. Saat ve blok havuzdan gelir, şubeye özel
+        Açık saat, ders günü sayısı ile günlük ders saatinin çarpımıdır. Cumartesi ve pazar ders günü değildir;
+        müsaitlikte görünürler ama şubenin saatine eklenmez. Ortak dersler şubelere kendiliğinden verilir; şubede
+        okutulmayan bir ortak dersi silerseniz o şubeye bir daha eklenmez, "Kaldırılanları geri ekle" ile geri
+        alırsınız. Seçmeli dersler (Temel Matematik gibi) sağdaki ders havuzundan <PlusOutlined /> ile verilir.
+        Listede yalnız bu seviyenin saati olan dersler durur. Saat ve blok havuzdan gelir, şubeye özel
         değiştirebilirsiniz. Bir şubenin ders listesini aynı seviyedeki diğer şubelere
         kopyalayabilirsiniz; öğretmenler bir sonraki adımda atanır. Şubenin öğrencileri seçmelilere bölünüyorsa
         alternatif seçmelilere aynı "Seçmeli grup" kodunu yazın: bu dersler aynı saatte paralel işlenebilir ve
@@ -487,7 +490,7 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
                 loading={loading}
                 pagination={false}
                 dataSource={classRows}
-                scroll={{ x: 830, y: 520 }}
+                scroll={{ x: 900, y: 520 }}
                 columns={[
                   {
                     title: 'Ders',
@@ -538,17 +541,19 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
                   {
                     title: 'Blok',
                     dataIndex: 'block_pattern',
-                    width: 80,
+                    width: 150,
                     render: (v: string | null, r) => (
-                      <Input
+                      <Select
                         size="small"
-                        key={`${r.id}-${v}`}
-                        defaultValue={v || ''}
-                        placeholder="oto"
+                        allowClear
+                        placeholder="Otomatik"
                         disabled={!editable}
-                        onBlur={(e) => {
-                          const next = e.target.value.trim()
-                          if (next !== (v || '')) void patch(r, { block_pattern: next || null })
+                        style={{ width: '100%' }}
+                        value={v || undefined}
+                        options={blockPatternChoices(r.weekly_hours, v)}
+                        onChange={(next) => {
+                          const value = next || null
+                          if (value !== (v || null)) void patch(r, { block_pattern: value })
                         }}
                       />
                     ),
@@ -632,6 +637,11 @@ export function ClassLessonsTab({ ctx }: { ctx: TimetableCtx }) {
                     <span style={{ color: inClass.has(r.subject.id) ? '#1677ff' : undefined }}>
                       {r.subject.code && <b>{r.subject.code} </b>}
                       {r.subject.name}
+                      {r.subject.is_elective && (
+                        <Tag color="purple" style={{ marginInlineStart: 6 }}>
+                          seçmeli
+                        </Tag>
+                      )}
                     </span>
                   ),
                 },

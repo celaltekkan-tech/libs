@@ -100,7 +100,7 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
             <Form.Item
               name="days"
               label="Ders günleri"
-              extra="Cumartesi ve pazar açık gelir. Ders konmasını istemediğiniz günün işaretini kaldırın."
+              extra="Ders günleri pazartesi–cumadır. Açık saat, gün sayısı ile günlük ders saatinin çarpımıdır (5 × 8 = 40). Cumartesi ve pazar müsaitlikte görünür; buraya eklenirse şubenin saati 56 olur."
               rules={[{ required: true, message: 'En az bir gün seçin' }]}
             >
               <Checkbox.Group options={DAY_OPTIONS} />

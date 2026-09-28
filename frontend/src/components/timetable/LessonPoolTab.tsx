@@ -31,6 +31,7 @@ import { TypedPhraseConfirmModal } from '../TypedPhraseConfirmModal'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../../utils/bulkDelete'
 import { DIFFICULTY_LEVEL_OPTIONS } from '../../types/subject'
 import type { Branch, LessonPool, PoolHour, PoolSubject } from '../../types/timetable'
+import { blockPatternChoices } from './blocks'
 import { classLevels, type TimetableCtx } from './shared'
 import { PoolTemplateImportModal } from './PoolTemplateImportModal'
 
@@ -56,6 +57,9 @@ function HourEditor({
   const save = async (h: number, p: string | null) => {
     if (await onSave(h, p, hour?.id)) setOpen(false)
   }
+  const blockOptions = blockPatternChoices(hours || 0, pattern)
+  const patternFits =
+    !pattern || blockOptions.some((item) => item.value === pattern)
 
   return (
     <Popover
@@ -64,20 +68,33 @@ function HourEditor({
       trigger="click"
       content={
         <Space direction="vertical" size={6}>
-          <Space>
-            <InputNumber min={1} max={40} value={hours} onChange={setHours} addonAfter="saat" style={{ width: 120 }} />
-            <Input
-              value={pattern}
-              onChange={(e) => setPattern(e.target.value)}
-              placeholder="blok: 2+2+1"
-              style={{ width: 110 }}
-            />
-          </Space>
+          <InputNumber
+            min={1}
+            max={40}
+            value={hours}
+            onChange={(value) => {
+              setHours(value)
+              const next = blockPatternChoices(value || 0, pattern)
+              if (pattern && !next.some((item) => item.value === pattern)) setPattern('')
+            }}
+            addonAfter="saat"
+            style={{ width: 140 }}
+          />
+          <Select
+            allowClear
+            placeholder="Blok: otomatik"
+            style={{ width: 180 }}
+            disabled={!hours}
+            value={patternFits && pattern ? pattern : undefined}
+            options={blockOptions}
+            onChange={(value) => setPattern(value || '')}
+            getPopupContainer={(node) => node.parentElement || document.body}
+          />
           <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-            Aynı sınıfta birden fazla saat olabilir. Blok boşsa 2'li bloklar + kalan 1 saat kullanılır.
+            Aynı sınıfta birden fazla saat olabilir. Blok seçilmezse 2'li bloklar ve kalan 1 saat kullanılır.
           </Typography.Text>
           <Space>
-            <Button size="small" type="primary" disabled={!hours} onClick={() => hours && save(hours, pattern.trim() || null)}>
+            <Button size="small" type="primary" disabled={!hours} onClick={() => hours && save(hours, patternFits ? pattern.trim() || null : null)}>
               Kaydet
             </Button>
             {hour && (
@@ -401,6 +418,7 @@ export function LessonPoolTab({ ctx }: { ctx: TimetableCtx }) {
       render: (v: string, row) => (
         <Space size={4}>
           {v}
+          {row.is_elective && <Tag color="purple">seçmeli</Tag>}
           {!row.is_active && <Tag>pasif</Tag>}
         </Space>
       ),
