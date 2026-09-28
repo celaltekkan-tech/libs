@@ -221,6 +221,66 @@ export async function listTimetableLessons(projectId: number): Promise<Timetable
   return data.data
 }
 
+export interface ProgramImportGap {
+  kind: 'subject' | 'teacher' | 'classroom'
+  raw: string
+  count: number
+  message: string
+}
+
+export interface ProgramImportOverrides {
+  subjects?: Record<string, number>
+  teachers?: Record<string, number>
+  classrooms?: Record<string, number>
+}
+
+export interface ProgramImportPreview {
+  format: string
+  format_label: string
+  teacher_count: number
+  slot_count: number
+  matched: number
+  classroom_count: number
+  issues: { message: string }[]
+  gaps: ProgramImportGap[]
+  sample: { teacher: string; classroom: string; subject: string; day: number; period: number }[]
+}
+
+export interface ProgramImportResult extends ProgramImportPreview {
+  created_assignments: number
+  updated_assignments: number
+  lessons: number
+}
+
+export async function previewProgramImport(projectId: number, file: File): Promise<ProgramImportPreview> {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await client.post<Envelope<ProgramImportPreview>>(
+    `${BASE}/projects/${projectId}/lessons/import/preview`,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 },
+  )
+  return data.data
+}
+
+export async function importProgram(
+  projectId: number,
+  file: File,
+  replaceExisting: boolean,
+  overrides?: ProgramImportOverrides,
+): Promise<ProgramImportResult> {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('replace_existing', replaceExisting ? 'true' : 'false')
+  if (overrides) form.append('overrides', JSON.stringify(overrides))
+  const { data } = await client.post<Envelope<ProgramImportResult>>(
+    `${BASE}/projects/${projectId}/lessons/import`,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000 },
+  )
+  return data.data
+}
+
 export type TimetableExportView = 'classroom' | 'teacher' | 'student' | 'room'
 
 export async function exportTimetableLessons(
@@ -269,8 +329,29 @@ export async function lockTimetableLessons(
   return data.data.updated
 }
 
-export async function clearTimetableLessons(projectId: number): Promise<void> {
-  await client.delete(`${BASE}/projects/${projectId}/lessons`)
+export interface ClearLessonsFilter {
+  classroom_id?: number
+  teacher_id?: number
+  room_id?: number
+  day_of_week?: number
+  ids?: number[]
+}
+
+// Filtre yoksa çalışmanın tüm taslak yerleştirmesini siler.
+export async function clearTimetableLessons(projectId: number, filter: ClearLessonsFilter = {}): Promise<number> {
+  const { data } = await client.post<Envelope<{ deleted: number }>>(`${BASE}/projects/${projectId}/lessons/clear`, filter)
+  return data.data.deleted
+}
+
+export async function clearPublishedSchedule(
+  projectId: number,
+  filter: { classroom_id?: number; teacher_id?: number } = {},
+): Promise<{ deleted: number; updated: number }> {
+  const { data } = await client.post<Envelope<{ deleted: number; updated: number }>>(
+    `${BASE}/projects/${projectId}/published/clear`,
+    filter,
+  )
+  return data.data
 }
 
 export async function publishTimetable(

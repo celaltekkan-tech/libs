@@ -18,6 +18,7 @@ export interface TimetableCtx {
   canDelete: boolean
   reloadProject: () => Promise<void>
   reloadRooms: () => Promise<void>
+  reloadMeta: () => Promise<void>
 }
 
 export function shortClassroom(c?: { class_level: string; section: string } | null): string {

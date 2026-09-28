@@ -1,6 +1,8 @@
 const express = require('express');
+const multer = require('multer');
 const router = express.Router();
 const ctrl = require('../controllers/timetableController');
+const importCtrl = require('../controllers/timetableImportController');
 const pool = require('../controllers/timetablePoolController');
 const validate = require('../middlewares/validate');
 const v = require('../validators/timetable.validator');
@@ -14,6 +16,24 @@ const read = [...guard, permission('schedule.read')];
 const create = [...guard, permission('schedule.create')];
 const update = [...guard, permission('schedule.update')];
 const remove = [...guard, permission('schedule.delete')];
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter(req, file, cb) {
+    const name = (file.originalname || '').toLowerCase();
+    if (name.endsWith('.pdf') || name.endsWith('.xlsx') || name.endsWith('.xls')) return cb(null, true);
+    return cb(new Error('Yalnızca PDF, XLS veya XLSX dosyası kabul edilir'));
+  },
+});
+
+function uploadFile(req, res, next) {
+  upload.single('file')(req, res, (err) => {
+    if (!err) return next();
+    const message = err.code === 'LIMIT_FILE_SIZE' ? 'Dosya 15 MB sınırını aşıyor' : err.message || 'Dosya yüklenemedi';
+    return res.status(400).json({ success: false, message });
+  });
+}
 
 router.get('/meta', read, ctrl.meta);
 
@@ -66,9 +86,13 @@ router.get('/runs/:id', read, ctrl.getRun);
 router.post('/runs/:id/cancel', update, ctrl.cancelRun);
 router.post('/runs/:id/apply', update, ctrl.applyRun);
 
+router.post('/projects/:projectId/lessons/import/preview', create, uploadFile, importCtrl.preview);
+router.post('/projects/:projectId/lessons/import', create, uploadFile, importCtrl.commit);
 router.get('/projects/:projectId/lessons', read, ctrl.listLessons);
 router.get('/projects/:projectId/lessons/export', read, ctrl.exportLessons);
 router.post('/projects/:projectId/lessons/lock', update, validate(v.lockAllSchema), ctrl.lockAll);
+router.post('/projects/:projectId/lessons/clear', remove, validate(v.clearLessonsSchema), ctrl.clearLessons);
+router.post('/projects/:projectId/published/clear', remove, validate(v.clearPublishedSchema), ctrl.clearPublished);
 router.delete('/projects/:projectId/lessons', remove, ctrl.clearLessons);
 router.put('/lessons/:id/move', update, validate(v.moveLessonSchema), ctrl.moveLesson);
 router.put('/lessons/:id/lock', update, validate(v.lockLessonSchema), ctrl.setLessonLock);

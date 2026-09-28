@@ -1,0 +1,16 @@
+---
+description: Yeni geri bildirim isteklerinde yeni, bekleyen ve okunmuş kayıtları birlikte ele al
+alwaysApply: true
+---
+
+# Geri bildirimler
+
+Kullanıcı yeni geri bildirimlerden söz ettiğinde ("yeni geribildirim", "geribildirimleri yap" ve benzeri) durumu `new` olanlarla birlikte `waiting` ve `read` kayıtları da yükle. Üçünü de uygula. Kullanıcıya her seferinde bekleyenleri de katmasını hatırlatma.
+
+Her kayıt için:
+
+- İsteği kodda karşıla.
+- Düz Türkçe bir `reply` yaz, `status` değerini `resolved` yap, `replied_at` doldur.
+- `FeedbackUpdates` içine `is_from_platform: true` bir gelişme ekle.
+- `user_id` varsa ilgili kullanıcıya bildirim yaz.
+- Geçici sorgu betiklerini bırakma.

@@ -30,6 +30,8 @@ services:
       PORT: 4000
       NODE_ENV: production
       BACKUP_DIR: /app/backups
+      # .env içindeki 127.0.0.1 değerini ezer; API çözücüye iç ağdan gider.
+      SOLVER_URL: http://solver:8000
     volumes:
       - ./uploads:/app/uploads
       - ${BACKUP_HOST_DIR:-./backups}:/app/backups
@@ -37,7 +39,7 @@ services:
       db:
         condition: service_healthy
       solver:
-        condition: service_started
+        condition: service_healthy
     networks:
       - internal
       - proxy
@@ -51,6 +53,12 @@ services:
     environment:
       SOLVER_MAX_JOBS: ${SOLVER_MAX_JOBS:-1}
       SOLVER_WORKERS: ${SOLVER_WORKERS:-4}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     deploy:
       resources:
         limits:

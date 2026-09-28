@@ -38,7 +38,8 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
   const [loading, setLoading] = useState(false)
   const [teacherId, setTeacherId] = useState<number | null>(null)
   const [search, setSearch] = useState('')
-  const [classId, setClassId] = useState<number | null>(ctx.classrooms[0]?.id ?? null)
+  const [lessonSearch, setLessonSearch] = useState('')
+  const [classIds, setClassIds] = useState<number[]>(ctx.classrooms[0]?.id ? [ctx.classrooms[0].id] : [])
   const [lessonId, setLessonId] = useState<number | null>(null)
   const editable = ctx.canUpdate
 
@@ -89,16 +90,38 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
   }, [rows])
   const classHasLessons = useMemo(() => new Set(rows.map((a) => a.classroom_id)), [rows])
 
-  const classLessons = useMemo(() => rows.filter((a) => a.classroom_id === classId), [rows, classId])
+  const lessonQuery = lessonSearch.trim().toLocaleLowerCase('tr-TR')
+  const matchesLesson = (a: TimetableAssignment) => {
+    if (!lessonQuery) return true
+    const text = `${subjectCode.get(a.subject_id) || ''} ${a.Subject?.name || ''} ${shortClassroom(a.Classroom)}`.toLocaleLowerCase(
+      'tr-TR',
+    )
+    return text.includes(lessonQuery)
+  }
+
+  const classLessons = useMemo(
+    () =>
+      rows
+        .filter((a) => classIds.includes(a.classroom_id) && matchesLesson(a))
+        .sort(
+          (a, b) =>
+            shortClassroom(a.Classroom).localeCompare(shortClassroom(b.Classroom), 'tr', { numeric: true }) ||
+            (a.Subject?.name || '').localeCompare(b.Subject?.name || '', 'tr'),
+        ),
+    [rows, classIds, lessonQuery, subjectCode],
+  )
 
   const branchLessons = useMemo(() => {
     if (!teacher) return []
     const key = branchKey(teacher.brans)
     if (!key) return []
     return rows
-      .filter((a) => isGuidanceLesson(a.Subject?.name) || branchKey(subjectBranch.get(a.subject_id)) === key)
+      .filter(
+        (a) =>
+          (isGuidanceLesson(a.Subject?.name) || branchKey(subjectBranch.get(a.subject_id)) === key) && matchesLesson(a),
+      )
       .sort((a, b) => Number(Boolean(a.teacher_id)) - Number(Boolean(b.teacher_id)) || shortClassroom(a.Classroom).localeCompare(shortClassroom(b.Classroom), 'tr', { numeric: true }))
-  }, [rows, teacher, subjectBranch])
+  }, [rows, teacher, subjectBranch, lessonQuery, subjectCode])
 
   const lesson = rows.find((a) => a.id === lessonId) || null
 
@@ -106,8 +129,10 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
     try {
       const updated = await updateTimetableAssignment(row.id, payload)
       setRows((prev) => prev.map((r) => (r.id === row.id ? updated : r)))
+      return updated
     } catch (err) {
       message.error(getErrorMessage(err))
+      return null
     }
   }
 
@@ -124,10 +149,33 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
     }
   }, [rows, loading, languages, ctx.teachers, editable])
 
-  // + : dersin öğretmeni yoksa 1. öğretmen, varsa değiştirir.
-  const assignMain = (row: TimetableAssignment) => {
+  // Aynı dersin, seçili şubelerdeki kopyaları. Çoklu seçimde + boş olanlara da yazar.
+  const sameSubjectInSelection = (row: TimetableAssignment) =>
+    classIds.length > 1
+      ? rows.filter((a) => a.subject_id === row.subject_id && classIds.includes(a.classroom_id))
+      : [row]
+
+  // + : tıklanan satırın öğretmenini değiştirir. Birden fazla şube seçiliyse öğretmeni boş olan diğer şubelere de yazar.
+  const assignMain = async (row: TimetableAssignment) => {
     if (!teacherId) return
-    void patch(row, { teacher_id: teacherId, co_teacher_ids: (row.co_teacher_ids || []).filter((id) => id !== teacherId) })
+    const same = sameSubjectInSelection(row)
+    const targets = same.filter((a) => a.id === row.id || !a.teacher_id)
+    const skipped = same.length - targets.length
+    const pending = targets.filter((a) => a.teacher_id !== teacherId || (a.co_teacher_ids || []).includes(teacherId))
+    const results = await Promise.all(
+      pending.map((a) =>
+        patch(a, {
+          teacher_id: teacherId,
+          co_teacher_ids: (a.co_teacher_ids || []).filter((id) => id !== teacherId),
+        }),
+      ),
+    )
+    const ok = results.filter(Boolean).length
+    if (ok && classIds.length > 1 && (targets.length > 1 || skipped > 0)) {
+      message.success(
+        `${row.Subject?.name || 'Ders'} ${ok} şubede atandı${skipped ? `. ${skipped} şubede mevcut öğretmen korundu` : ''}.`,
+      )
+    }
   }
 
   const addCo = (row: TimetableAssignment) => {
@@ -184,13 +232,30 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
         editable &&
         teacherId && (
           <Space size={2} onClick={(e) => e.stopPropagation()}>
-            <Tooltip title={r.teacher_id ? 'Seçili öğretmeni 1. öğretmen yap' : 'Seçili öğretmene ata'}>
+            <Tooltip
+              title={(() => {
+                const emptyOthers = sameSubjectInSelection(r).filter((a) => a.id !== r.id && !a.teacher_id).length
+                if (emptyOthers) return `Seçili öğretmene ata; öğretmeni boş ${emptyOthers} şubeye de yazılır`
+                return r.teacher_id ? 'Seçili öğretmeni 1. öğretmen yap' : 'Seçili öğretmene ata'
+              })()}
+            >
               <Button
                 size="small"
-                type={r.teacher_id ? 'default' : 'primary'}
+                type={
+                  !r.teacher_id || sameSubjectInSelection(r).some((a) => a.id !== r.id && !a.teacher_id)
+                    ? 'primary'
+                    : 'default'
+                }
                 icon={<PlusOutlined />}
-                disabled={r.teacher_id === teacherId}
-                onClick={() => assignMain(r)}
+                disabled={
+                  !sameSubjectInSelection(r).some(
+                    (a) =>
+                      (a.id === r.id &&
+                        (a.teacher_id !== teacherId || (a.co_teacher_ids || []).includes(teacherId))) ||
+                      (a.id !== r.id && !a.teacher_id),
+                  )
+                }
+                onClick={() => void assignMain(r)}
               />
             </Tooltip>
             {r.teacher_id && (
@@ -211,9 +276,10 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
   return (
     <>
       <Typography.Paragraph type="secondary">
-        Soldan öğretmeni seçin; sağda şubenin dersleri ya da öğretmenin branş dersleri listelenir. <PlusOutlined /> dersi
-        öğretmene verir, <UsergroupAddOutlined /> ortak öğretmen ekler (aynı saatte birlikte girerler). Bir derse en fazla{' '}
-        {MAX_TEACHERS} öğretmen atanabilir.
+        Soldan öğretmeni seçin. Sağda bir veya birden fazla şube işaretleyin; dersleri birlikte görürsünüz.{' '}
+        <PlusOutlined /> dersi öğretmene verir. Birden fazla şube seçiliyken aynı ders, öğretmeni boş olan diğer seçili
+        şubelere de yazılır. <UsergroupAddOutlined /> ortak öğretmen ekler (aynı saatte birlikte girerler). Bir derse en
+        fazla {MAX_TEACHERS} öğretmen atanabilir.
       </Typography.Paragraph>
       <Row gutter={12}>
         <Col xs={24} xl={9}>
@@ -233,7 +299,12 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
               dataSource={teacherRows}
               scroll={{ y: 300 }}
               onRow={(t) => ({
-                onClick: () => setTeacherId(t.id),
+                onClick: () => {
+                  if (t.id === teacherId) return
+                  setTeacherId(t.id)
+                  setClassIds([])
+                  setLessonId(null)
+                },
                 style: {
                   cursor: 'pointer',
                   background: t.id === teacherId ? token.colorPrimaryBg : undefined,
@@ -305,16 +376,27 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
                 label: 'Sınıf dersleri',
                 children: (
                   <Row gutter={8}>
-                    <Col span={6}>
+                    <Col span={8}>
                       <Table
                         rowKey="id"
                         size="small"
                         pagination={false}
                         dataSource={ctx.classrooms}
                         scroll={{ y: 520 }}
+                        rowSelection={{
+                          selectedRowKeys: classIds,
+                          onChange: (keys) => setClassIds(keys as number[]),
+                        }}
                         onRow={(c) => ({
-                          onClick: () => setClassId(c.id),
-                          style: { cursor: 'pointer', background: c.id === classId ? token.colorPrimaryBg : undefined, color: token.colorText },
+                          onClick: (event) => {
+                            if ((event.target as HTMLElement).closest('.ant-table-selection-column, .ant-checkbox')) return
+                            setClassIds((prev) => (prev.includes(c.id) ? prev.filter((id) => id !== c.id) : [...prev, c.id]))
+                          },
+                          style: {
+                            cursor: 'pointer',
+                            background: classIds.includes(c.id) ? token.colorPrimaryBg : undefined,
+                            color: token.colorText,
+                          },
                         })}
                         columns={[
                           { title: 'Şube', key: 'name', render: (_, c) => shortClassroom(c) },
@@ -331,7 +413,15 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
                         ]}
                       />
                     </Col>
-                    <Col span={18}>
+                    <Col span={16}>
+                      <Input.Search
+                        allowClear
+                        size="small"
+                        placeholder="Ders ara (ad veya kod)"
+                        value={lessonSearch}
+                        onChange={(e) => setLessonSearch(e.target.value)}
+                        style={{ marginBottom: 8 }}
+                      />
                       <Table<TimetableAssignment>
                         rowKey="id"
                         size="small"
@@ -343,11 +433,17 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
                           onClick: () => setLessonId(r.id),
                           style: { cursor: 'pointer', background: r.id === lessonId ? token.colorWarningBg : undefined, color: token.colorText },
                         })}
-                        columns={lessonColumns(false)}
-                        locale={{ emptyText: 'Bu şubeye henüz ders verilmedi ("Sınıfa ders verme" adımı).' }}
+                        columns={lessonColumns(classIds.length > 1)}
+                        locale={{
+                          emptyText: !classIds.length
+                            ? 'Soldan en az bir şube seçin.'
+                            : lessonQuery
+                              ? 'Aramanızla eşleşen ders yok.'
+                              : 'Seçili şubelere henüz ders verilmedi ("Sınıfa ders verme" adımı).',
+                        }}
                       />
                       <Card size="small" title="Dersin öğretmenleri" style={{ marginTop: 8 }}>
-                        {!lesson || lesson.classroom_id !== classId ? (
+                        {!lesson || !classIds.includes(lesson.classroom_id) ? (
                           <Typography.Text type="secondary">Yukarıdan bir ders seçin.</Typography.Text>
                         ) : (
                           <Space direction="vertical" style={{ width: '100%' }}>
@@ -422,6 +518,14 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
                       Branşı "{teacher.brans}" olan derslerin tüm şubelerdeki listesi; öğretmeni olmayanlar üstte. Ders
                       havuzunda derse branş bağlanmamışsa burada görünmez.
                     </Typography.Paragraph>
+                    <Input.Search
+                      allowClear
+                      size="small"
+                      placeholder="Ders ara (ad veya kod)"
+                      value={lessonSearch}
+                      onChange={(e) => setLessonSearch(e.target.value)}
+                      style={{ marginBottom: 8, maxWidth: 280 }}
+                    />
                     <Table<TimetableAssignment>
                       rowKey="id"
                       size="small"
@@ -430,7 +534,7 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
                       dataSource={branchLessons}
                       scroll={{ y: 520 }}
                       columns={lessonColumns(true)}
-                      locale={{ emptyText: 'Bu branşa bağlı ders ataması yok.' }}
+                      locale={{ emptyText: lessonQuery ? 'Aramanızla eşleşen ders yok.' : 'Bu branşa bağlı ders ataması yok.' }}
                     />
                   </>
                 ),

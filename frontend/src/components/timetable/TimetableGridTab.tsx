@@ -1,7 +1,9 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, App, Button, Dropdown, Empty, Popconfirm, Segmented, Select, Space, Tag, Tooltip, Typography, theme } from 'antd'
 import {
+  CloseOutlined,
   CloudUploadOutlined,
+  DeleteOutlined,
   DownOutlined,
   FileExcelOutlined,
   LeftOutlined,
@@ -9,8 +11,11 @@ import {
   LockOutlined,
   RightOutlined,
   UnlockOutlined,
+  UploadOutlined,
 } from '@ant-design/icons'
 import {
+  clearPublishedSchedule,
+  clearTimetableLessons,
   exportTimetableLessons,
   listAvailability,
   listTimetableLessons,
@@ -20,6 +25,8 @@ import {
   setTimetableLessonLock,
   type TimetableExportView,
 } from '../../api/timetable'
+import { TypedPhraseConfirmModal } from '../TypedPhraseConfirmModal'
+import { ProgramImportModal } from './ProgramImportModal'
 import { downloadBlob } from '../../utils/download'
 import { getErrorMessage } from '../../api/client'
 import { DAY_LABELS } from '../../types/scheduleEntry'
@@ -35,6 +42,7 @@ import {
 } from './shared'
 
 type ViewMode = 'classroom' | 'teacher' | 'room'
+type WipeScope = 'draft-all' | 'published-all'
 
 export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
   const { message, modal } = App.useApp()
@@ -48,8 +56,11 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
   const [dragId, setDragId] = useState<number | null>(null)
   const [dropKey, setDropKey] = useState<string | null>(null)
   const [publishing, setPublishing] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [availability, setAvailability] = useState<TimetableAvailability[]>([])
+  const [wipe, setWipe] = useState<WipeScope | null>(null)
+  const [wiping, setWiping] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -96,10 +107,29 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
       .sort((a, b) => a.label.localeCompare(b.label, 'tr', { numeric: true }))
   }, [lessons, mode, ctx.rooms, teacherById])
 
+  // Taslak boşken de şube/öğretmen seçilebilsin; yayındaki program kısmen silinebilsin.
+  const pickerOptions = useMemo(() => {
+    if (entities.length) return entities
+    if (mode === 'classroom') {
+      return ctx.classrooms
+        .map((c) => ({ value: c.id, label: shortClassroom(c) }))
+        .sort((a, b) => a.label.localeCompare(b.label, 'tr', { numeric: true }))
+    }
+    if (mode === 'teacher') {
+      return ctx.teachers
+        .map((t) => ({ value: t.id, label: teacherFullName(t) }))
+        .sort((a, b) => a.label.localeCompare(b.label, 'tr'))
+    }
+    return ctx.rooms
+      .filter((r) => r.is_active)
+      .map((r) => ({ value: r.id, label: r.name }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'tr'))
+  }, [entities, mode, ctx.classrooms, ctx.teachers, ctx.rooms])
+
   useEffect(() => {
-    if (!entities.length) setEntityId(null)
-    else if (!entities.some((e) => e.value === entityId)) setEntityId(entities[0].value)
-  }, [entities, entityId])
+    if (!pickerOptions.length) setEntityId(null)
+    else if (!pickerOptions.some((e) => e.value === entityId)) setEntityId(pickerOptions[0].value)
+  }, [pickerOptions, entityId])
 
   const visible = useMemo(
     () =>
@@ -239,10 +269,169 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
   }
 
   const step = (dir: 1 | -1) => {
-    const idx = entities.findIndex((e) => e.value === entityId)
-    const next = entities[(idx + dir + entities.length) % entities.length]
+    const idx = pickerOptions.findIndex((e) => e.value === entityId)
+    const next = pickerOptions[(idx + dir + pickerOptions.length) % pickerOptions.length]
     if (next) setEntityId(next.value)
   }
+
+  const viewLabel = pickerOptions.find((e) => e.value === entityId)?.label || ''
+  const viewNoun = mode === 'classroom' ? 'şubenin' : mode === 'teacher' ? 'öğretmenin' : 'mekanın'
+
+  const afterClear = async (text: string) => {
+    message.success(text)
+    await load()
+    await ctx.reloadProject()
+  }
+
+  const clearDraft = async (filter: Parameters<typeof clearTimetableLessons>[1], done: string): Promise<boolean> => {
+    try {
+      const deleted = await clearTimetableLessons(project.id, filter)
+      if (!deleted) {
+        message.info('Silinecek taslak ders bulunamadı')
+        return true
+      }
+      await afterClear(done.replace('{n}', String(deleted)))
+      return true
+    } catch (err) {
+      message.error(getErrorMessage(err))
+      return false
+    }
+  }
+
+  const clearPublished = async (
+    filter: { classroom_id?: number; teacher_id?: number },
+    label: string,
+  ): Promise<boolean> => {
+    try {
+      const res = await clearPublishedSchedule(project.id, filter)
+      if (!res.deleted && !res.updated) {
+        message.info('Silinecek yayındaki ders bulunamadı')
+        return true
+      }
+      const bits: string[] = []
+      if (res.deleted) bits.push(`${res.deleted} ders saati silindi`)
+      if (res.updated) bits.push(`${res.updated} ortak derste öğretmen güncellendi`)
+      await afterClear(label ? `${label}: ${bits.join(', ')}` : bits.join(', '))
+      return true
+    } catch (err) {
+      message.error(getErrorMessage(err))
+      return false
+    }
+  }
+
+  const removeLesson = (lesson: TimetableLesson) => {
+    const name = lesson.Assignment.Subject?.name || 'Ders'
+    modal.confirm({
+      title: `${name} silinsin mi?`,
+      content: 'Yalnızca bu saatteki taslak yerleştirme silinir. Ders ataması ve yayındaki program durur.',
+      okText: 'Sil',
+      okButtonProps: { danger: true },
+      cancelText: 'Vazgeç',
+      onOk: () => clearDraft({ ids: [lesson.id] }, `${name} taslaktan silindi`),
+    })
+  }
+
+  const confirmPartial = (title: string, content: string, onOk: () => Promise<unknown>) => {
+    modal.confirm({
+      title,
+      content,
+      okText: 'Sil',
+      okButtonProps: { danger: true },
+      cancelText: 'Vazgeç',
+      onOk,
+    })
+  }
+
+  const onWipe = async () => {
+    if (!wipe) return
+    setWiping(true)
+    try {
+      const ok =
+        wipe === 'draft-all'
+          ? await clearDraft({}, 'Taslaktaki {n} ders saati silindi')
+          : await clearPublished({}, 'Yayındaki program')
+      if (ok) setWipe(null)
+    } finally {
+      setWiping(false)
+    }
+  }
+
+  const deleteMenu = ctx.canDelete ? (
+    <Dropdown
+      menu={{
+        items: [
+          {
+            key: 'view-draft',
+            label: `Bu ${viewNoun} taslağını sil`,
+            disabled: !entityId || lessons.length === 0,
+          },
+          { key: 'draft-all', label: 'Tüm taslak programı sil', disabled: lessons.length === 0 },
+          { type: 'divider' },
+          {
+            key: 'view-published',
+            label:
+              mode === 'room'
+                ? 'Yayın mekan bazında silinemez'
+                : mode === 'teacher'
+                  ? 'Bu öğretmenin yayındaki programını sil'
+                  : 'Bu şubenin yayındaki programını sil',
+            disabled: mode === 'room' || !entityId,
+          },
+          { key: 'published-all', label: 'Bu okulun yayındaki tüm programını sil', danger: true },
+        ],
+        onClick: ({ key }) => {
+          if (key === 'view-draft' && entityId) {
+            const filter =
+              mode === 'classroom'
+                ? { classroom_id: entityId }
+                : mode === 'teacher'
+                  ? { teacher_id: entityId }
+                  : { room_id: entityId }
+            confirmPartial(
+              `${viewLabel || 'Görünen program'} taslağı silinsin mi?`,
+              'Yalnızca bu görünümdeki yerleştirilen dersler silinir. Ders atamaları ve yayındaki program durur.',
+              () => clearDraft(filter, `${viewLabel} taslağından {n} saat silindi`),
+            )
+          } else if (key === 'draft-all') {
+            setWipe('draft-all')
+          } else if (key === 'view-published' && entityId && mode !== 'room') {
+            const filter = mode === 'classroom' ? { classroom_id: entityId } : { teacher_id: entityId }
+            confirmPartial(
+              `${viewLabel || 'Görünen kayıt'} yayındaki programı silinsin mi?`,
+              mode === 'teacher'
+                ? 'Bu öğretmenin bu okuldaki yayındaki dersleri kalkar. Ortak girilen derste kayıt durur, öğretmen listeden çıkar. Nöbet, sınav ve ek ders bu programa bakar.'
+                : 'Bu şubenin yayındaki ders programı tamamen kalkar. Taslak ve ders atamaları durur. Nöbet, sınav ve ek ders bu programa bakar.',
+              () => clearPublished(filter, `${viewLabel} yayındaki programı`),
+            )
+          } else if (key === 'published-all') {
+            setWipe('published-all')
+          }
+        },
+      }}
+    >
+      <Button danger icon={<DeleteOutlined />}>
+        Sil <DownOutlined />
+      </Button>
+    </Dropdown>
+  ) : null
+
+  const wipeModal = (
+    <TypedPhraseConfirmModal
+      open={wipe != null}
+      loading={wiping}
+      title={wipe === 'published-all' ? 'Yayındaki ders programı silinsin mi?' : 'Taslak ders programının tamamı silinsin mi?'}
+      description={
+        wipe === 'published-all'
+          ? `Bu okulun ${project.academic_year || 'yılı belirtilmemiş'} yayındaki ders programı kayıtlarının tamamı silinir. Çalışma taslağa döner. Ders atamaları ve taslak yerleştirme durur. Nöbet, sınav ve ek ders ekranları boş program görür.`
+          : 'Bu çalışmadaki yerleştirilen derslerin tamamı silinir. Ders atamaları, istekler ve yayındaki program durur. Programı yeniden oluşturabilirsiniz.'
+      }
+      okText="Sil"
+      onCancel={() => {
+        if (!wiping) setWipe(null)
+      }}
+      onConfirm={onWipe}
+    />
+  )
 
   const periods = Array.from({ length: project.periods_per_day }, (_, i) => i + 1)
 
@@ -279,9 +468,21 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, project.days, project.periods_per_day])
 
-  if (!loading && lessons.length === 0) {
-    return <Empty description='Henüz taslak program yok. "Oluştur" sekmesinden programı oluşturun.' />
-  }
+  const importModal = (
+    <ProgramImportModal
+      projectId={project.id}
+      open={importOpen}
+      subjects={ctx.subjects}
+      teachers={ctx.teachers}
+      classrooms={ctx.classrooms}
+      onClose={() => setImportOpen(false)}
+      onImported={() => {
+        setImportOpen(false)
+        void load()
+        void ctx.reloadProject()
+      }}
+    />
+  )
 
   const renderLesson = (l: TimetableLesson) => {
     const a = l.Assignment
@@ -316,7 +517,32 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
           position: 'relative',
         }}
       >
-        <div style={{ fontWeight: 600, fontSize: 12, paddingRight: 16, lineHeight: 1.3, color: token.colorText }}>{a.Subject?.name}</div>
+        {ctx.canDelete && (
+          <Tooltip title="Bu dersi sil">
+            <span
+              onMouseDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+              }}
+              onClick={() => removeLesson(l)}
+              style={{ position: 'absolute', top: 2, left: 6, cursor: 'pointer', fontSize: 11, color: '#9ca3af' }}
+            >
+              <CloseOutlined />
+            </span>
+          </Tooltip>
+        )}
+        <div
+          style={{
+            fontWeight: 600,
+            fontSize: 12,
+            paddingRight: 16,
+            paddingLeft: ctx.canDelete ? 12 : 0,
+            lineHeight: 1.3,
+            color: token.colorText,
+          }}
+        >
+          {a.Subject?.name}
+        </div>
         <div style={{ fontSize: 11, color: token.colorTextSecondary, lineHeight: 1.3 }}>{detail}</div>
         {a.Room && mode !== 'room' && <div style={{ fontSize: 10, color: token.colorTextSecondary }}>{a.Room.name}</div>}
         {editable ? (
@@ -348,21 +574,26 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
               { value: 'room', label: 'Mekan' },
             ]}
           />
-          <Button icon={<LeftOutlined />} onClick={() => step(-1)} disabled={entities.length < 2} />
+          <Button icon={<LeftOutlined />} onClick={() => step(-1)} disabled={pickerOptions.length < 2} />
           <Select
             showSearch
             optionFilterProp="label"
             style={{ width: 240 }}
             value={entityId ?? undefined}
             onChange={setEntityId}
-            options={entities}
+            options={pickerOptions}
             loading={loading}
           />
-          <Button icon={<RightOutlined />} onClick={() => step(1)} disabled={entities.length < 2} />
+          <Button icon={<RightOutlined />} onClick={() => step(1)} disabled={pickerOptions.length < 2} />
           {mode !== 'room' && <Tag>{visible.length} saat</Tag>}
           {mode === 'teacher' && <Tag color={gapCount ? 'orange' : 'green'}>{gapCount} boş saat</Tag>}
         </Space>
         <Space wrap>
+          {ctx.canCreate && (
+            <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)}>
+              İçe aktar
+            </Button>
+          )}
           <Dropdown
             disabled={exporting || lessons.length === 0}
             menu={{
@@ -400,6 +631,7 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
               </Button>
             </>
           )}
+          {deleteMenu}
           {editable && (
             <Popconfirm
               title="Taslak ders programı yayınlansın mı?"
@@ -421,6 +653,12 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
         </Space>
       </Space>
 
+      {!loading && lessons.length === 0 && (
+        <Empty
+          style={{ marginBottom: 12 }}
+          description="Henüz taslak program yok. Oluştur sekmesinden üretebilir, hazır programı içe aktarabilir veya yayındaki programı silebilirsiniz."
+        />
+      )}
       {clashIds.size > 0 && (
         <Alert
           type="error"
@@ -431,6 +669,7 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
       )}
       <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
         Dersleri sürükleyip bırakarak taşıyın. Aynı şubenin başka dersinin üstüne bırakırsanız iki ders yer değiştirir.
+        Karttaki çarpı tek dersi siler. Sil menüsü görünen şubeyi, öğretmeni, mekanı ya da programın tamamını kaldırır.
         Kilitli dersler ({lockedCount}) yeniden program oluşturulduğunda yerinde kalır.
       </Typography.Paragraph>
 
@@ -518,6 +757,8 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
           ))}
         </div>
       </div>
+      {importModal}
+      {wipeModal}
     </>
   )
 }

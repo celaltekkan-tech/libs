@@ -13,7 +13,8 @@
         "smoke:cors": "node scripts/cors-check.js",
         "dev:frontend": "npm run dev --prefix frontend",
         "dev:mobile": "npm start --prefix mobile",
-        "dev:all": "concurrently -n be,fe -c cyan,magenta \"npm run dev\" \"npm run dev:frontend\"",
+        "dev:solver": "node scripts/dev-solver.js",
+        "dev:all": "concurrently -n be,fe,sv -c cyan,magenta,green \"npm run dev\" \"npm run dev:frontend\" \"npm run dev:solver\"",
         "build:frontend": "npm run build --prefix frontend"
     },
     "dependencies": {

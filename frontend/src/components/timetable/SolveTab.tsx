@@ -63,6 +63,15 @@ export function SolveTab({ ctx, onShowGrid }: Props) {
   }, [project.id, message])
 
   useEffect(() => {
+    if (ctx.meta.solver_available) return undefined
+    void ctx.reloadMeta()
+    const poll = window.setInterval(() => {
+      void ctx.reloadMeta()
+    }, 8000)
+    return () => window.clearInterval(poll)
+  }, [ctx.meta.solver_available, ctx.reloadMeta])
+
+  useEffect(() => {
     void loadRuns().then((list) => {
       const last = list.find((r) => r.status === 'tamamlandi')
       if (last) void getTimetableRun(last.id).then(setSelected).catch(() => undefined)
@@ -158,7 +167,7 @@ export function SolveTab({ ctx, onShowGrid }: Props) {
           showIcon
           style={{ marginBottom: 16 }}
           message="Program çözücü servisine ulaşılamıyor"
-          description="Sunucuda 'solver' servisinin çalıştığından emin olun (docker compose up -d solver)."
+          description="Çözücü kapsayıcısı çalışıyorsa sayfa birkaç saniyede kendini yoklar. Uyarı sürerse API'yi yeniden başlatın: docker compose up -d --force-recreate backend"
         />
       )}
 

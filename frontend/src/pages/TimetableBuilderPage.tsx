@@ -156,6 +156,14 @@ export function TimetableBuilderPage() {
     setRooms(await listTimetableRooms(activeSchoolId))
   }, [activeSchoolId])
 
+  const reloadMeta = useCallback(async () => {
+    try {
+      setMeta(await fetchTimetableMeta())
+    } catch {
+      // Sekme zaten çözücü uyarısını gösteriyor.
+    }
+  }, [])
+
   const openCreate = async () => {
     createForm.resetFields()
     let year: string | null = null
@@ -208,9 +216,22 @@ export function TimetableBuilderPage() {
   const ctx: TimetableCtx | null = useMemo(
     () =>
       project && meta
-        ? { project, classrooms, teachers, subjects, rooms, meta, canCreate, canUpdate, canDelete, reloadProject, reloadRooms }
+        ? {
+            project,
+            classrooms,
+            teachers,
+            subjects,
+            rooms,
+            meta,
+            canCreate,
+            canUpdate,
+            canDelete,
+            reloadProject,
+            reloadRooms,
+            reloadMeta,
+          }
         : null,
-    [project, meta, classrooms, teachers, subjects, rooms, canCreate, canUpdate, canDelete, reloadProject, reloadRooms],
+    [project, meta, classrooms, teachers, subjects, rooms, canCreate, canUpdate, canDelete, reloadProject, reloadRooms, reloadMeta],
   )
 
   return (
