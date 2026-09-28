@@ -1,9 +1,12 @@
 'use strict';
 
 // solver/ (Python FastAPI + OR-Tools) servisine HTTP istemcisi.
-// Docker'da iç ağ adresi http://solver:8000; yerelde SOLVER_URL ile ezilir.
+// Docker Compose SOLVER_URL=http://solver:8000 verir. Yerelde varsayılan 127.0.0.1'dir;
+// "solver" adı yalnız Docker iç ağında çözülür.
 
-const SOLVER_URL = (process.env.SOLVER_URL || 'http://solver:8000').replace(/\/$/, '');
+const SOLVER_URL = (
+  process.env.SOLVER_URL || (process.env.NODE_ENV === 'production' ? 'http://solver:8000' : 'http://127.0.0.1:8000')
+).replace(/\/$/, '');
 
 class SolverUnavailableError extends Error {}
 
@@ -19,6 +22,8 @@ async function request(method, path, body, timeoutMs = 30000) {
       signal: controller.signal,
     });
   } catch (err) {
+    const reason = (err && err.cause && err.cause.code) || (err && err.code) || (err && err.message) || 'bağlantı hatası';
+    console.warn(`[solver] ${method} ${path} başarısız (${SOLVER_URL}): ${reason}`);
     throw new SolverUnavailableError(
       `Program çözücü servisine ulaşılamadı (${SOLVER_URL}). Servisin çalıştığından emin olun.`
     );

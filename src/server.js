@@ -1,3 +1,7 @@
+const dns = require('dns');
+// Docker iç ağında servis adı önce IPv6'ya çözülünce fetch çözücüye hiç ulaşamaz.
+if (typeof dns.setDefaultResultOrder === 'function') dns.setDefaultResultOrder('ipv4first');
+
 require('dotenv').config();
 const cron = require('node-cron');
 const { app, connectDb } = require('./app');

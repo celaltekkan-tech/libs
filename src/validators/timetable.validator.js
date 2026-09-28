@@ -174,6 +174,19 @@ const moveLessonSchema = Joi.object({
 });
 const lockLessonSchema = Joi.object({ is_locked: Joi.boolean().required() });
 const lockAllSchema = Joi.object({ is_locked: Joi.boolean().required(), classroom_id: id, teacher_id: id });
+// Boş gövde tüm taslağı siler; verilen alanlar birlikte uygulanır.
+const clearLessonsSchema = Joi.object({
+  classroom_id: id,
+  teacher_id: id,
+  room_id: id,
+  day_of_week: Joi.number().integer().min(1).max(7),
+  ids: Joi.array().items(id).min(1).max(5000).unique(),
+});
+// Boş gövde okulun bu eğitim yılındaki yayındaki programı siler.
+const clearPublishedSchema = Joi.object({
+  classroom_id: id,
+  teacher_id: id,
+});
 
 module.exports = {
   createProjectSchema,
@@ -200,4 +213,6 @@ module.exports = {
   moveLessonSchema,
   lockLessonSchema,
   lockAllSchema,
+  clearLessonsSchema,
+  clearPublishedSchema,
 };

@@ -954,13 +954,43 @@ def solve(data, on_progress=None, should_stop=None):
     ctx = Ctx(data)
     t0 = time.time()
     b = build(ctx)
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = float(data.get('time_limit') or 60)
-    solver.parameters.num_workers = int(data.get('workers') or 4)
-    if data.get('seed') is not None:
-        solver.parameters.random_seed = int(data['seed'])
+    time_limit = float(data.get('time_limit') or 60)
+    workers = int(data.get('workers') or 4)
+
+    def make_solver(limit):
+        s = cp_model.CpSolver()
+        s.parameters.max_time_in_seconds = max(1.0, limit)
+        s.parameters.num_workers = workers
+        if data.get('seed') is not None:
+            s.parameters.random_seed = int(data['seed'])
+        return s
+
+    # 1. aşama: amaçsız yalnız geçerli bir program. Sıkı (boşluksuz dolu) şubelerde
+    # ceza terimleri aramayı boğup ilk çözümü bile engelleyebiliyor.
+    feas = b.model.Clone()
+    feas.ClearObjective()
+    solver = make_solver(time_limit)
     cb = _Callback(on_progress, should_stop)
-    st = solver.Solve(b.model, cb)
+    st = solver.Solve(feas, cb)
+
+    # 2. aşama: bulunan program ipucu verilerek iyileştirilir; süre biterse 1. aşama geçerli.
+    if st in (cp_model.OPTIMAL, cp_model.FEASIBLE) and b.terms:
+        hint = list(solver.ResponseProto().solution)
+        proto = b.model.Proto()
+        proto.solution_hint.vars.extend(range(len(hint)))
+        proto.solution_hint.values.extend(hint)
+        remaining = time_limit - (time.time() - t0)
+        if remaining >= 2 and not (should_stop and should_stop()):
+            solver = make_solver(remaining)
+            st = solver.Solve(b.model, cb)
+        else:
+            st = cp_model.UNKNOWN
+        if st not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            solver = make_solver(10)
+            solver.parameters.fix_variables_to_their_hinted_value = True
+            st = solver.Solve(b.model)
+            if st == cp_model.OPTIMAL:
+                st = cp_model.FEASIBLE
     status = STATUS_NAMES.get(st, str(st))
 
     diagnostics = [i for i in pre['issues'] if i['level'] == 'warning']

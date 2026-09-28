@@ -250,7 +250,7 @@ module.exports = {
       try {
         await solver.health();
         solverOk = true;
-      } catch {
+      } catch (err) {
         solverOk = false;
       }
       const aiConfigured = gemini.isEnabled();
@@ -1122,8 +1122,138 @@ module.exports = {
   async clearLessons(req, res, next) {
     try {
       const project = await loadProject(req);
-      await TimetableLesson.destroy({ where: { project_id: project.id } });
-      res.json({ success: true });
+      const filter = req.validatedBody || {};
+      const where = { project_id: project.id };
+      if (filter.ids?.length) where.id = filter.ids;
+      if (filter.day_of_week) where.day_of_week = filter.day_of_week;
+      if (filter.room_id) where.room_id = filter.room_id;
+      if (filter.classroom_id || filter.teacher_id) {
+        const aWhere = { project_id: project.id };
+        if (filter.classroom_id) aWhere.classroom_id = filter.classroom_id;
+        if (filter.teacher_id) {
+          aWhere[Op.or] = [{ teacher_id: filter.teacher_id }, { co_teacher_ids: { [Op.contains]: [filter.teacher_id] } }];
+        }
+        const assignmentIds = (await TimetableAssignment.findAll({ where: aWhere, attributes: ['id'] })).map((a) => a.id);
+        if (!assignmentIds.length) {
+          return res.json({ success: true, data: { deleted: 0 } });
+        }
+        where.assignment_id = assignmentIds;
+      }
+      const deleted = await TimetableLesson.destroy({ where });
+      const partial = Boolean(
+        filter.ids?.length || filter.day_of_week || filter.room_id || filter.classroom_id || filter.teacher_id
+      );
+      await audit.log(req, {
+        action: 'delete',
+        entityType: 'timetable_lesson',
+        entityId: project.id,
+        summary: partial
+          ? `Taslak ders programından ${deleted} saat silindi (${project.name})`
+          : `Taslak ders programının tamamı silindi (${project.name}, ${deleted} saat)`,
+      });
+      res.json({ success: true, data: { deleted } });
+    } catch (err) {
+      sendError(res, next, err);
+    }
+  },
+
+  // Yayındaki resmi ders programını (ScheduleEntries) tamamen ya da şube/öğretmen
+  // bazında siler. Taslak yerleştirmeye ve ders atamalarına dokunmaz.
+  async clearPublished(req, res, next) {
+    try {
+      const project = await loadProject(req);
+      const { classroom_id: classroomId, teacher_id: teacherId } = req.validatedBody || {};
+      const year = project.academic_year || null;
+      const schoolClassIds = (
+        await Classroom.findAll({
+          where: { tenant_id: project.tenant_id, school_id: project.school_id },
+          attributes: ['id'],
+        })
+      ).map((c) => c.id);
+
+      if (classroomId && !schoolClassIds.includes(Number(classroomId))) {
+        throw httpError(400, 'Şube bu okula ait değil');
+      }
+      if (teacherId) {
+        const teacher = await Teacher.findByPk(teacherId);
+        if (!teacher || teacher.tenant_id !== project.tenant_id) throw httpError(400, 'Öğretmen bulunamadı');
+      }
+      if (!schoolClassIds.length) {
+        return res.json({ success: true, data: { deleted: 0, updated: 0 } });
+      }
+
+      const where = {
+        tenant_id: project.tenant_id,
+        academic_year: year,
+        classroom_id: classroomId ? Number(classroomId) : schoolClassIds,
+      };
+      if (teacherId) {
+        where[Op.or] = [{ teacher_id: teacherId }, { co_teacher_ids: { [Op.contains]: [teacherId] } }];
+      }
+
+      let deleted = 0;
+      let updated = 0;
+      await sequelize.transaction(async (transaction) => {
+        if (!teacherId) {
+          deleted = await ScheduleEntry.destroy({ where, transaction });
+        } else {
+          const rows = await ScheduleEntry.findAll({ where, transaction });
+          for (const row of rows) {
+            const cos = (row.co_teacher_ids || []).filter((id) => id !== teacherId);
+            const isPrimary = row.teacher_id === teacherId;
+            if (!isPrimary) {
+              await row.update({ co_teacher_ids: cos }, { transaction });
+              updated += 1;
+              continue;
+            }
+            if (!cos.length) {
+              await row.destroy({ transaction });
+              deleted += 1;
+              continue;
+            }
+            const slotTaken = await ScheduleEntry.findOne({
+              where: {
+                tenant_id: row.tenant_id,
+                teacher_id: cos[0],
+                day_of_week: row.day_of_week,
+                period_no: row.period_no,
+                academic_year: row.academic_year,
+                id: { [Op.ne]: row.id },
+              },
+              transaction,
+            });
+            if (slotTaken) {
+              await row.update({ teacher_id: null, co_teacher_ids: cos }, { transaction });
+            } else {
+              await row.update({ teacher_id: cos[0], co_teacher_ids: cos.slice(1) }, { transaction });
+            }
+            updated += 1;
+          }
+        }
+        if (!classroomId && !teacherId) {
+          await TimetableProject.update(
+            { status: 'taslak', published_at: null },
+            {
+              where: {
+                tenant_id: project.tenant_id,
+                school_id: project.school_id,
+                academic_year: project.academic_year,
+                status: 'yayinda',
+              },
+              transaction,
+            }
+          );
+        }
+      });
+
+      const scope = classroomId ? 'şube' : teacherId ? 'öğretmen' : 'okul';
+      await audit.log(req, {
+        action: 'delete',
+        entityType: 'schedule_entry',
+        entityId: project.id,
+        summary: `Yayındaki ders programı silindi (${scope}, ${project.academic_year || 'yıl yok'}, ${deleted} saat)`,
+      });
+      res.json({ success: true, data: { deleted, updated } });
     } catch (err) {
       sendError(res, next, err);
     }
