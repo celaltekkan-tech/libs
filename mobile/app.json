@@ -8,11 +8,11 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "tr.com.oids.liseidari",
+      "bundleIdentifier": "tr.com.oids.ogretmen",
       "buildNumber": "1"
     },
     "android": {
-      "package": "tr.com.oids.liseidari",
+      "package": "tr.com.oids.ogretmen",
       "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#000000",
