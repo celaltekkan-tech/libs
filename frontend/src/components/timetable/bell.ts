@@ -14,14 +14,21 @@ function formatMinutes(total: number): string {
   return `${hh}:${mm}`
 }
 
+function gapMinutes(schedule: BellSchedule, day: number, afterPeriod: number, lunchAfter: number | null): number {
+  const extra = schedule.day_breaks.find((item) => item.day === day && item.after_period === afterPeriod)
+  if (extra) return extra.minutes
+  const listed = schedule.breaks?.[afterPeriod - 1]
+  const base = listed == null ? schedule.break_minutes : listed
+  if (lunchAfter === afterPeriod) return Math.max(base, 30)
+  return base
+}
+
 export function periodClock(bell: BellSchedule | undefined, day: number, period: number, lunchAfter: number | null): string {
-  const schedule = { ...DEFAULT_BELL, ...(bell || {}), day_breaks: bell?.day_breaks || [] }
+  const schedule = { ...DEFAULT_BELL, ...(bell || {}), day_breaks: bell?.day_breaks || [], breaks: bell?.breaks || [] }
   let cursor = parseMinutes(schedule.start_time)
   for (let current = 1; current < period; current += 1) {
     cursor += schedule.lesson_minutes
-    const extra = schedule.day_breaks.find((item) => item.day === day && item.after_period === current)
-    const lunch = lunchAfter === current ? Math.max(schedule.break_minutes, 30) : schedule.break_minutes
-    cursor += extra ? extra.minutes : lunch
+    cursor += gapMinutes(schedule, day, current, lunchAfter)
   }
   return formatMinutes(cursor)
 }

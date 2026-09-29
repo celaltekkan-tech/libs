@@ -18,12 +18,16 @@ export interface BellSchedule {
   start_time: string
   lesson_minutes: number
   break_minutes: number
+  /** 1. teneffüs, 2. teneffüs... Dersler arasındaki ara. Boşsa break_minutes kullanılır. */
+  breaks?: number[]
   day_breaks: DayBreak[]
 }
 
 export interface TimetableSettings {
   time_limit: number
   max_subject_daily: number
+  max_culture_daily?: number
+  max_vocational_daily?: number
   weights: TimetableWeights
   bell?: BellSchedule
   block_across_lunch?: boolean
@@ -137,6 +141,7 @@ export interface ConstraintParams {
   room_id?: number | null
   subject_id?: number | null
   subject_ids?: number[]
+  scope?: 'class' | 'school'
   slots?: ConstraintSlot[]
   max?: number
   count?: number
@@ -288,6 +293,7 @@ export interface PoolSubject {
   allow_split: boolean
   allow_merge: boolean
   is_elective: boolean
+  course_kind?: 'kultur' | 'meslek'
   elective_group: string | null
   is_guidance: boolean
   is_activity: boolean

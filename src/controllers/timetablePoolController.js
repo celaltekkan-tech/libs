@@ -36,6 +36,7 @@ const POOL_SUBJECT_FIELDS = [
   'allow_split',
   'allow_merge',
   'is_elective',
+  'course_kind',
   'elective_group',
   'is_guidance',
   'is_activity',

@@ -126,7 +126,7 @@ Kısıt türleri ve params alanları:
 - teacher_max_consecutive: teacher_id (null=tümü), max. Üst üste en fazla kaç saat.
 - subject_period_preference: subject_id, classroom_id (null=tüm şubeler), mode ("only"=yalnızca bu saatlerde, "avoid"=bu saatlere konmasın), periods, days (boş=tüm günler).
 - subject_max_daily: subject_id, classroom_id (null=tümü), max.
-- subjects_not_same_day: subject_ids (en az 2), classroom_id (null=tüm şubeler). "Fizik ile kimya aynı güne gelmesin".
+- subjects_not_same_day: subject_ids (şube içinde en az 2; ortak atölye için scope "school" ve en az 1 ders), classroom_id (null=tüm şubeler), scope ("class" veya "school"). "Fizik ile kimya aynı güne gelmesin" scope=class. Ortak atölye yüzünden dersler farklı şubelerde de aynı güne gelmesin denirse scope=school.
 - subjects_same_day: subject_ids (en az 2), classroom_id (null=tümü). Dersler her hafta aynı günlerde olsun.
 - subject_no_lunch_split: subject_ids, classroom_id (null=tümü). Peş peşe blok öğle arasıyla ikiye bölünmesin.
 

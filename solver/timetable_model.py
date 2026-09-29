@@ -59,7 +59,13 @@ class Ctx:
         la = data.get('lunch_after')
         self.lunch = int(la) if la and 0 < int(la) < self.P else None
         self.weights = {**DEFAULT_WEIGHTS, **(data.get('weights') or {})}
-        self.max_subject_daily = int(data.get('max_subject_daily') or 2)
+        culture = data.get('max_culture_daily')
+        if culture in (None, ''):
+            culture = data.get('max_subject_daily') or 2
+        self.max_culture_daily = int(culture)
+        self.max_subject_daily = self.max_culture_daily
+        vocational = data.get('max_vocational_daily')
+        self.max_vocational_daily = int(vocational if vocational not in (None, '') else self.P)
         self.block_across_lunch = bool(data.get('block_across_lunch'))
         self.class_lunch = {}
         for k, v in (data.get('class_lunch') or {}).items():
@@ -207,7 +213,11 @@ class Ctx:
 
     def blocks_of(self, a):
         blocks = [int(b) for b in (a.get('blocks') or []) if int(b) > 0]
-        return blocks or default_blocks(int(a['hours']))
+        if blocks:
+            return blocks
+        if a.get('vocational'):
+            return vocational_blocks(int(a['hours']), self.max_vocational_daily)
+        return default_blocks(int(a['hours']))
 
     def block_variants(self, a):
         """[(değişiklik sayısı, bloklar)]. B1: ikili blok 1+1 olabilir; B2: iki tekli 2'lik blok olabilir."""
@@ -243,13 +253,13 @@ class Ctx:
             return [(1, lunch), (lunch + 1, self.P)]
         return [(1, self.P)]
 
-    def max_block_len(self, cid=None):
-        if self.block_across_lunch:
+    def max_block_len(self, cid=None, span_lunch=False):
+        if self.block_across_lunch or span_lunch:
             return self.P
         return max(e - s + 1 for s, e in self.segments(cid))
 
-    def valid_starts(self, length, cid=None):
-        if self.block_across_lunch:
+    def valid_starts(self, length, cid=None, span_lunch=False):
+        if self.block_across_lunch or span_lunch:
             return list(range(1, self.P - length + 2))
         starts = []
         for s, e in self.segments(cid):
@@ -284,6 +294,18 @@ def default_blocks(hours):
     return blocks
 
 
+def vocational_blocks(hours, daily):
+    """Atölye dersi tek parça: günlük meslek sınırına göre bölünür (8 ve sınır 8 -> [8])."""
+    daily = max(1, int(daily or 1))
+    if hours <= 0:
+        return []
+    blocks = [daily] * (hours // daily)
+    rem = hours % daily
+    if rem:
+        blocks.append(rem)
+    return blocks
+
+
 def constraint_label(ctx, c):
     t = c.get('type')
     p = c.get('params') or {}
@@ -307,6 +329,8 @@ def constraint_label(ctx, c):
         return f"{ctx.label_subject(p.get('subject_id'))}: günde en fazla {p.get('max')} saat"
     names = ', '.join(ctx.label_subject(s) for s in (p.get('subject_ids') or []))
     if t == 'subjects_not_same_day':
+        if p.get('scope') == 'school':
+            return f'{names}: okul genelinde aynı güne gelmesin'
         return f'{names}: aynı güne gelmesin'
     if t == 'subjects_same_day':
         return f'{names}: aynı gün olsun'
@@ -334,7 +358,7 @@ def check(data):
 
     for a in ctx.assignments:
         blocks = ctx.blocks_of(a)
-        max_len = ctx.max_block_len(a['classroom_id'])
+        max_len = ctx.max_block_len(a['classroom_id'], span_lunch=bool(a.get('vocational')))
         if sum(blocks) != int(a['hours']):
             add('error', f"{ctx.label_assignment(a)}: blok düzeni ({'+'.join(map(str, blocks))}) haftalık saate ({a['hours']}) eşit değil.",
                 assignment_ids=[a['id']])
@@ -514,8 +538,9 @@ def build(ctx, with_assumptions=False):
                 blocks[aid].append((key, length))
                 vs = []
                 block_starts[key] = []
+                span = bool(a.get('vocational'))
                 for d in days:
-                    for p in ctx.valid_starts(length, cid):
+                    for p in ctx.valid_starts(length, cid, span_lunch=span):
                         v = m.NewBoolVar(f'x_{aid}_{vi}_{bi}_{d}_{p}')
                         x[(key, d, p)] = v
                         vs.append(v)
@@ -645,13 +670,15 @@ def build(ctx, with_assumptions=False):
                     b.terms['availability_avoid'].append((w_avoid, e))
 
     # --- Bir dersin şubedeki günlük üst sınırı ---
-    subj_daily_lit = enforce_lit(f'Bir ders bir şubede günde en fazla {ctx.max_subject_daily} saat')
+    subj_daily_lit = enforce_lit('Kültür ve meslek derslerinin günlük saat sınırı')
     cs_canon = defaultdict(set)
     for a in ctx.assignments:
         cs_canon[(a['classroom_id'], a['subject_id'])].add(ctx.canon[a['id']])
     for (cid, sid), cset in cs_canon.items():
         longest = max(l for cn in cset for _, l in blocks[cn])
-        limit = max(ctx.max_subject_daily, longest)
+        vocational = bool((ctx.subjects.get(sid) or {}).get('vocational'))
+        base = ctx.max_vocational_daily if vocational else ctx.max_culture_daily
+        limit = max(base, longest)
         for d in days:
             m.Add(sum(sum(occ.get((cn, d, p), [])) for cn in cset for p in periods) <= limit).OnlyEnforceIf(subj_daily_lit)
 
@@ -789,6 +816,12 @@ def build(ctx, with_assumptions=False):
         elif ctype in ('subjects_not_same_day', 'subjects_same_day'):
             sids = [s for s in (p.get('subject_ids') or []) if s in subject_canon]
             cls = p.get('classroom_id')
+            if ctype == 'subjects_not_same_day' and p.get('scope') == 'school':
+                pairs = [(c_, s) for c_ in sorted(class_canon) for s in sids if cs_canon.get((c_, s))]
+                for d in days:
+                    if pairs:
+                        at_most(sum(day_present(c_, s, d) for c_, s in pairs), 1, f'nsdsch_{cid}_{d}')
+                continue
             for c_ in sorted(class_canon):
                 if cls and c_ != cls:
                     continue

@@ -6,6 +6,7 @@ module.exports = (sequelize, DataTypes) => {
       name: DataTypes.STRING,
       code: DataTypes.STRING,
       difficulty_level: DataTypes.STRING,
+      course_kind: { type: DataTypes.STRING(16), allowNull: false, defaultValue: 'kultur' },
       branch_id: DataTypes.INTEGER,
       allow_split: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
       allow_merge: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },

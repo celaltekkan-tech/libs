@@ -15,6 +15,8 @@ const {
 const DEFAULT_SETTINGS = {
   time_limit: 60,
   max_subject_daily: 2,
+  max_culture_daily: 2,
+  max_vocational_daily: 8,
   weights: {
     teacher_gaps: 10,
     class_compact: 60,
@@ -38,6 +40,8 @@ function projectSettings(project) {
   return {
     ...DEFAULT_SETTINGS,
     ...s,
+    max_culture_daily: s.max_culture_daily ?? s.max_subject_daily ?? DEFAULT_SETTINGS.max_culture_daily,
+    max_vocational_daily: s.max_vocational_daily ?? DEFAULT_SETTINGS.max_vocational_daily,
     weights: { ...DEFAULT_SETTINGS.weights, ...(s.weights || {}) },
   };
 }
@@ -114,7 +118,7 @@ async function loadProjectData(project) {
       where: { project_id: project.id },
       include: [
         { model: Classroom, attributes: ['id', 'class_level', 'section'] },
-        { model: Subject, attributes: ['id', 'name', 'difficulty_level', 'allow_split', 'allow_merge'] },
+        { model: Subject, attributes: ['id', 'name', 'difficulty_level', 'allow_split', 'allow_merge', 'course_kind'] },
         { model: Teacher, as: 'Teacher', attributes: ['id', 'first_name', 'last_name', 'brans'] },
       ],
       order: [['id', 'ASC']],
@@ -149,6 +153,7 @@ async function buildPayload(project, { timeLimit } = {}) {
         id: a.subject_id,
         name: a.Subject.name,
         hard: a.Subject.difficulty_level === 'zor',
+        vocational: a.Subject.course_kind === 'meslek',
       });
     }
   }
@@ -166,7 +171,9 @@ async function buildPayload(project, { timeLimit } = {}) {
     periods: project.periods_per_day || 8,
     lunch_after: project.lunch_after || null,
     time_limit: timeLimit || settings.time_limit,
-    max_subject_daily: settings.max_subject_daily,
+    max_subject_daily: settings.max_culture_daily,
+    max_culture_daily: settings.max_culture_daily,
+    max_vocational_daily: settings.max_vocational_daily,
     weights: settings.weights,
     block_across_lunch: Boolean(settings.block_across_lunch),
     class_lunch: settings.class_lunch || {},
@@ -182,6 +189,7 @@ async function buildPayload(project, { timeLimit } = {}) {
       teacher_ids: assignmentTeacherIds(a).filter((id) => id !== a.teacher_id),
       hours: a.weekly_hours,
       blocks: parseBlockPattern(a.block_pattern),
+      vocational: a.Subject?.course_kind === 'meslek',
       allow_split: a.allow_split ?? Boolean(a.Subject?.allow_split),
       allow_merge: a.allow_merge ?? Boolean(a.Subject?.allow_merge),
       room_id: a.room_id && activeRoomIds.has(a.room_id) ? a.room_id : null,

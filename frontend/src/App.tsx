@@ -46,6 +46,7 @@ import { OtherPersonnelPage } from './pages/OtherPersonnelPage'
 import { WorkTasksPage } from './pages/WorkTasksPage'
 import { CalendarPage } from './pages/CalendarPage'
 import { MessageLogsPage } from './pages/MessageLogsPage'
+import { SkillTrainingPage } from './pages/SkillTrainingPage'
 
 function ThemedApp() {
   const { mode } = useThemeMode()
@@ -132,6 +133,7 @@ function ThemedApp() {
                   </Route>
                   <Route element={<ModuleRoute module="students" />}>
                     <Route path="/students" element={<StudentsPage />} />
+                    <Route path="/skill-training" element={<SkillTrainingPage />} />
                   </Route>
                   <Route element={<ModuleRoute module="classrooms" />}>
                     <Route path="/classrooms" element={<ClassroomsPage />} />

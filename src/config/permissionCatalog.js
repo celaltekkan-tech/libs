@@ -150,6 +150,13 @@ const MENU_PERMISSION_GROUPS = [
     ],
   },
   {
+    id: 'skill_training',
+    label: 'İşletmede Beceri Eğitimi',
+    group: 'Öğrenci İşleri',
+    module: 'students',
+    permissions: ['skill_training.read', 'skill_training.create', 'skill_training.update', 'skill_training.delete'],
+  },
+  {
     id: 'discipline',
     label: 'Disiplin',
     group: 'Öğrenci İşleri',
@@ -229,6 +236,7 @@ const MENU_PATH_PERMISSION = {
   '/absences': 'attendance.read',
   '/communications': 'communications.read',
   '/discipline': 'discipline.read',
+  '/skill-training': 'skill_training.read',
   '/guidance': 'guidance.read',
   '/users': 'users.read',
   '/audit-logs': 'audit.read',

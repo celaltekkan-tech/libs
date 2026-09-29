@@ -91,7 +91,7 @@ function HourEditor({
             getPopupContainer={(node) => node.parentElement || document.body}
           />
           <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-            Aynı sınıfta birden fazla saat olabilir. Blok seçilmezse 2'li bloklar ve kalan 1 saat kullanılır.
+            Aynı sınıfta birden fazla saat olabilir. Blok boşsa kültür dersi 2'li bloklara, meslek dersi günlük meslek sınırına göre tek parça konur.
           </Typography.Text>
           <Space>
             <Button size="small" type="primary" disabled={!hours} onClick={() => hours && save(hours, patternFits ? pattern.trim() || null : null)}>
@@ -418,6 +418,7 @@ export function LessonPoolTab({ ctx }: { ctx: TimetableCtx }) {
       render: (v: string, row) => (
         <Space size={4}>
           {v}
+          {row.course_kind === 'meslek' && <Tag color="gold">meslek</Tag>}
           {row.is_elective && <Tag color="purple">seçmeli</Tag>}
           {!row.is_active && <Tag>pasif</Tag>}
         </Space>
@@ -455,6 +456,24 @@ export function LessonPoolTab({ ctx }: { ctx: TimetableCtx }) {
         />
       ),
     })),
+    {
+      title: 'Tür',
+      key: 'course_kind',
+      width: 150,
+      render: (_, row) => (
+        <Select
+          size="small"
+          style={{ width: '100%' }}
+          disabled={!editable}
+          value={row.course_kind || 'kultur'}
+          onChange={(v) => patchSubject(row, { course_kind: v })}
+          options={[
+            { value: 'kultur', label: 'Kültür' },
+            { value: 'meslek', label: 'Meslek / atölye' },
+          ]}
+        />
+      ),
+    },
     {
       title: 'Zorluk',
       key: 'difficulty',

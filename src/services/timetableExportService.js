@@ -53,8 +53,18 @@ function bellOf(settings) {
     start_time: bell.start_time || '08:30',
     lesson_minutes: bell.lesson_minutes || 40,
     break_minutes: bell.break_minutes ?? 10,
+    breaks: Array.isArray(bell.breaks) ? bell.breaks : [],
     day_breaks: Array.isArray(bell.day_breaks) ? bell.day_breaks : [],
   };
+}
+
+function gapMinutes(bell, day, afterPeriod, lunchAfter) {
+  const extra = bell.day_breaks.find((item) => item.day === day && item.after_period === afterPeriod);
+  if (extra) return extra.minutes;
+  const listed = bell.breaks[afterPeriod - 1];
+  const base = listed == null ? bell.break_minutes : listed;
+  if (lunchAfter === afterPeriod) return Math.max(base, 30);
+  return base;
 }
 
 function parseMinutes(value) {
@@ -72,9 +82,7 @@ function periodStart(bell, day, period, lunchAfter) {
   let cursor = parseMinutes(bell.start_time);
   for (let current = 1; current < period; current += 1) {
     cursor += bell.lesson_minutes;
-    const extra = bell.day_breaks.find((item) => item.day === day && item.after_period === current);
-    const lunch = lunchAfter === current ? Math.max(bell.break_minutes, 30) : bell.break_minutes;
-    cursor += extra ? extra.minutes : lunch;
+    cursor += gapMinutes(bell, day, current, lunchAfter);
   }
   return cursor;
 }

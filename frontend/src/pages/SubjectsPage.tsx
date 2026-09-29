@@ -14,7 +14,7 @@ import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { useAuth } from '../auth/AuthContext'
 import { createSubject, deleteSubject, exportSubjects, listSubjects, updateSubject } from '../api/subjects'
 import { getErrorMessage } from '../api/client'
-import { DIFFICULTY_LEVEL_OPTIONS } from '../types/subject'
+import { COURSE_KIND_OPTIONS, DIFFICULTY_LEVEL_OPTIONS } from '../types/subject'
 import type { Subject, SubjectPayload } from '../types/subject'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
 import { tablePagination } from '../utils/tablePagination'
@@ -69,7 +69,7 @@ export function SubjectsPage() {
   const openCreate = () => {
     setEditing(null)
     form.resetFields()
-    form.setFieldsValue({ is_active: true })
+    form.setFieldsValue({ is_active: true, course_kind: 'kultur' })
     setModalOpen(true)
   }
 
@@ -79,6 +79,7 @@ export function SubjectsPage() {
       name: row.name,
       code: row.code || undefined,
       difficulty_level: row.difficulty_level ?? undefined,
+      course_kind: row.course_kind || 'kultur',
       is_active: row.is_active,
     })
     setModalOpen(true)
@@ -162,6 +163,11 @@ export function SubjectsPage() {
     { title: 'Ders', dataIndex: 'name' },
     { title: 'Kod', dataIndex: 'code', render: (v: string | null) => v || '—' },
     {
+      title: 'Tür',
+      dataIndex: 'course_kind',
+      render: (v: string | null) => COURSE_KIND_OPTIONS.find((o) => o.value === v)?.label || 'Kültür dersi',
+    },
+    {
       title: 'Zorluk',
       dataIndex: 'difficulty_level',
       render: (v: string | null) => DIFFICULTY_LEVEL_OPTIONS.find((o) => o.value === v)?.label || '—',
@@ -242,6 +248,13 @@ export function SubjectsPage() {
           </Form.Item>
           <Form.Item name="code" label="Kod">
             <Input placeholder="Örn. MAT" />
+          </Form.Item>
+          <Form.Item
+            name="course_kind"
+            label="Ders türü"
+            extra="Meslek / atölye dersi blok olur. Günlük saat sınırı kültür dersinden ayrı sorulur."
+          >
+            <Select options={[...COURSE_KIND_OPTIONS]} />
           </Form.Item>
           <Form.Item
             name="difficulty_level"
