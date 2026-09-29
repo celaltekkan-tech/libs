@@ -16,10 +16,19 @@ interface FormValues {
   periods_per_day: number
   lunch_after: number | null
   time_limit: number
-  max_subject_daily: number
+  max_culture_daily: number
+  max_vocational_daily: number
   block_across_lunch: boolean
   weights: TimetableWeights
   bell: BellSchedule
+}
+
+function breakList(periods: number, saved: number[] | undefined, fallback: number): number[] {
+  const count = Math.max(0, periods - 1)
+  return Array.from({ length: count }, (_, index) => {
+    const value = saved?.[index]
+    return value == null || Number.isNaN(Number(value)) ? fallback : Number(value)
+  })
 }
 
 const WEIGHT_HELP: Record<keyof TimetableWeights, string> = {
@@ -37,6 +46,8 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
   const [form] = Form.useForm<FormValues>()
   const [saving, setSaving] = useState(false)
   const { project } = ctx
+  const periods = Form.useWatch('periods_per_day', form) || project.periods_per_day
+  const lunchAfter = Form.useWatch('lunch_after', form)
 
   useEffect(() => {
     form.setFieldsValue({
@@ -46,16 +57,30 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
       periods_per_day: project.periods_per_day,
       lunch_after: project.lunch_after,
       time_limit: project.settings.time_limit,
-      max_subject_daily: project.settings.max_subject_daily,
+      max_culture_daily: project.settings.max_culture_daily ?? project.settings.max_subject_daily ?? 2,
+      max_vocational_daily: project.settings.max_vocational_daily ?? 8,
       block_across_lunch: Boolean(project.settings.block_across_lunch),
       weights: project.settings.weights,
       bell: {
         ...DEFAULT_BELL,
         ...(project.settings.bell || {}),
+        breaks: breakList(
+          project.periods_per_day,
+          project.settings.bell?.breaks,
+          project.settings.bell?.break_minutes ?? DEFAULT_BELL.break_minutes,
+        ),
         day_breaks: project.settings.bell?.day_breaks || [],
       },
     })
   }, [project, form])
+
+  useEffect(() => {
+    const count = Math.max(0, periods - 1)
+    const current = (form.getFieldValue(['bell', 'breaks']) || []) as number[]
+    if (current.length === count) return
+    const fallback = form.getFieldValue(['bell', 'break_minutes']) ?? DEFAULT_BELL.break_minutes
+    form.setFieldValue(['bell', 'breaks'], breakList(periods, current, fallback))
+  }, [periods, form])
 
   const onSave = async (values: FormValues) => {
     setSaving(true)
@@ -68,11 +93,15 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
         lunch_after: values.lunch_after || null,
         settings: {
           time_limit: values.time_limit,
-          max_subject_daily: values.max_subject_daily,
+          max_subject_daily: values.max_culture_daily,
+          max_culture_daily: values.max_culture_daily,
+          max_vocational_daily: values.max_vocational_daily,
           block_across_lunch: values.block_across_lunch,
           weights: values.weights,
           bell: {
             ...values.bell,
+            break_minutes: values.bell?.breaks?.[0] ?? values.bell?.break_minutes ?? DEFAULT_BELL.break_minutes,
+            breaks: breakList(values.periods_per_day, values.bell?.breaks, values.bell?.break_minutes ?? DEFAULT_BELL.break_minutes),
             day_breaks: (values.bell?.day_breaks || []).filter((item) => item && item.day && item.after_period),
           },
         },
@@ -117,9 +146,20 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
               <Form.Item name={['bell', 'lesson_minutes']} label="Bir ders kaç dakika">
                 <InputNumber min={20} max={120} addonAfter="dk" />
               </Form.Item>
-              <Form.Item name={['bell', 'break_minutes']} label="Teneffüs">
-                <InputNumber min={0} max={60} addonAfter="dk" />
-              </Form.Item>
+            </Space>
+            <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
+              Her teneffüs ayrı yazılır. Örneğin 1. teneffüs 10 dakika, 2. teneffüs 5 dakika olabilir. Öğle arası en az 30 dakikadır.
+            </Typography.Paragraph>
+            <Space size="middle" wrap>
+              {Array.from({ length: Math.max(0, periods - 1) }, (_, index) => (
+                <Form.Item
+                  key={index}
+                  name={['bell', 'breaks', index]}
+                  label={lunchAfter === index + 1 ? `${index + 1}. ara (öğle)` : `${index + 1}. teneffüs`}
+                >
+                  <InputNumber min={0} max={120} addonAfter="dk" />
+                </Form.Item>
+              ))}
             </Space>
             <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
               Bazı günler değişebilir. Örneğin cuma namazı için 4. dersten sonra teneffüsü uzatın.
@@ -183,11 +223,18 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
             </Form.Item>
             <Space size="large" wrap>
               <Form.Item
-                name="max_subject_daily"
-                label="Aynı ders bir şubede günde en fazla"
-                extra="Peş peşe blok bundan uzunsa blok esas alınır."
+                name="max_culture_daily"
+                label="Kültür dersi bir şubede günde en fazla"
+                extra="Matematik, edebiyat gibi dersler. 2 saat derseniz aynı kültür dersi bir günde 2 saati geçmez."
               >
                 <InputNumber min={1} max={8} addonAfter="saat" />
+              </Form.Item>
+              <Form.Item
+                name="max_vocational_daily"
+                label="Meslek / atölye dersi bir şubede günde en fazla"
+                extra="Atölye dersi bloktur. İllüstrasyon 8 saat ve sınır 8 ise o ders bir günde 8 saat olur. Kültür derslerini tek parça yapmaz. Dersi ders havuzunda Meslek olarak işaretleyin."
+              >
+                <InputNumber min={1} max={12} addonAfter="saat" />
               </Form.Item>
             </Space>
           </Card>

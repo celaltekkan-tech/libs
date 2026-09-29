@@ -20,11 +20,14 @@ const bell = Joi.object({
   start_time: Joi.string().pattern(/^\d{2}:\d{2}$/),
   lesson_minutes: Joi.number().integer().min(20).max(120),
   break_minutes: Joi.number().integer().min(0).max(60),
+  breaks: Joi.array().items(Joi.number().integer().min(0).max(120)).max(11),
   day_breaks: Joi.array().items(dayBreak).max(14),
 });
 const settings = Joi.object({
   time_limit: Joi.number().integer().min(10).max(600),
-  max_subject_daily: Joi.number().integer().min(1).max(8),
+  max_subject_daily: Joi.number().integer().min(1).max(12),
+  max_culture_daily: Joi.number().integer().min(1).max(8),
+  max_vocational_daily: Joi.number().integer().min(1).max(12),
   weights,
   bell,
   block_across_lunch: Joi.boolean(),
@@ -136,6 +139,7 @@ const poolSubjectSchema = Joi.object({
   allow_split: Joi.boolean(),
   allow_merge: Joi.boolean(),
   is_elective: Joi.boolean(),
+  course_kind: Joi.string().valid('kultur', 'meslek'),
   elective_group: Joi.string().trim().allow('', null).max(30),
   is_guidance: Joi.boolean(),
   is_activity: Joi.boolean(),

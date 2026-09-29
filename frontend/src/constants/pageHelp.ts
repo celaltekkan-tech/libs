@@ -273,6 +273,22 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       },
     ],
   },
+  '/skill-training': {
+    title: 'İşletmede Beceri Eğitimi',
+    summary: 'Meslek liselerinde işletme, sözleşme, devlet katkısı ve SGK bildirim takibi.',
+    topics: [
+      {
+        title: 'Nasıl kullanılır',
+        steps: [
+          'İşletmeyi, usta öğreticiyi ve SGK işyeri sicilini kaydedin.',
+          'Öğrenciyi işletmeye yerleştirin; koordinatör öğretmeni, sözleşme no ve tarihlerini yazın.',
+          'Evraklar sekmesinden sözleşme özeti ve aylık devam çizelgesini indirin.',
+          'Devlet katkısında ayı oluşturun, çalışılan günü ve tutarı yazın, ödenince işaretleyin.',
+          'SGK sekmesinde işe giriş ve işten çıkış listesini hazırlayın. Bildirimi SGK’ya siz yaparsınız; burada bildirildi olarak işaretlersiniz.',
+        ],
+      },
+    ],
+  },
   '/schedule-builder': {
     title: 'Otomatik Ders Programı',
     summary:
@@ -281,7 +297,9 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       {
         title: 'Adımlar',
         steps: [
-          'Okul saatlerinde başlangıç saatini, ders ve teneffüs dakikasını, gerekirse cuma namazı gibi güne özel arayı girin. Cumartesi ve pazar kapalı değildir; ders günü olarak işaretlerseniz programa girer.',
+          'Okul saatlerinde başlangıç saatini ve ders dakikasını girin. Her teneffüsü ayrı yazın; 1. teneffüs 10, 2. teneffüs 5 dakika olabilir. Cuma namazı için güne özel ara ekleyin. Cumartesi ve pazar ders günü değildir; işaretlerseniz programa girer.',
+          'Kültür dersi ile meslek/atölye dersinin günde en fazla kaç saat olacağını ayrı ayrı yazın. Atölye dersini ders havuzunda Meslek olarak işaretleyin; blok boşsa o sınıra göre tek parça konur.',
+          'Ortak atölye varsa İstekler sekmesinde Aynı güne gelmesin ile o derslerin okul genelinde aynı güne düşmemesini söyleyin.',
           'Ders havuzunda ders ekleyin. Aynı sınıf için birden fazla saat yazabilirsiniz (örneğin 12. sınıfta Türk dili 3 veya 5 saat). Bu, her şubeye otomatik ders eklemez.',
           'Ders ve öğretmen adımında hangi şubede kimin gireceğini seçin.',
           'İsteklerde örneğin "Ayşe Hoca cuma gelemiyor" yazın.',

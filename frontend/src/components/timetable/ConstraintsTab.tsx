@@ -44,6 +44,7 @@ export function ConstraintsTab({ ctx }: { ctx: TimetableCtx }) {
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkLoading, setBulkLoading] = useState(false)
   const [editing, setEditing] = useState<TimetableConstraint | null>(null)
+  const [seed, setSeed] = useState<{ type: TimetableConstraint['type']; params?: TimetableConstraint['params'] } | null>(null)
   const { project } = ctx
 
   const load = useCallback(async () => {
@@ -272,10 +273,22 @@ export function ConstraintsTab({ ctx }: { ctx: TimetableCtx }) {
             icon={<PlusOutlined />}
             onClick={() => {
               setEditing(null)
+              setSeed(null)
               setFormOpen(true)
             }}
           >
             Elle Kısıt Ekle
+          </Button>
+        )}
+        {ctx.canCreate && (
+          <Button
+            onClick={() => {
+              setEditing(null)
+              setSeed({ type: 'subjects_not_same_day', params: { scope: 'school' } })
+              setFormOpen(true)
+            }}
+          >
+            Aynı güne gelmesin
           </Button>
         )}
         {ctx.canDelete && rows.length > 0 && (
@@ -366,6 +379,7 @@ export function ConstraintsTab({ ctx }: { ctx: TimetableCtx }) {
         ctx={ctx}
         open={formOpen}
         editing={editing}
+        seed={seed}
         onCancel={() => setFormOpen(false)}
         onSubmit={onSubmitForm}
       />

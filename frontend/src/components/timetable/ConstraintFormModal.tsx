@@ -9,6 +9,7 @@ interface Props {
   ctx: TimetableCtx
   open: boolean
   editing: TimetableConstraint | null
+  seed?: { type: ConstraintType; params?: ConstraintParams } | null
   onCancel: () => void
   onSubmit: (input: ConstraintInput) => Promise<void>
 }
@@ -17,11 +18,13 @@ interface FormValues extends ConstraintParams {
   type: ConstraintType
   is_hard: boolean
   weight?: number | null
+  scope?: 'class' | 'school'
 }
 
-export function ConstraintFormModal({ ctx, open, editing, onCancel, onSubmit }: Props) {
+export function ConstraintFormModal({ ctx, open, editing, seed, onCancel, onSubmit }: Props) {
   const [form] = Form.useForm<FormValues>()
   const type = Form.useWatch('type', form)
+  const scope = Form.useWatch('scope', form)
   const isHard = Form.useWatch('is_hard', form)
   const { project } = ctx
   const fields = ctx.meta.constraint_types.find((t) => t.key === type)?.fields || []
@@ -31,9 +34,10 @@ export function ConstraintFormModal({ ctx, open, editing, onCancel, onSubmit }: 
   useEffect(() => {
     if (!open) return
     form.resetFields()
-    if (editing) form.setFieldsValue({ type: editing.type, is_hard: editing.is_hard, weight: editing.weight, ...editing.params })
-    else form.setFieldsValue({ type: 'teacher_unavailable', is_hard: true, weight: 20 })
-  }, [open, editing, form])
+    if (editing) form.setFieldsValue({ type: editing.type, is_hard: editing.is_hard, weight: editing.weight, scope: 'class', ...editing.params })
+    else if (seed) form.setFieldsValue({ type: seed.type, is_hard: true, weight: 20, scope: 'class', ...seed.params })
+    else form.setFieldsValue({ type: 'teacher_unavailable', is_hard: true, weight: 20, scope: 'class' })
+  }, [open, editing, seed, form])
 
   const periodOptions = Array.from({ length: project.periods_per_day }, (_, i) => ({ value: i + 1, label: `${i + 1}.` }))
   const dayOptions = DAY_OPTIONS.filter((d) => project.days.includes(d.value))
@@ -45,6 +49,10 @@ export function ConstraintFormModal({ ctx, open, editing, onCancel, onSubmit }: 
       const key = f.replace('?', '') as keyof ConstraintParams
       const val = v[key]
       ;(params as Record<string, unknown>)[key] = val ?? null
+    }
+    if (v.type === 'subjects_not_same_day') {
+      params.scope = v.scope === 'school' ? 'school' : 'class'
+      if (params.scope === 'school') params.classroom_id = null
     }
     await onSubmit({ type: v.type, is_hard: v.is_hard, weight: v.is_hard ? null : v.weight ?? 20, params })
   }
@@ -89,17 +97,38 @@ export function ConstraintFormModal({ ctx, open, editing, onCancel, onSubmit }: 
             <Select showSearch optionFilterProp="label" options={ctx.subjects.map((s) => ({ value: s.id, label: s.name }))} />
           </Form.Item>
         )}
+        {type === 'subjects_not_same_day' && (
+          <Form.Item name="scope" label="Kapsam" extra="Ortak atölyede dersler farklı şubelerde de aynı güne gelmesin.">
+            <Radio.Group>
+              <Radio value="class">Aynı şubede</Radio>
+              <Radio value="school">Okul genelinde</Radio>
+            </Radio.Group>
+          </Form.Item>
+        )}
         {has('subject_ids') && (
           <Form.Item
             name="subject_ids"
             label="Dersler"
-            rules={[{ required: true, message: 'Ders seçin' }]}
+            rules={[
+              { required: true, message: 'Ders seçin' },
+              {
+                validator: async (_, value) => {
+                  const list = Array.isArray(value) ? value : []
+                  if (type === 'subjects_same_day' && list.length < 2) throw new Error('En az iki ders seçin')
+                  if (type === 'subjects_not_same_day' && scope !== 'school' && list.length < 2) {
+                    throw new Error('Aynı şubede en az iki ders seçin')
+                  }
+                },
+              },
+            ]}
             extra={
               type === 'subject_no_lunch_split'
                 ? 'Yalnız "bloklar öğle arasını aşabilir" ayarı açıkken etkilidir; kapalıyken hiçbir blok bölünmez.'
                 : type === 'subjects_same_day'
                   ? 'Az saatli dersin günleri, en çok saatli dersin günlerinin içinde kalır.'
-                  : undefined
+                  : type === 'subjects_not_same_day' && scope === 'school'
+                    ? 'Tek ders seçerseniz o ders farklı şubelerde aynı güne gelmez. Birden fazla ders, ortak atölyeyi aynı gün paylaşmaz.'
+                    : undefined
             }
           >
             <Select
@@ -110,7 +139,7 @@ export function ConstraintFormModal({ ctx, open, editing, onCancel, onSubmit }: 
             />
           </Form.Item>
         )}
-        {has('classroom_id') && (
+        {has('classroom_id') && !(type === 'subjects_not_same_day' && scope === 'school') && (
           <Form.Item
             name="classroom_id"
             label="Şube"

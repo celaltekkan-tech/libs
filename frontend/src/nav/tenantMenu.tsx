@@ -25,6 +25,7 @@ import {
   RobotOutlined,
   ScheduleOutlined,
   SettingOutlined,
+  ShopOutlined,
   SolutionOutlined,
   AppstoreOutlined,
   TableOutlined,
@@ -173,6 +174,13 @@ export function buildTenantMenu(opts: {
   }
   if (hasModule('discipline')) {
     studentOps.push({ key: '/discipline', icon: <ExclamationCircleOutlined />, label: 'Disiplin' })
+  }
+  if (hasModule('students')) {
+    studentOps.push({
+      key: '/skill-training',
+      icon: <ShopOutlined />,
+      label: 'İşletmede Beceri Eğitimi',
+    })
   }
   if (studentOps.length > 0) {
     nodes.push({

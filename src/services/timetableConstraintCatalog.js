@@ -110,10 +110,14 @@ function normalizeParams(type, params, ctx) {
       out.days = intList(v, 1, maxDay);
     } else if (key === 'subject_ids') {
       const list = intList(v, 1, Number.MAX_SAFE_INTEGER);
-      const min = def.minSubjects || 1;
+      const schoolwide = type === 'subjects_not_same_day' && p.scope === 'school';
+      const min = schoolwide ? 1 : def.minSubjects || 1;
       if (list.length < min) throw new Error(`${def.label}: en az ${min} ders seçilmeli`);
       out.subject_ids = list;
     }
+  }
+  if (type === 'subjects_not_same_day') {
+    out.scope = p.scope === 'school' ? 'school' : 'class';
   }
   return out;
 }
@@ -152,6 +156,9 @@ function describe(type, params, names = {}) {
     case 'subject_max_daily':
       return `${s(p.subject_id)}${scope(p.classroom_id)} günde en fazla ${p.max} saat`;
     case 'subjects_not_same_day':
+      if (p.scope === 'school') {
+        return `${(p.subject_ids || []).map(s).join(', ')} okul genelinde aynı güne gelmesin`;
+      }
       return `${(p.subject_ids || []).map(s).join(', ')}${scope(p.classroom_id)} aynı güne gelmesin`;
     case 'subjects_same_day':
       return `${(p.subject_ids || []).map(s).join(', ')}${scope(p.classroom_id)} aynı gün olsun`;

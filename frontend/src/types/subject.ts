@@ -4,6 +4,7 @@ export interface Subject {
   name: string
   code: string | null
   difficulty_level: string | null
+  course_kind?: 'kultur' | 'meslek'
   is_active: boolean
   created_at: string
   updated_at: string
@@ -13,8 +14,14 @@ export interface SubjectPayload {
   name: string
   code?: string | null
   difficulty_level?: string | null
+  course_kind?: 'kultur' | 'meslek'
   is_active?: boolean
 }
+
+export const COURSE_KIND_OPTIONS = [
+  { value: 'kultur', label: 'Kültür dersi' },
+  { value: 'meslek', label: 'Meslek / atölye dersi' },
+] as const
 
 export const DIFFICULTY_LEVEL_OPTIONS = [
   { value: 'kolay', label: 'Kolay' },

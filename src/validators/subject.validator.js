@@ -5,6 +5,7 @@ const createSubjectSchema = Joi.object({
   name: Joi.string().required().max(100),
   code: Joi.string().allow('', null).max(20),
   difficulty_level: Joi.string().valid('kolay', 'orta', 'zor').allow(null),
+  course_kind: Joi.string().valid('kultur', 'meslek'),
   is_active: Joi.boolean().allow(null),
 });
 
