@@ -9,7 +9,19 @@ const history = [];
 module.exports = {
   async get(req, res, next) {
     try {
-      res.json({ success: true, data: { config: smsEngine.getSmsConfigSummary(), history } });
+      const config = smsEngine.getSmsConfigSummary();
+      if (config.provider === 'verimor') {
+        try {
+          const info = await smsEngine.getVerimorAccountInfo();
+          config.settings.balance = info.balance;
+          config.settings.headers = info.headers ? info.headers.join(', ') : null;
+          if (info.error) config.settings.account_error = info.error;
+        } catch (err) {
+          if (!(err instanceof smsEngine.SmsConfigError)) throw err;
+          config.settings.account_error = err.message;
+        }
+      }
+      res.json({ success: true, data: { config, history } });
     } catch (err) {
       next(err);
     }

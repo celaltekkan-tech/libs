@@ -33,6 +33,9 @@ const teacherRegisterStartSchema = Joi.object({
     'string.email': 'Geçerli bir e-posta adresi girin',
     'string.empty': 'E-posta zorunludur',
   }),
+  phone: Joi.string().trim().max(30).required().messages({
+    'string.empty': 'Cep telefonu zorunludur',
+  }),
 });
 
 const teacherRegisterPendingSchema = Joi.object({

@@ -105,9 +105,10 @@ export async function startTeacherRegister(payload: {
   national_id: string;
   last_name: string;
   email: string;
-}): Promise<AuthSession> {
-  const { data } = await client.post<Envelope<LoginResponseData>>('/api/auth/teacher-register', payload);
-  return sessionFromPayload(data.data);
+  phone: string;
+}): Promise<TeacherRegisterStartResult> {
+  const { data } = await client.post<Envelope<TeacherRegisterStartResult>>('/api/auth/teacher-register', payload);
+  return data.data;
 }
 
 export async function resendTeacherRegisterSms(pendingToken: string): Promise<TeacherRegisterStartResult> {

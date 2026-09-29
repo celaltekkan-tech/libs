@@ -12,6 +12,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   udp: 'UDP SMS motoru',
   http_api: 'HTTP API',
   external_cli: 'Harici program',
+  verimor: 'Verimor',
 }
 
 const SETTING_LABELS: Record<string, string> = {
@@ -22,6 +23,14 @@ const SETTING_LABELS: Record<string, string> = {
   method: 'Metot',
   api_key_set: 'API anahtarı',
   program_path: 'Program yolu',
+  base_url: 'API adresi',
+  username: 'Kullanıcı adı',
+  password_set: 'API şifresi',
+  source_addr: 'Başlık',
+  datacoding: 'Karakter kodlaması',
+  balance: 'Bakiye (kredi)',
+  headers: 'Tanımlı başlıklar',
+  account_error: 'Hesap hatası',
 }
 
 const STATUS_TAGS: Record<string, { color: string; label: string }> = {
@@ -35,7 +44,10 @@ const DEFAULT_MESSAGE = 'OIDS SMS test mesajı - Türkçe karakter: ğüşıöç
 
 function formatSetting(key: string, value: string | number | boolean | null) {
   if (value === null || value === '') return <Typography.Text type="danger">tanımlı değil</Typography.Text>
-  if (key === 'api_key_set') return value ? 'Tanımlı' : <Typography.Text type="danger">Yok</Typography.Text>
+  if (key === 'api_key_set' || key === 'password_set')
+    return value ? 'Tanımlı' : <Typography.Text type="danger">Yok</Typography.Text>
+  if (key === 'account_error') return <Typography.Text type="danger">{String(value)}</Typography.Text>
+  if (key === 'datacoding') return ({ '0': 'Latin (0)', '1': 'Türkçe (1)', '2': 'Unicode (2)' } as Record<string, string>)[String(value)] || String(value)
   if (key === 'reply_timeout_ms' && value === 0) return '0 (yanıt beklenmez)'
   return String(value)
 }

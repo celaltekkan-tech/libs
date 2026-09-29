@@ -238,10 +238,107 @@ async function udpProvider(phoneNumber, message) {
   });
 }
 
+// --- Sağlayıcı 4: Verimor (https://github.com/verimor/SMS-API) --------
+// POST {base}/v2/send.json — başarıda 200 + düz metin kampanya ID,
+// hatada 4xx + düz metin hata kodu (örn. INSUFFICIENT_CREDITS) döner.
+// OİM'de API erişimi açılmalı ve sunucu IP'si tanımlanmalıdır (BTK).
+const VERIMOR_BASE_URL = 'https://sms.verimor.com.tr';
+
+function verimorConfig() {
+  const username = process.env.VERIMOR_USERNAME;
+  const password = process.env.VERIMOR_PASSWORD;
+  if (!username || !password) {
+    throw new SmsConfigError('VERIMOR_USERNAME / VERIMOR_PASSWORD tanımlı değil');
+  }
+  return {
+    baseUrl: (process.env.VERIMOR_BASE_URL || VERIMOR_BASE_URL).replace(/\/+$/, ''),
+    username,
+    password,
+    sourceAddr: process.env.VERIMOR_SOURCE_ADDR || null,
+    datacoding: process.env.VERIMOR_DATACODING ?? '1',
+    validFor: process.env.VERIMOR_VALID_FOR || null,
+    timeoutMs: Number(process.env.VERIMOR_TIMEOUT_MS) || 15000,
+  };
+}
+
+async function verimorRequest(cfg, path, { method = 'GET', body } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), cfg.timeoutMs);
+  try {
+    const url =
+      method === 'GET'
+        ? `${cfg.baseUrl}${path}?${new URLSearchParams({ username: cfg.username, password: cfg.password })}`
+        : `${cfg.baseUrl}${path}`;
+    const res = await fetch(url, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+    return { ok: res.ok, status: res.status, text: (await res.text()).trim() };
+  } catch (err) {
+    return { ok: false, status: 0, text: err.name === 'AbortError' ? 'İstek zaman aşımına uğradı' : err.message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Verimor numarayı 905XXXXXXXXX (başında + olmadan) bekler.
+function toVerimorDest(phone) {
+  const digits = normalizeMobilePhone(phone);
+  if (digits && /^5\d{9}$/.test(digits)) return `90${digits}`;
+  return String(phone).replace(/\D/g, '');
+}
+
+async function verimorProvider(phoneNumber, message) {
+  const cfg = verimorConfig();
+  const body = {
+    username: cfg.username,
+    password: cfg.password,
+    datacoding: String(cfg.datacoding),
+    messages: [{ msg: String(message), dest: toVerimorDest(phoneNumber) }],
+  };
+  if (cfg.sourceAddr) body.source_addr = cfg.sourceAddr;
+  if (cfg.validFor) body.valid_for = cfg.validFor;
+
+  const res = await verimorRequest(cfg, '/v2/send.json', { method: 'POST', body });
+  if (res.ok && /^\d+$/.test(res.text)) {
+    return { success: true, providerMessageId: res.text, error: null };
+  }
+  return {
+    success: false,
+    providerMessageId: null,
+    error: truncate(res.status ? `Verimor HTTP ${res.status}: ${res.text}` : res.text),
+  };
+}
+
+/** Verimor bakiye ve tanımlı başlıklar (platform SMS test ekranı için). */
+async function getVerimorAccountInfo() {
+  const cfg = verimorConfig();
+  const [balance, headers] = await Promise.all([
+    verimorRequest(cfg, '/v2/balance'),
+    verimorRequest(cfg, '/v2/headers'),
+  ]);
+  let headerList = null;
+  if (headers.ok) {
+    try {
+      headerList = JSON.parse(headers.text);
+    } catch {
+      headerList = null;
+    }
+  }
+  return {
+    balance: balance.ok ? Number(balance.text) : null,
+    headers: headerList,
+    error: !balance.ok ? truncate(balance.text) : !headers.ok ? truncate(headers.text) : null,
+  };
+}
+
 const PROVIDERS = {
   external_cli: externalCliProvider,
   http_api: httpApiProvider,
   udp: udpProvider,
+  verimor: verimorProvider,
 };
 
 /**
@@ -298,10 +395,18 @@ function getSmsConfigSummary() {
       method: process.env.SMS_HTTP_METHOD || 'POST',
       api_key_set: Boolean(process.env.SMS_HTTP_API_KEY),
     };
+  } else if (provider === 'verimor') {
+    summary.settings = {
+      base_url: process.env.VERIMOR_BASE_URL || VERIMOR_BASE_URL,
+      username: process.env.VERIMOR_USERNAME || null,
+      password_set: Boolean(process.env.VERIMOR_PASSWORD),
+      source_addr: process.env.VERIMOR_SOURCE_ADDR || '(hesap varsayılanı)',
+      datacoding: process.env.VERIMOR_DATACODING ?? '1',
+    };
   } else if (provider === 'external_cli') {
     summary.settings = { program_path: process.env.SMS_EXTERNAL_PROGRAM_PATH || null };
   }
   return summary;
 }
 
-module.exports = { sendSms, getSmsConfigSummary, toE164Tr, SMS_STATUS, SmsConfigError };
+module.exports = { sendSms, getSmsConfigSummary, getVerimorAccountInfo, toE164Tr, SMS_STATUS, SmsConfigError };
