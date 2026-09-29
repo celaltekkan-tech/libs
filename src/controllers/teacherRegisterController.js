@@ -82,14 +82,12 @@ module.exports = {
   async start(req, res, next) {
     try {
       const payload = req.validatedBody || req.body;
-      const user = await teacherRegister.startRegistration(payload);
-      await audit.log(auditReq(req, user), {
-        action: 'create',
-        entityType: 'auth',
-        entityId: user.id,
-        summary: `Öğretmen mobil kaydı oluşturuldu: ${user.full_name}`,
+      const data = await teacherRegister.startRegistration(payload);
+      res.status(201).json({
+        success: true,
+        message: `Doğrulama kodu ${data.phone_hint} numarasına gönderildi`,
+        data,
       });
-      return respondWithSession(res, user, 201);
     } catch (err) {
       next(err);
     }
