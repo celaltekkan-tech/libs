@@ -22,6 +22,7 @@ const {
   tenantMenuLayoutSchema,
 } = require('../validators/auth.validator');
 
+router.get('/teacher-register/config', teacherRegisterCtrl.config);
 router.get('/teacher-register/provinces', teacherRegisterCtrl.listProvinces);
 router.get('/teacher-register/districts', teacherRegisterCtrl.listDistricts);
 router.get('/teacher-register/schools', teacherRegisterCtrl.listSchools);

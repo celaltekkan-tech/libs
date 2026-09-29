@@ -43,6 +43,10 @@ function auditReq(req, user) {
 }
 
 module.exports = {
+  config(req, res) {
+    res.json({ success: true, data: { sms_required: teacherRegister.isSmsRequired() } });
+  },
+
   async listProvinces(req, res, next) {
     try {
       const rows = await teacherRegister.listProvinces();
@@ -83,6 +87,16 @@ module.exports = {
     try {
       const payload = req.validatedBody || req.body;
       const data = await teacherRegister.startRegistration(payload);
+      if (data.user) {
+        // SMS'siz geçici mod: hesap açıldı, doğrudan oturum dön.
+        await audit.log(auditReq(req, data.user), {
+          action: 'create',
+          entityType: 'auth',
+          entityId: data.user.id,
+          summary: `Öğretmen mobil kaydı oluşturuldu (SMS'siz): ${data.user.full_name}`,
+        });
+        return respondWithSession(res, data.user, 201);
+      }
       res.status(201).json({
         success: true,
         message: `Doğrulama kodu ${data.phone_hint} numarasına gönderildi`,
