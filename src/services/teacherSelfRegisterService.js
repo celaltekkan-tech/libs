@@ -20,11 +20,16 @@ const { foldTurkishName, turkishNamesEqual } = require('../utils/trName');
 const jwtUtil = require('../utils/jwt');
 const licenseService = require('./licenseService');
 const { sendSms, SMS_STATUS, SmsConfigError } = require('./smsEngine');
-const { assertValidMobilePhone, normalizeMobilePhone } = require('../utils/phone');
+const { assertValidMobilePhone, formatMobilePhone, normalizeMobilePhone } = require('../utils/phone');
 const { maskPhone } = require('./smsLoginService');
 
 // Kayıt: T.C. + soyad öğretmen kaydıyla, girilen telefon Teacher.phone ile eşleşmeli.
 // Hesap pasif açılır; SMS kodu doğrulanınca aktifleşir.
+// TEACHER_REGISTER_SMS_REQUIRED=false geçici moddur (SMS başlığı onaylanana kadar):
+// T.C. + soyad eşleşmesi yeterli, telefon sorulmaz, hesap doğrudan açılır.
+function isSmsRequired() {
+  return String(process.env.TEACHER_REGISTER_SMS_REQUIRED ?? 'true').toLowerCase() !== 'false';
+}
 
 const BCRYPT_ROUNDS = 10;
 const PENDING_EXPIRES = process.env.TEACHER_REGISTER_TOKEN_TTL || '30m';
@@ -348,8 +353,17 @@ async function startRegistration({ school_id, national_id, last_name, email, pho
   });
   await assertSchoolLicensed(school);
   const teacher = await matchTeacher(school, national_id, last_name);
-  const phoneNorm = assertValidMobilePhone(phone, { required: true });
-  assertPhoneBelongsToTeacher(teacher, phoneNorm);
+  const smsRequired = isSmsRequired();
+  let phoneNorm;
+  if (smsRequired) {
+    phoneNorm = assertValidMobilePhone(phone, { required: true });
+    assertPhoneBelongsToTeacher(teacher, phoneNorm);
+  } else {
+    phoneNorm = formatMobilePhone(teacher.phone);
+  }
+  const activation = smsRequired
+    ? { is_active: false }
+    : { is_active: true, sms_login_code_hash: null, sms_login_code_expires_at: null, last_login_at: new Date() };
   const emailNorm = String(email).trim().toLowerCase();
   const tckn = normalizeNationalId(national_id);
   const fullName = `${teacher.first_name} ${teacher.last_name}`.trim();
@@ -383,7 +397,7 @@ async function startRegistration({ school_id, national_id, last_name, email, pho
           phone: phoneNorm,
           password_hash,
           role: 'user',
-          is_active: false,
+          ...activation,
         },
         { transaction },
       );
@@ -398,7 +412,7 @@ async function startRegistration({ school_id, national_id, last_name, email, pho
           phone: phoneNorm,
           password_hash,
           role: 'user',
-          is_active: false,
+          ...activation,
         },
         { transaction },
       );
@@ -414,15 +428,19 @@ async function startRegistration({ school_id, national_id, last_name, email, pho
       );
     }
 
-    // Teacher.email doğrulama sonrasında (verifyCode) güncellenir.
+    // SMS modunda Teacher.email doğrulama sonrasında (verifyCode) güncellenir.
+    if (!smsRequired) await teacher.update({ email: emailNorm }, { transaction });
     return pending;
   });
+
+  if (!smsRequired) return { user };
 
   const issued = await storeVerificationCode(user);
   await sendRegisterSms(phoneNorm, issued.code);
   const pending = createPendingToken(user);
 
   return {
+    sms_required: true,
     pending_token: pending.token,
     expires_at: pending.expires_at,
     phone_hint: maskPhone(phoneNorm),
@@ -478,6 +496,7 @@ async function verifyCode(tempToken, code) {
 }
 
 module.exports = {
+  isSmsRequired,
   listProvinces,
   listDistricts,
   listLicensedSchools,

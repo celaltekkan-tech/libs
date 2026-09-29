@@ -100,15 +100,29 @@ export async function listRegisterSchools(provinceId: number, districtId: number
   return data.data;
 }
 
+export async function fetchRegisterConfig(): Promise<{ sms_required: boolean }> {
+  const { data } = await client.get<Envelope<{ sms_required: boolean }>>('/api/auth/teacher-register/config');
+  return data.data;
+}
+
+// SMS zorunluysa doğrulama oturumu, değilse (geçici SMS'siz mod) doğrudan oturum döner.
+export type TeacherRegisterStartResponse =
+  | { kind: 'sms'; pending: TeacherRegisterStartResult }
+  | { kind: 'session'; session: AuthSession };
+
 export async function startTeacherRegister(payload: {
   school_id: number;
   national_id: string;
   last_name: string;
   email: string;
   phone: string;
-}): Promise<TeacherRegisterStartResult> {
-  const { data } = await client.post<Envelope<TeacherRegisterStartResult>>('/api/auth/teacher-register', payload);
-  return data.data;
+}): Promise<TeacherRegisterStartResponse> {
+  const { data } = await client.post<Envelope<TeacherRegisterStartResult & LoginResponseData>>(
+    '/api/auth/teacher-register',
+    payload,
+  );
+  if (data.data.pending_token) return { kind: 'sms', pending: data.data };
+  return { kind: 'session', session: sessionFromPayload(data.data) };
 }
 
 export async function resendTeacherRegisterSms(pendingToken: string): Promise<TeacherRegisterStartResult> {
