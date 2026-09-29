@@ -95,7 +95,9 @@ client.interceptors.response.use(
     const body = error.response?.data;
     const fallback = !status
       ? `Sunucuya bağlanılamadı (${currentBaseUrl || 'adres tanımsız'}). Sunucu adresini ve ağ bağlantınızı kontrol edin.`
-      : error.message;
+      : status >= 500
+        ? `Sunucu şu an yanıt veremiyor (HTTP ${status}). Biraz sonra tekrar deneyin.`
+        : error.message;
     const apiError = new ApiError(status, body, fallback);
     const reqUrl = String(error.config?.url || '');
     if (status === 401 && !reqUrl.includes('/api/auth/teacher-register')) {

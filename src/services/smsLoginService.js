@@ -88,7 +88,7 @@ async function issueSmsLoginCode(user, { phone } = {}) {
   if (smsResult.status !== SMS_STATUS.SUCCESS) {
     const err = new Error(smsResult.error || 'SMS gönderilemedi');
     err.code = 'SMS_SEND_FAILED';
-    err.status = 502;
+    err.status = 424; // 502 gövdesi Cloudflare'de kayboluyor
     throw err;
   }
 

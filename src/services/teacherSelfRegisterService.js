@@ -231,7 +231,8 @@ async function sendRegisterSms(phone, code) {
     throw err;
   }
   if (result.status !== SMS_STATUS.SUCCESS) {
-    throw fail(502, 'SMS_SEND_FAILED', result.error || 'SMS gönderilemedi');
+    // 5xx gövdesini Cloudflare yutuyor (502 → düz "Bad Gateway"); mesaj istemciye ulaşsın diye 424.
+    throw fail(424, 'SMS_SEND_FAILED', `SMS gönderilemedi: ${result.error || 'bilinmeyen hata'}`);
   }
 }
 
