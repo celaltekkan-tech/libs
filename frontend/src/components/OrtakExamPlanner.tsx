@@ -34,26 +34,12 @@ import { classroomLabel } from '../types/classroom'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
 import { TypedPhraseConfirmModal } from './TypedPhraseConfirmModal'
 import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
+import { useObjectColors } from '../theme/ObjectPaletteContext'
 
 dayjs.extend(isoWeek)
 
 const DAY_NAMES = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 const MAX_EXAMS_PER_LEVEL = 4
-
-const SUBJECT_PALETTE = [
-  '#1d4e89', '#0f766e', '#b45309', '#be123c', '#6d28d9',
-  '#0369a1', '#15803d', '#c2410c', '#9f1239', '#7c3aed',
-  '#0e7490', '#4d7c0f', '#a16207', '#e11d48', '#4338ca',
-  '#155e75', '#166534', '#9a3412', '#86198f', '#1e40af',
-]
-
-function subjectColor(subjectId: number): string {
-  return SUBJECT_PALETTE[Math.abs(subjectId) % SUBJECT_PALETTE.length]
-}
-
-function softBg(hex: string): string {
-  return `${hex}22`
-}
 
 function sortClassLevels(levels: string[]): string[] {
   return [...levels].sort((a, b) => {
@@ -88,6 +74,7 @@ function startOfTwoWeekWindow(d: Dayjs): Dayjs {
 export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps) {
   const { message, modal } = App.useApp()
   const { session } = useAuth()
+  const colors = useObjectColors()
   const gridRef = useRef<HTMLDivElement>(null)
 
   const [mode, setMode] = useState<'manuel' | 'otomatik'>('manuel')
@@ -638,7 +625,7 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
             {subjects.map((s) => {
               const active = selectedSubjectId === s.subject_id
               const placed = placedSubjectIds.has(s.subject_id)
-              const color = subjectColor(s.subject_id)
+              const tone = colors.swatchForId(s.subject_id)
               return (
                 <Tag
                   key={s.subject_id}
@@ -648,9 +635,9 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
                   }}
                   style={{
                     cursor: mode === 'manuel' && canCreate ? 'pointer' : 'default',
-                    background: active ? color : softBg(color),
-                    color: active ? '#fff' : color,
-                    borderColor: color,
+                    background: active ? tone.text : tone.bg,
+                    color: active ? tone.bg : tone.text,
+                    borderColor: tone.border,
                     padding: '4px 10px',
                     fontSize: 13,
                     opacity: placed && !active ? 0.75 : 1,
@@ -809,7 +796,7 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
                               verticalAlign: 'top',
                               minHeight: 72,
                               cursor: 'pointer',
-                              background: full ? '#fff7ed' : undefined,
+                              background: full ? colors.swatch('gold').bg : undefined,
                             }}
                           >
                             <div
@@ -822,13 +809,16 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
                                 alignItems: 'flex-start',
                               }}
                             >
-                              {chips.map((e) => (
+                              {chips.map((e) => {
+                                const tone = colors.swatchForId(e.subject_id)
+                                return (
                                 <div
                                   key={e.subject_id}
                                   title={e.Subject?.name || ''}
                                   style={{
-                                    background: subjectColor(e.subject_id),
-                                    color: '#fff',
+                                    background: tone.bg,
+                                    color: tone.text,
+                                    border: `1px solid ${tone.border}`,
                                     borderRadius: 4,
                                     padding: '4px 8px',
                                     fontSize: 12,
@@ -838,7 +828,8 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
                                 >
                                   {e.Subject?.name || `#${e.subject_id}`}
                                 </div>
-                              ))}
+                                )
+                              })}
                               {chips.length === 0 && (
                                 <Typography.Text type="secondary" style={{ fontSize: 11 }}>
                                   —
@@ -908,7 +899,7 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
                         width: 10,
                         height: 10,
                         borderRadius: 2,
-                        background: subjectColor(exam.subject_id),
+                        background: colors.swatchForId(exam.subject_id).border,
                         display: 'inline-block',
                       }}
                     />

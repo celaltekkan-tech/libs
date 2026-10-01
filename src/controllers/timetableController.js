@@ -26,6 +26,7 @@ const solver = require('../services/timetableSolverClient');
 const runService = require('../services/timetableRunService');
 const timetableExport = require('../services/timetableExportService');
 const { buildEokulPayload } = require('../services/timetableEokulPayload');
+const { buildExtensionZip } = require('../services/extensionPackage');
 const gemini = require('../services/geminiService');
 const aiUsage = require('../services/aiUsageService');
 const branchService = require('../services/branchService');
@@ -1028,6 +1029,17 @@ module.exports = {
     try {
       const project = await loadProject(req);
       res.json({ success: true, data: await lessonsWithAssignments(project) });
+    } catch (err) {
+      sendError(res, next, err);
+    }
+  },
+
+  async downloadExtension(_req, res, next) {
+    try {
+      const zip = buildExtensionZip();
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', 'attachment; filename="oids-eokul-eklentisi.zip"');
+      res.send(zip);
     } catch (err) {
       sendError(res, next, err);
     }

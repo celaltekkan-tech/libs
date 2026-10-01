@@ -242,7 +242,7 @@ export interface EokulClassPayload {
 
 export interface EokulPayload {
   version: 1
-  source: 'libs'
+  source: 'oids'
   project: { id: number; name: string; academic_year: string | null }
   classes: EokulClassPayload[]
 }
@@ -250,6 +250,11 @@ export interface EokulPayload {
 export async function fetchEokulPayload(projectId: number): Promise<EokulPayload> {
   const { data } = await client.get<Envelope<EokulPayload>>(`${BASE}/projects/${projectId}/eokul`)
   return data.data
+}
+
+export async function downloadEokulExtension(): Promise<Blob> {
+  const { data } = await client.get(`${BASE}/extension`, { responseType: 'blob', timeout: 60000 })
+  return data
 }
 
 export interface ProgramImportGap {

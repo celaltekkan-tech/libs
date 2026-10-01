@@ -1,8 +1,8 @@
-if (!globalThis.__libsEokulBridge) {
-  globalThis.__libsEokulBridge = true
+if (!globalThis.__oidsEokulBridge) {
+  globalThis.__oidsEokulBridge = true
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type !== 'libs-session') return
+    if (message?.type !== 'oids-session') return
     const token = localStorage.getItem('lise_idari.token')
     const projects = []
     for (let i = 0; i < localStorage.length; i += 1) {
@@ -12,6 +12,6 @@ if (!globalThis.__libsEokulBridge) {
       const schoolId = Number(key.slice('timetable.project.'.length))
       if (projectId) projects.push({ schoolId, projectId })
     }
-    sendResponse({ token, origin: location.origin, projects })
+    sendResponse({ token, projects })
   })
 }

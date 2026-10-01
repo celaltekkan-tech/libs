@@ -36,6 +36,7 @@ function uploadFile(req, res, next) {
 }
 
 router.get('/meta', read, ctrl.meta);
+router.get('/extension', read, ctrl.downloadExtension);
 
 router.get('/projects', read, ctrl.listProjects);
 router.post('/projects', create, validate(v.createProjectSchema), ctrl.createProject);

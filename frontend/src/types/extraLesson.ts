@@ -45,11 +45,11 @@ export interface ExtraLessonPayload {
 }
 
 export const EXTRA_LESSON_ABSENCE_REASONS = [
-  { value: 'rapor', label: 'Rapor' },
-  { value: 'izin', label: 'İzin' },
-  { value: 'gorev', label: 'Görevli' },
-  { value: 'mazeret', label: 'Mazeret' },
-  { value: 'devamsiz', label: 'Devamsız' },
+  { value: 'rapor', label: 'Rapor', swatch: 'blue' },
+  { value: 'izin', label: 'İzin', swatch: 'green' },
+  { value: 'gorev', label: 'Görevli', swatch: 'purple' },
+  { value: 'mazeret', label: 'Mazeret', swatch: 'gold' },
+  { value: 'devamsiz', label: 'Devamsız', swatch: 'red' },
 ] as const
 
 export type ExtraLessonAbsenceReason = (typeof EXTRA_LESSON_ABSENCE_REASONS)[number]['value']

@@ -67,7 +67,7 @@ function buildEokulPayload(project, lessons) {
 
   return {
     version: 1,
-    source: 'libs',
+    source: 'oids',
     project: {
       id: project.id,
       name: project.name,

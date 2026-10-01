@@ -19,11 +19,12 @@ import { AppLayout } from '../components/AppLayout'
 import { getErrorMessage } from '../api/client'
 import { listCalendarEvents, listCalendarSources } from '../api/calendar'
 import {
-  CALENDAR_COLOR_STYLES,
+  CALENDAR_COLOR_KEYS,
   CALENDAR_SOURCE_LABELS,
   type CalendarEvent,
   type CalendarSource,
 } from '../types/calendarEvent'
+import { useObjectColors } from '../theme/ObjectPaletteContext'
 
 const MONTH_NAMES = [
   'Ocak',
@@ -49,10 +50,6 @@ const DUE_STATE_LABELS: Record<string, string> = {
   cancelled: 'İptal',
 }
 
-function eventStyle(colorKey: string) {
-  return CALENDAR_COLOR_STYLES[colorKey] || CALENDAR_COLOR_STYLES.work_tasks
-}
-
 function dayKeyFromIso(iso: string) {
   // Europe/Istanbul takvim günü (UTC kayması olmasın)
   try {
@@ -69,6 +66,7 @@ function dayKeyFromIso(iso: string) {
 
 export function CalendarPage() {
   const { message } = App.useApp()
+  const colors = useObjectColors()
   const [panelDate, setPanelDate] = useState<Dayjs>(() => dayjs())
   const [sources, setSources] = useState<CalendarSource[]>([])
   const [selectedSources, setSelectedSources] = useState<string[]>([])
@@ -139,7 +137,7 @@ export function CalendarPage() {
     return (
       <div style={{ minHeight: 56, padding: '2px 2px 0', overflow: 'hidden' }}>
         {shown.map((ev) => {
-          const style = eventStyle(ev.color_key)
+          const style = colors.swatch(CALENDAR_COLOR_KEYS[ev.color_key] || 'blue')
           return (
             <div
               key={ev.id}
@@ -242,7 +240,7 @@ export function CalendarPage() {
           <List
             dataSource={selectedDayEvents}
             renderItem={(ev) => {
-              const style = eventStyle(ev.color_key)
+              const style = colors.swatch(CALENDAR_COLOR_KEYS[ev.color_key] || 'blue')
               const sourceLabel =
                 CALENDAR_SOURCE_LABELS[ev.source] ||
                 sources.find((s) => s.id === ev.source)?.label ||
@@ -263,7 +261,15 @@ export function CalendarPage() {
                     title={
                       <Space wrap>
                         <span>{ev.title}</span>
-                        <Tag color={style.tag}>{sourceLabel}</Tag>
+                        <Tag
+                          style={{
+                            background: style.bg,
+                            color: style.text,
+                            borderColor: style.border,
+                          }}
+                        >
+                          {sourceLabel}
+                        </Tag>
                         {ev.meta?.due_state && (
                           <Tag>{DUE_STATE_LABELS[String(ev.meta.due_state)] || String(ev.meta.due_state)}</Tag>
                         )}

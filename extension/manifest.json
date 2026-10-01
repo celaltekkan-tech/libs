@@ -1,22 +1,27 @@
 {
   "manifest_version": 3,
-  "name": "Libs e-Okul Ders Programı",
+  "name": "OIDS e-Okul Ders Programı",
   "version": "1.0.0",
-  "description": "Libs ders programını e-Okul ders programı ekranına işler. MEBBİS oturumunu kullanır, şifre istemez.",
+  "description": "OIDS ders programını e-Okul ders programı ekranına işler. MEBBİS oturumunu kullanır, şifre istemez.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2mvnCE2HuXbextHP1Iex4YZjUwf1hNaDcv13Ppo5lx8uoonFmp/uQEQGHk8XCdKv0Kinsu8Y3ac3w9rdLbNOeVVynFRg8frGwX3Kj8RYugMMEKwKHG2cTAZRrcDGAwKWCVraJ9wcFc+Afty6fBdllynruub3wAwkFjnvJ+WjayTJaKNUcPfOYK4AT1AoaBL/lrVI/S7IdnV461i5cj68HOOR+ZeWHLVi5wRykT9Yjwtu0X7JZErUyRL/P6FpDJUXx7b0LwrNL1fj30A5QetJgbUs8nmxmpwH4mxYEG8goINRkweHkZVLaBlX8IxhQeAZDL+TLp8Q92L4hPR2oha+ZwIDAQAB",
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Libs ders programı"
+    "default_title": "OIDS ders programı"
+  },
+  "background": {
+    "service_worker": "background.js"
   },
   "permissions": ["storage", "tabs", "scripting", "webNavigation"],
   "host_permissions": [
-    "http://localhost:5173/*",
-    "http://127.0.0.1:5173/*",
-    "http://localhost:4000/*",
-    "http://127.0.0.1:4000/*",
+    "https://uyg.oids.com.tr/*",
+    "https://api.oids.com.tr/*",
     "https://e-okul.meb.gov.tr/*",
     "https://mebbis.meb.gov.tr/*",
     "https://*.meb.gov.tr/*"
   ],
+  "externally_connectable": {
+    "matches": ["https://uyg.oids.com.tr/*"]
+  },
   "content_scripts": [
     {
       "matches": ["https://e-okul.meb.gov.tr/*", "https://*.meb.gov.tr/*"],
@@ -25,8 +30,8 @@
       "all_frames": true
     },
     {
-      "matches": ["http://localhost:5173/*", "http://127.0.0.1:5173/*"],
-      "js": ["content/libs.js"],
+      "matches": ["https://uyg.oids.com.tr/*"],
+      "js": ["content/oids.js"],
       "run_at": "document_idle"
     }
   ]
