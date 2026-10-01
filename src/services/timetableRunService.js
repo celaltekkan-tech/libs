@@ -191,17 +191,22 @@ async function tryAiFallback(run, result) {
   try {
     const payload = await buildPayload(project);
     const placed = await placeWithAi(payload, result.diagnostics || []);
+    if (!placed.answered) await aiUsage.refund(project.tenant_id);
     if (!placed.ok) return { diagnostics: [{ level: 'error', message: placed.message }] };
-    return {
-      lessons: placed.lessons,
-      diagnostics: [
-        {
-          level: 'warning',
-          message: `Çözücü uygun program bulamadı (${result.status || 'sonuç yok'}). ${placed.lessons.length} ders saati yapay zekâ ile yerleştirildi. Taslağı kontrol edin.`,
-        },
-        ...placed.warnings,
-      ],
-    };
+    const notes = [
+      {
+        level: 'warning',
+        message: `Çözücü uygun program bulamadı (${result.status || 'sonuç yok'}). ${placed.lessons.length} ders saati yapay zekâ ile yerleştirildi. Taslağı kontrol edin.`,
+      },
+      ...placed.warnings,
+    ];
+    if (!placed.answered) {
+      notes.push({
+        level: 'warning',
+        message: 'Gemini yanıt vermediği için yerleştirme sunucuda yapıldı; bu deneme günlük hakkınızdan düşmedi.',
+      });
+    }
+    return { lessons: placed.lessons, diagnostics: notes };
   } catch (err) {
     await aiUsage.refund(project.tenant_id);
     return {
