@@ -6,6 +6,7 @@ const {
   isExcelFileName,
   normalizeHeader,
 } = require('./excelImportService');
+const { upperPersonName } = require('../utils/personName');
 
 const SCHEDULE_IMPORTABLE_FIELDS = [
   { key: 'class_level', label: 'Sınıf', required: false },
@@ -140,10 +141,10 @@ function parseClassroomLabel(value) {
 function splitTeacherName(value) {
   if (!value) return null;
   const parts = String(value).trim().split(/\s+/).filter(Boolean);
-  if (parts.length < 2) return { first_name: parts[0] || '', last_name: '' };
+  if (parts.length < 2) return { first_name: upperPersonName(parts[0] || ''), last_name: '' };
   return {
-    first_name: parts.slice(0, -1).join(' '),
-    last_name: parts[parts.length - 1],
+    first_name: upperPersonName(parts.slice(0, -1).join(' ')),
+    last_name: upperPersonName(parts[parts.length - 1]),
   };
 }
 

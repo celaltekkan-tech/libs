@@ -25,8 +25,9 @@ const ALL_MODULES = [
 ];
 
 // users modülünde kota sayılan hesapların üst sınırı (platform admin hariç).
-// Öğretmen ve Rehber Öğretmen bu sayıya dahil değildir. null = sınırsız.
-// Basic'te modül kapalıdır (0).
+// Öğretmen, rehber öğretmen ve okul yöneticisi rolleri bu sayıya dahil değildir.
+// Okul yöneticisi sayısı ayrıca usersController içindeki okul limitine bağlıdır
+// (müdür 1, müdür yardımcısı 10). null = sınırsız. Basic'te modül kapalıdır (0).
 const PLAN_USER_LIMITS = {
   Basic: 0,
   Standart: 2,
@@ -34,7 +35,14 @@ const PLAN_USER_LIMITS = {
   Kurumsal: null,
 };
 
-const UNLIMITED_ACCOUNT_ROLES = ['Öğretmen', 'Rehber Öğretmen'];
+const UNLIMITED_ACCOUNT_ROLES = [
+  'Öğretmen',
+  'Rehber Öğretmen',
+  'Müdür',
+  'Yönetici',
+  'Müdür Başyardımcısı',
+  'Müdür Yardımcısı',
+];
 
 // Tenant başına oluşturulabilecek maksimum okul sayısı.
 // null = sınırsız. Tanımsız planda tek okul.

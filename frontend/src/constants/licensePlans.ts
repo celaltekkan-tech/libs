@@ -52,7 +52,7 @@ export const LICENSE_PLANS: LicensePlanDefinition[] = [
       'Sınırsız öğretmen kaydı',
       'Öğrenci işleri',
       'Sınıf/şube yönetimi',
-      'Kullanıcı ve yetki yönetimi (öğretmen ve rehber öğretmen hariç 2 hesap)',
+      'Kullanıcı ve yetki yönetimi (öğretmen, rehber öğretmen, müdür ve müdür yardımcısı hariç 2 hesap)',
       'Denetim kayıtları',
       'Otomatik ders programı',
       'Personel izin takibi',

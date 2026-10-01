@@ -41,6 +41,8 @@ import { personNameSorter, SORT_AZ } from '../utils/tableSort'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
 import { addSalaryFormStarter } from '../utils/salaryFormAutoEntry'
 import { KARIYER_OPTIONS, teacherTitleParts } from '../utils/teacherTitle'
+import { upperPersonName } from '../utils/personName'
+import { BRANCH_OPTIONS, UNVAN_OPTIONS, optionsWithCurrent } from '../constants/teacherCatalog'
 import { uniqueSelectOptions } from '../utils/uniqueSelectOptions'
 import { DynamicListFilters, isActiveFilterValue, matchesListFilter, type ListFilterValue } from '../components/DynamicListFilters'
 import { useVisibleFilterFields } from '../hooks/useVisibleFilterFields'
@@ -249,6 +251,8 @@ export function TeachersPage() {
   )
   const [form] = Form.useForm<TeacherFormValues>()
   const employmentType = Form.useWatch('employment_type', form)
+  const watchedUnvan = Form.useWatch('unvan', form)
+  const watchedBrans = Form.useWatch('brans', form)
   const addToSalaryForm = Form.useWatch('add_to_salary_form', form)
   const [moveTarget, setMoveTarget] = useState<Teacher | null>(null)
   const [moveCategoryId, setMoveCategoryId] = useState<number | null>(null)
@@ -799,12 +803,22 @@ export function TeachersPage() {
           </Form.Item>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="first_name" label="Ad" rules={[{ required: true, message: 'Ad zorunludur' }]}>
+              <Form.Item
+                name="first_name"
+                label="Ad"
+                rules={[{ required: true, message: 'Ad zorunludur' }]}
+                getValueFromEvent={(event) => upperPersonName(event?.target?.value ?? '')}
+              >
                 <Input />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="last_name" label="Soyad" rules={[{ required: true, message: 'Soyad zorunludur' }]}>
+              <Form.Item
+                name="last_name"
+                label="Soyad"
+                rules={[{ required: true, message: 'Soyad zorunludur' }]}
+                getValueFromEvent={(event) => upperPersonName(event?.target?.value ?? '')}
+              >
                 <Input />
               </Form.Item>
             </Col>
@@ -881,7 +895,12 @@ export function TeachersPage() {
             {employmentType !== 'ucretli' && (
               <Col span={8}>
                 <Form.Item name="unvan" label="Unvan">
-                  <Input placeholder="Örn. Öğretmen, Müdür Yardımcısı" />
+                  <Select
+                    showSearch
+                    optionFilterProp="label"
+                    placeholder="Unvan seçin"
+                    options={optionsWithCurrent(UNVAN_OPTIONS, watchedUnvan)}
+                  />
                 </Form.Item>
               </Col>
             )}
@@ -891,7 +910,12 @@ export function TeachersPage() {
                 label="Branş"
                 rules={employmentType === 'ucretli' ? [{ required: true, message: 'Branş zorunludur' }] : []}
               >
-                <Input placeholder="Örn. Matematik" />
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="Branş seçin"
+                  options={optionsWithCurrent(BRANCH_OPTIONS, watchedBrans)}
+                />
               </Form.Item>
             </Col>
             {employmentType !== 'ucretli' && (

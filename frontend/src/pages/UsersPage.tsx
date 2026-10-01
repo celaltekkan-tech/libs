@@ -247,7 +247,7 @@ export function UsersPage() {
   const smsLoginRequiresPhone = Boolean(session?.tenant_sms_login_enabled)
   const exemptRoles = options.quota_exempt_roles?.length
     ? options.quota_exempt_roles
-    : ['Öğretmen', 'Rehber Öğretmen']
+    : ['Öğretmen', 'Rehber Öğretmen', 'Müdür', 'Yönetici', 'Müdür Başyardımcısı', 'Müdür Yardımcısı']
   const isExemptRole = (roleName?: string | null) =>
     Boolean(roleName && exemptRoles.some((name) => name.toLocaleLowerCase('tr-TR') === roleName.toLocaleLowerCase('tr-TR')))
   const atUserLimit = options.user_limit != null && options.user_count >= options.user_limit
@@ -258,7 +258,7 @@ export function UsersPage() {
   const quotaLabel =
     options.user_limit == null
       ? `Kullanıcı: ${options.user_count + (options.user_exempt_count || 0)} (sınırsız)`
-      : `Yönetici kullanıcı: ${options.user_count}/${options.user_limit} · Öğretmen hesapları sınırsız`
+      : `Diğer kullanıcı: ${options.user_count}/${options.user_limit} · Öğretmen, müdür ve müdür yardımcısı sınırsız`
 
   const columns: ColumnsType<ManagedUser> = [
     { title: 'Ad soyad', dataIndex: 'full_name' },
@@ -451,13 +451,13 @@ export function UsersPage() {
             name="role_id"
             label="Yetki grubu"
             rules={[{ required: true, message: 'Yetki grubu seçin' }]}
-            extra="Müdür okulda bir kişidir. Müdür yardımcısı en fazla 10 kişi olabilir. Öğretmen ve rehber öğretmen hesapları plan kotasına dahil değildir."
+            extra="Müdür okulda bir kişidir. Müdür yardımcısı en fazla 10 kişi olabilir. Öğretmen, rehber öğretmen, müdür ve müdür yardımcısı plan kotasına dahil değildir."
           >
             <Select showSearch optionFilterProp="label" options={roleOptions} />
           </Form.Item>
           {selectedBlockedByQuota && (
             <Typography.Paragraph type="warning">
-              Yönetici kullanıcı limiti doldu. Öğretmen veya rehber öğretmen seçebilirsiniz.
+              Bu planın kullanıcı kotası doldu. Öğretmen, rehber öğretmen, müdür veya müdür yardımcısı seçebilirsiniz.
             </Typography.Paragraph>
           )}
           <Form.Item

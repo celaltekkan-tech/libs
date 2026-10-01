@@ -949,11 +949,13 @@ Zamanlanmış cron (paneldeki günlük saat) ve **Şimdi yedek al** aynı yükle
 
 ```bash
 BACKUP_ENCRYPTION_PASSWORD=uzun-bir-yedek-sifresi
-GOOGLE_DRIVE_FOLDER_ID=drive-klasor-id
+GOOGLE_DRIVE_FOLDER_ID=
 GOOGLE_DRIVE_CLIENT_ID=
 GOOGLE_DRIVE_CLIENT_SECRET=
 GOOGLE_DRIVE_REFRESH_TOKEN=
 ```
+
+`GOOGLE_DRIVE_FOLDER_ID` için Drive’da bir klasör açın ve adres çubuğundaki `folders/` sonrasını yapıştırın. `drive-klasor-id` gerçek bir kimlik değildir; Google bu değerle “File not found” döner.
 
 Refresh token için Google Cloud’da Drive API açık bir **Masaüstü** OAuth istemcisi oluşturun, yönlendirme URI’sine `http://127.0.0.1:53682/callback` ekleyin, istemci kimliğini `.env`’e yazıp şunu çalıştırın:
 

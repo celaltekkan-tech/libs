@@ -145,12 +145,14 @@ async function getTenantUserQuota(tenantId) {
         include: [{ model: Role, attributes: ['id', 'role_name'] }],
       },
     ],
-    attributes: ['id'],
+    attributes: ['id', 'is_active'],
   });
   let count = 0;
   let exemptCount = 0;
   for (const user of users) {
-    const primary = (user.UserSchools || [])[0];
+    if (user.is_active === false) continue;
+    const assignments = [...(user.UserSchools || [])].sort((a, b) => Number(a.id) - Number(b.id));
+    const primary = assignments[0];
     if (isUnlimitedAccountRole(primary?.Role?.role_name)) exemptCount += 1;
     else count += 1;
   }
@@ -170,7 +172,7 @@ function assertRoleWithinQuota(quota, roleName, { alreadyCounted = false } = {})
   if (alreadyCounted) return;
   if (quota.count >= quota.limit) {
     const err = new Error(
-      `"${quota.plan || 'Mevcut'}" planında öğretmen ve rehber öğretmen dışında en fazla ${quota.limit} kullanıcı oluşturulabilir. Limit doldu (${quota.count}/${quota.limit}).`,
+      `"${quota.plan || 'Mevcut'}" planında öğretmen, rehber öğretmen, müdür ve müdür yardımcısı dışında en fazla ${quota.limit} kullanıcı oluşturulabilir. Limit doldu (${quota.count}/${quota.limit}).`,
     );
     err.status = 403;
     err.code = 'USER_LIMIT_REACHED';
