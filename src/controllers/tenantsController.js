@@ -5,7 +5,6 @@ const { seedDefaultHolidays } = require('../services/holidayService');
 const { applyDirectorySchoolToPayload } = require('../services/directorySchoolService');
 const licenseService = require('../services/licenseService');
 
-const MANAGER_ROLE_NAME = 'Müdür';
 const BCRYPT_ROUNDS = 10;
 
 async function countsByTenant(Model) {
@@ -193,6 +192,7 @@ module.exports = {
           province_id: schoolPayload.province_id || null,
           district_id: schoolPayload.district_id || null,
           directory_school_id: schoolPayload.directory_school_id || null,
+          principal_name: String(schoolPayload.principal_name || '').trim() || null,
         },
         { transaction }
       );
@@ -211,13 +211,18 @@ module.exports = {
         { transaction }
       );
 
-      const managerRole = await Role.findOne({ where: { role_name: MANAGER_ROLE_NAME }, transaction });
-      if (managerRole) {
-        await UserSchool.create(
-          { user_id: adminUser.id, school_id: school.id, role_id: managerRole.id },
-          { transaction }
-        );
+      const schoolRole = await Role.findOne({
+        where: { role_name: payload.admin.school_role },
+        transaction,
+      });
+      if (!schoolRole) {
+        await transaction.rollback();
+        return res.status(400).json({ success: false, message: 'Seçilen yetki grubu bulunamadı' });
       }
+      await UserSchool.create(
+        { user_id: adminUser.id, school_id: school.id, role_id: schoolRole.id },
+        { transaction }
+      );
 
       // Sabit tarihli resmi tatiller her yeni hesap için varsayılan olarak tanımlanır.
       await seedDefaultHolidays(tenant.id, { transaction });

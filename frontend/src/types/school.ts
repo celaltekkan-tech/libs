@@ -96,6 +96,7 @@ export interface School {
   district_id?: number | null
   directory_school_id?: number | null
   logo_url?: string | null
+  principal_name?: string | null
   meta?: SchoolMeta | null
   Province?: { id: number; name: string } | null
   District?: { id: number; name: string } | null
@@ -121,5 +122,6 @@ export interface SchoolPayload {
   province_id?: number | null
   district_id?: number | null
   directory_school_id?: number | null
+  principal_name?: string | null
   meta?: SchoolMeta | null
 }

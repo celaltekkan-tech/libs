@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { App, Divider, Form, Input, Modal } from 'antd'
+import { App, Divider, Form, Input, Modal, Select } from 'antd'
 import { ApiError, getErrorMessage } from '../../api/client'
 import { createTenant } from '../../api/tenants'
 import { SCHOOL_CODE_RULES } from '../../types/school'
@@ -94,6 +94,14 @@ export function CreateTenantWizardModal({ open, onClose, onCreated }: CreateTena
         >
           <Input placeholder="Örn. 765978" maxLength={6} inputMode="numeric" />
         </Form.Item>
+        <Form.Item
+          label="Okul müdürü"
+          name={['school', 'principal_name']}
+          extra="Evraklarda kullanılan müdür adıdır. Hesabı açan kişi olmak zorunda değildir."
+          rules={[{ max: 150, message: 'En fazla 150 karakter' }]}
+        >
+          <Input placeholder="Ad Soyad" maxLength={150} />
+        </Form.Item>
 
         <Divider titlePlacement="left" plain>
           1. Yönetici
@@ -106,6 +114,20 @@ export function CreateTenantWizardModal({ open, onClose, onCreated }: CreateTena
           <Input placeholder="Ad Soyad" />
         </Form.Item>
         <Form.Item
+          label="Yetki grubu"
+          name={['admin', 'school_role']}
+          extra="Hesap müdür veya müdür yardımcısı adına açılabilir."
+          rules={[{ required: true, message: 'Yetki grubu seçin' }]}
+        >
+          <Select
+            placeholder="Yetki grubu seçin"
+            options={[
+              { value: 'Müdür', label: 'Müdür' },
+              { value: 'Müdür Yardımcısı', label: 'Müdür Yardımcısı' },
+            ]}
+          />
+        </Form.Item>
+        <Form.Item
           label="E-posta"
           name={['admin', 'email']}
           rules={[
@@ -113,7 +135,7 @@ export function CreateTenantWizardModal({ open, onClose, onCreated }: CreateTena
             { type: 'email', message: 'Geçerli bir e-posta girin' },
           ]}
         >
-          <Input placeholder="mudur@okul.local" />
+          <Input placeholder="yonetici@okul.local" />
         </Form.Item>
         <Form.Item
           label="Yönetici telefonu (SMS)"

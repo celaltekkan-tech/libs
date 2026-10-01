@@ -56,6 +56,10 @@ module.exports = (sequelize, DataTypes) => {
           type: DataTypes.STRING(255),
           allowNull: true,
         },
+        principal_name: {
+          type: DataTypes.STRING(150),
+          allowNull: true,
+        },
         meta: {
           type: DataTypes.JSONB,
           allowNull: true,

@@ -57,12 +57,14 @@ export interface CreateTenantWizardPayload {
     province_id?: number | null
     district_id?: number | null
     directory_school_id?: number | null
+    principal_name?: string | null
   }
   admin: {
     full_name: string
     email: string
     password: string
     phone?: string | null
+    school_role: 'Müdür' | 'Müdür Yardımcısı'
   }
 }
 

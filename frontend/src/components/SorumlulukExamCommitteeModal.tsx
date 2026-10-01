@@ -103,7 +103,7 @@ export function SorumlulukExamCommitteeModal({
   const onOk = async () => {
     if (!slot) return
     if (!principalTeacherId) {
-      message.error('Bu okulun müdür hesabı personel listesinde bulunamadı')
+      message.error('Okul bilgilerindeki müdür adı personel listesinde bulunamadı')
       return
     }
     const [firstMember, secondMember] = memberIds
@@ -188,7 +188,7 @@ export function SorumlulukExamCommitteeModal({
             Başkan
           </Typography.Text>
           <Typography.Text>
-            {principalName || 'Bu okul için müdür hesabı bulunamadı'}
+            {principalName || 'Okul bilgilerinde müdür adı yok'}
             {principalTeacherId ? '' : principalName ? ' (personel kaydı eşleşmedi)' : ''}
           </Typography.Text>
         </div>

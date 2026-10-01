@@ -21,6 +21,12 @@ async function getTenantSchoolQuota(tenantId) {
   };
 }
 
+function normalizePrincipalName(payload) {
+  if (!payload || !Object.prototype.hasOwnProperty.call(payload, 'principal_name')) return;
+  const name = String(payload.principal_name || '').trim();
+  payload.principal_name = name || null;
+}
+
 function userCanAssignSchoolCode(req, plan) {
   if (GLOBAL_ADMIN_ROLES.includes(req.user && req.user.role)) return true;
   return canAssignSchoolCode(plan);
@@ -103,6 +109,7 @@ module.exports = {
     try {
       const payload = req.validatedBody || req.body;
       delete payload.logo_path;
+      normalizePrincipalName(payload);
       // tenant_id her zaman oturumdaki kullanıcının tenant'ı olarak sabitlenir;
       // client'tan gelen değer güvenilmez (cross-tenant yazmayı engeller).
       if (req.user && req.user.tenant_id) payload.tenant_id = req.user.tenant_id;
@@ -180,6 +187,7 @@ module.exports = {
 
       const payload = req.validatedBody || req.body;
       delete payload.logo_path;
+      normalizePrincipalName(payload);
       // Kendi tenant'ı dışına taşınamaz.
       if (req.user && req.user.tenant_id) payload.tenant_id = req.user.tenant_id;
 
