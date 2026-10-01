@@ -1,4 +1,7 @@
 const Joi = require('joi');
+const { upperPersonName } = require('../utils/personName');
+
+const personName = Joi.string().trim().custom((value) => upperPersonName(value), 'turkish uppercase');
 
 const createTeacherSchema = Joi.object({
   tenant_id: Joi.number().integer().required(),
@@ -9,8 +12,8 @@ const createTeacherSchema = Joi.object({
   national_id: Joi.string().allow('', null),
   phone: Joi.string().trim().max(30).allow('', null),
   email: Joi.string().trim().lowercase().max(150).email({ tlds: { allow: false } }).allow('', null),
-  first_name: Joi.string().required(),
-  last_name: Joi.string().required(),
+  first_name: personName.required(),
+  last_name: personName.required(),
   last_graduated_school: Joi.string().allow('', null),
   birth_date: Joi.date().iso().allow(null),
   class_level: Joi.string().allow('', null),
@@ -56,8 +59,8 @@ const mebbisImportRowSchema = Joi.object({
   kurum_adi: Joi.string().allow('', null),
   kurum_kodu: Joi.string().allow('', null),
   kurum_baslama_tarihi: Joi.date().iso().allow('', null),
-  first_name: Joi.string().required(),
-  last_name: Joi.string().required(),
+  first_name: personName.required(),
+  last_name: personName.required(),
   national_id: Joi.string().allow('', null),
   unvan: Joi.string().allow('', null),
   gorev: Joi.string().allow('', null),

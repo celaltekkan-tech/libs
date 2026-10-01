@@ -2,6 +2,7 @@
 
 const XLSX = require('xlsx');
 const { normalizeKariyer } = require('../utils/teacherTitle');
+const { upperPersonName } = require('../utils/personName');
 
 // MEBBİS "Personel Listesi Özet Bilgiler" dökümü, her personel için birden
 // fazla satıra yayılmış, birleştirilmiş (merge) hücrelerden oluşan bir form
@@ -67,8 +68,8 @@ function parseHeaderRow(row) {
     kurum_adi: kurumAdi,
     kurum_kodu: kurumKodu,
     kurum_baslama_tarihi: kurumBaslamaTarihi,
-    first_name: firstName,
-    last_name: lastName,
+    first_name: upperPersonName(firstName),
+    last_name: upperPersonName(lastName),
     national_id: nationalId,
     unvan: unvan || null,
     gorev: gorev || null,

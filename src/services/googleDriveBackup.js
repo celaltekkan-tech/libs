@@ -15,6 +15,14 @@ function driveTimeoutMs() {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 30 * 60 * 1000;
 }
 
+function folderIdProblem(folderId) {
+  if (!folderId) return 'GOOGLE_DRIVE_FOLDER_ID';
+  if (/^drive-klasor-id$/i.test(folderId)) {
+    return 'GOOGLE_DRIVE_FOLDER_ID (örnek metin; Drive klasör adresindeki gerçek kimlik gerekli)';
+  }
+  return null;
+}
+
 function describeDriveConfig() {
   const password = process.env.BACKUP_ENCRYPTION_PASSWORD || '';
   const folderId = String(process.env.GOOGLE_DRIVE_FOLDER_ID || '').trim();
@@ -37,7 +45,8 @@ function describeDriveConfig() {
   const missing = [];
   if (!password.trim()) missing.push('BACKUP_ENCRYPTION_PASSWORD');
   else if (password.length < MIN_PASSWORD_LEN) missing.push(`BACKUP_ENCRYPTION_PASSWORD (en az ${MIN_PASSWORD_LEN} karakter)`);
-  if (!folderId) missing.push('GOOGLE_DRIVE_FOLDER_ID');
+  const folderProblem = folderIdProblem(folderId);
+  if (folderProblem) missing.push(folderProblem);
   if (!oauthReady && !serviceAccount.ok) {
     missing.push(serviceAccount.reason || 'GOOGLE_DRIVE_REFRESH_TOKEN veya GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON');
   }

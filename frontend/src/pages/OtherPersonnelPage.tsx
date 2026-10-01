@@ -39,6 +39,7 @@ import { downloadBlob } from '../utils/download'
 import { addSalaryFormStarter } from '../utils/salaryFormAutoEntry'
 import { personNameSorter, SORT_AZ } from '../utils/tableSort'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { upperPersonName } from '../utils/personName'
 
 interface CategoryFormValues {
   name: string
@@ -569,10 +570,22 @@ export function OtherPersonnelPage() {
               />
             </Form.Item>
             <Space.Compact block style={{ width: '100%' }}>
-              <Form.Item name="first_name" label="Ad" rules={[{ required: true, message: 'Ad zorunludur' }]} style={{ flex: 1, marginRight: 8 }}>
+              <Form.Item
+                name="first_name"
+                label="Ad"
+                rules={[{ required: true, message: 'Ad zorunludur' }]}
+                getValueFromEvent={(event) => upperPersonName(event?.target?.value ?? '')}
+                style={{ flex: 1, marginRight: 8 }}
+              >
                 <Input />
               </Form.Item>
-              <Form.Item name="last_name" label="Soyad" rules={[{ required: true, message: 'Soyad zorunludur' }]} style={{ flex: 1 }}>
+              <Form.Item
+                name="last_name"
+                label="Soyad"
+                rules={[{ required: true, message: 'Soyad zorunludur' }]}
+                getValueFromEvent={(event) => upperPersonName(event?.target?.value ?? '')}
+                style={{ flex: 1 }}
+              >
                 <Input />
               </Form.Item>
             </Space.Compact>
