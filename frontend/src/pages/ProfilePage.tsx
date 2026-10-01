@@ -19,6 +19,7 @@ import { TwoFactorGuideModal } from '../components/TwoFactorGuideModal'
 import { SortableDashboard } from '../components/SortableDashboard'
 import { useAuth } from '../auth/AuthContext'
 import { useThemeMode } from '../theme/ThemeContext'
+import { ObjectColorSettings } from '../components/ObjectColorSettings'
 import {
   changePassword,
   confirm2fa,
@@ -331,6 +332,11 @@ export function ProfilePage() {
                   />
                 </Card>
               ),
+            },
+            {
+              id: 'profile-object-colors',
+              span: { xs: 24 },
+              node: <ObjectColorSettings />,
             },
             {
               id: 'profile-name',

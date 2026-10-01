@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Button, Calendar, Card, Form, Input, List, Modal, Select, Space, Tabs, Tag, Typography, theme } from 'antd'
+import { App, Button, Calendar, Card, Form, Input, List, Modal, Select, Space, Tabs, Typography, theme } from 'antd'
 import type { Dayjs } from 'dayjs'
 import dayjs from 'dayjs'
 import 'dayjs/locale/tr'
@@ -11,12 +11,17 @@ import { listTeachers } from '../api/teachers'
 import { getErrorMessage } from '../api/client'
 import { EXTRA_LESSON_ABSENCE_REASONS, type ExtraLessonAbsence, type ExtraLessonAbsenceReason } from '../types/extraLesson'
 import type { Teacher } from '../types/teacher'
+import { useObjectColors } from '../theme/ObjectPaletteContext'
+import { type SwatchName } from '../theme/objectPalette'
 
 dayjs.locale('tr')
 
 const now = dayjs()
 
 const REASON_LABEL = Object.fromEntries(EXTRA_LESSON_ABSENCE_REASONS.map((item) => [item.value, item.label]))
+const REASON_SWATCH = Object.fromEntries(
+  EXTRA_LESSON_ABSENCE_REASONS.map((item) => [item.value, item.swatch]),
+) as Record<string, SwatchName>
 
 function personName(teacher: Teacher) {
   return `${teacher.first_name} ${teacher.last_name}`
@@ -25,6 +30,8 @@ function personName(teacher: Teacher) {
 export function ExtraLessonsPage() {
   const { message } = App.useApp()
   const { token } = theme.useToken()
+  const colors = useObjectColors()
+  const selectedTone = colors.swatch('selected')
   const { hasPermission } = useAuth()
   const { activeSchoolId } = useActiveSchool()
   const [teachers, setTeachers] = useState<Teacher[]>([])
@@ -168,16 +175,17 @@ export function ExtraLessonsPage() {
                 <List.Item
                   style={{
                     cursor: 'pointer',
-                    background: selected ? '#fff7e6' : undefined,
+                    background: selected ? selectedTone.bg : undefined,
                     borderRadius: selected ? 8 : undefined,
+                    boxShadow: selected ? `inset 3px 0 0 ${selectedTone.border}` : undefined,
                   }}
                   onClick={() => setTeacherId(teacher.id)}
                 >
                   <Space direction="vertical" size={0}>
-                    <span style={{ color: selected ? '#0958d9' : token.colorText, fontWeight: selected ? 600 : 400 }}>
+                    <span style={{ color: selected ? selectedTone.text : token.colorText, fontWeight: selected ? 600 : 400 }}>
                       {personName(teacher)}
                     </span>
-                    <span style={{ fontSize: 12, color: selected ? '#003eb3' : token.colorTextSecondary }}>
+                    <span style={{ fontSize: 12, color: selected ? selectedTone.muted : token.colorTextSecondary }}>
                       {teacher.brans || '—'}
                     </span>
                   </Space>
@@ -187,6 +195,27 @@ export function ExtraLessonsPage() {
           />
         </Card>
         <Card size="small">
+          <Space wrap size={[8, 8]} style={{ marginBottom: 8 }}>
+            {EXTRA_LESSON_ABSENCE_REASONS.map((item) => {
+              const tone = colors.swatch(item.swatch)
+              return (
+                <span
+                  key={item.value}
+                  style={{
+                    background: tone.bg,
+                    color: tone.text,
+                    border: `1px solid ${tone.border}`,
+                    borderRadius: 6,
+                    padding: '2px 8px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  {item.label}
+                </span>
+              )
+            })}
+          </Space>
           <Calendar
             value={cursor}
             onPanelChange={(value) => setCursor(value.startOf('month'))}
@@ -200,7 +229,23 @@ export function ExtraLessonsPage() {
             cellRender={(value) => {
               const row = byDate.get(value.format('YYYY-MM-DD'))
               if (!row) return null
-              return <Tag color="orange">{REASON_LABEL[row.reason] || row.reason}</Tag>
+              const tone = colors.swatch(REASON_SWATCH[row.reason] || 'blue')
+              return (
+                <div
+                  style={{
+                    background: tone.bg,
+                    color: tone.text,
+                    border: `1px solid ${tone.border}`,
+                    borderRadius: 6,
+                    padding: '2px 4px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {REASON_LABEL[row.reason] || row.reason}
+                </div>
+              )
             }}
           />
         </Card>
@@ -228,7 +273,29 @@ export function ExtraLessonsPage() {
       >
         <Form form={form} layout="vertical" onFinish={(values) => void onSave(values)}>
           <Form.Item name="reason" label="Neden" rules={[{ required: true, message: 'Neden seçin' }]}>
-            <Select options={EXTRA_LESSON_ABSENCE_REASONS.map((item) => ({ value: item.value, label: item.label }))} />
+            <Select
+              options={EXTRA_LESSON_ABSENCE_REASONS.map((item) => {
+                const tone = colors.swatch(item.swatch)
+                return {
+                  value: item.value,
+                  label: (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span
+                        style={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: 3,
+                          background: tone.bg,
+                          border: `1px solid ${tone.border}`,
+                          boxShadow: `inset 0 0 0 2px ${tone.text}`,
+                        }}
+                      />
+                      {item.label}
+                    </span>
+                  ),
+                }
+              })}
+            />
           </Form.Item>
           <Form.Item name="note" label="Açıklama">
             <Input.TextArea rows={3} maxLength={300} placeholder="İsteğe bağlı" />

@@ -27,6 +27,7 @@ import type { LeaveCalendarDay } from '../types/leaveCalendar'
 import type { Holiday } from '../types/holiday'
 import { TypedPhraseConfirmModal } from './TypedPhraseConfirmModal'
 import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
+import { useObjectColors } from '../theme/ObjectPaletteContext'
 
 const MONTH_NAMES = [
   'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
@@ -39,18 +40,10 @@ interface HolidayFormValues {
   recurring?: boolean
 }
 
-// İzinli personel oranına göre gün hücresinin taban rengi hesaplanır: oran
-// arttıkça renk koyulaşır (0 => renksiz, 1 => en koyu ton).
-function leaveBackgroundColor(ratio: number): string | undefined {
-  if (ratio <= 0) return undefined
-  const clamped = Math.min(1, ratio)
-  const lightness = 92 - clamped * 52 // %92 (açık) -> %40 (koyu)
-  return `hsl(28, 85%, ${lightness}%)`
-}
-
 export function LeaveCalendarView() {
   const { message, modal } = App.useApp()
   const { session, hasPermission } = useAuth()
+  const colors = useObjectColors()
 
   const [panelDate, setPanelDate] = useState<Dayjs>(dayjs())
   const [days, setDays] = useState<Map<string, LeaveCalendarDay>>(new Map())
@@ -182,24 +175,25 @@ export function LeaveCalendarView() {
     if (info.type !== 'date') return info.originNode
     const key = current.format('YYYY-MM-DD')
     const dayInfo = days.get(key)
-    const bg = dayInfo ? leaveBackgroundColor(dayInfo.leave_ratio) : undefined
+    const heat = dayInfo ? colors.heat('gold', dayInfo.leave_ratio) : undefined
+    const holiday = colors.swatch('blue')
     return (
       <div
         style={{
-          background: bg,
+          background: heat?.bg,
           borderRadius: 6,
           padding: '2px 4px',
           minHeight: 46,
-          border: dayInfo?.is_holiday ? '1px solid #1677ff' : undefined,
+          border: dayInfo?.is_holiday ? `1px solid ${holiday.border}` : undefined,
         }}
       >
         {dayInfo?.is_holiday && (
-          <div style={{ fontSize: 10, color: '#1677ff', fontWeight: 600, lineHeight: 1.2 }}>
+          <div style={{ fontSize: 10, color: holiday.text, fontWeight: 600, lineHeight: 1.2 }}>
             {dayInfo.holiday_name}
           </div>
         )}
         {dayInfo && dayInfo.leave_count > 0 && (
-          <div style={{ fontSize: 11, color: '#7c4a03', fontWeight: 600 }}>
+          <div style={{ fontSize: 11, color: heat?.text, fontWeight: 600 }}>
             {dayInfo.leave_count} izinli
           </div>
         )}
@@ -208,8 +202,8 @@ export function LeaveCalendarView() {
   }
 
   const legend = useMemo(
-    () => [0, 0.25, 0.5, 0.75, 1].map((ratio) => ({ ratio, color: leaveBackgroundColor(ratio) })),
-    [],
+    () => [0, 0.25, 0.5, 0.75, 1].map((ratio) => ({ ratio, color: colors.heat('gold', ratio).bg })),
+    [colors],
   )
 
   return (
@@ -225,7 +219,7 @@ export function LeaveCalendarView() {
               <div
                 key={ratio}
                 title={`%${Math.round(ratio * 100)}`}
-                style={{ width: 18, height: 18, background: color || '#f5f5f5', border: '1px solid #d9d9d9', borderRadius: 4 }}
+                style={{ width: 18, height: 18, background: color || colors.swatch('neutral').bg, border: `1px solid ${colors.swatch('neutral').border}`, borderRadius: 4 }}
               />
             ))}
           </Space>

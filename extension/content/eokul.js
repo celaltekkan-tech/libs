@@ -1,7 +1,7 @@
 // e-Okul "Kurum İşlemleri > Ders İşlemleri > Ders Programı" ızgarasını doldurur.
 // Kaydet'e basmaz; kullanıcı kontrol edip kendisi kaydeder.
-if (!globalThis.__libsEokulFill) {
-  globalThis.__libsEokulFill = true
+if (!globalThis.__oidsEokulFill) {
+  globalThis.__oidsEokulFill = true
 
   const DAY_NAMES = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
   const STOP = new Set(['ve', 'ile', 'ders', 'dal', 'secmeli'])
@@ -302,7 +302,7 @@ if (!globalThis.__libsEokulFill) {
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-    if (message?.type !== 'libs-fill') return
+    if (message?.type !== 'oids-fill') return
     try {
       sendResponse(fill(message))
     } catch (err) {

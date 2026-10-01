@@ -34,15 +34,6 @@ export function isGuidanceLesson(name?: string | null): boolean {
   return String(name || '').toLocaleLowerCase('tr-TR').includes('rehberlik')
 }
 
-/** Ders programı sayfasıyla aynı dolgu: açık mavi, koyu temada tema yüzeyi. */
-export function subjectColor(_subjectId: number, dark = false): string {
-  return dark ? '#111a2c' : '#f0f5ff'
-}
-
-export function subjectBorder(_subjectId: number, dark = false): string {
-  return dark ? '#3c89e8' : '#1677ff'
-}
-
 /** 1. öğretmen + ortak öğretmenler (tekrarsız). */
 export function assignmentTeacherIds(a: Pick<TimetableAssignment, 'teacher_id' | 'co_teacher_ids'>): number[] {
   const out: number[] = []

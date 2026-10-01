@@ -5,7 +5,6 @@ import {
   CloudUploadOutlined,
   DeleteOutlined,
   DownOutlined,
-  ChromeOutlined,
   FileExcelOutlined,
   LeftOutlined,
   LockFilled,
@@ -18,7 +17,6 @@ import {
   clearPublishedSchedule,
   clearTimetableLessons,
   exportTimetableLessons,
-  fetchEokulPayload,
   listAvailability,
   listTimetableLessons,
   lockTimetableLessons,
@@ -28,6 +26,7 @@ import {
   type TimetableExportView,
 } from '../../api/timetable'
 import { TypedPhraseConfirmModal } from '../TypedPhraseConfirmModal'
+import { EokulExtensionButton } from './EokulExtensionButton'
 import { ProgramImportModal } from './ProgramImportModal'
 import { downloadBlob } from '../../utils/download'
 import { getErrorMessage } from '../../api/client'
@@ -37,11 +36,10 @@ import type { TimetableAvailability, TimetableLesson } from '../../types/timetab
 import {
   assignmentTeacherIds,
   shortClassroom,
-  subjectBorder,
-  subjectColor,
   teacherFullName,
   type TimetableCtx,
 } from './shared'
+import { useObjectColors } from '../../theme/ObjectPaletteContext'
 
 type ViewMode = 'classroom' | 'teacher' | 'room'
 type WipeScope = 'draft-all' | 'published-all'
@@ -49,7 +47,7 @@ type WipeScope = 'draft-all' | 'published-all'
 export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
   const { message, modal } = App.useApp()
   const { token } = theme.useToken()
-  const dark = token.colorBgBase.toLowerCase() === '#000' || token.colorBgBase.toLowerCase() === '#000000'
+  const colors = useObjectColors()
   const { project } = ctx
   const [lessons, setLessons] = useState<TimetableLesson[]>([])
   const [loading, setLoading] = useState(false)
@@ -60,7 +58,6 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
   const [publishing, setPublishing] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
-  const [eokulExporting, setEokulExporting] = useState(false)
   const [availability, setAvailability] = useState<TimetableAvailability[]>([])
   const [wipe, setWipe] = useState<WipeScope | null>(null)
   const [wiping, setWiping] = useState(false)
@@ -244,20 +241,6 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
       message.error(getErrorMessage(err))
     } finally {
       setPublishing(false)
-    }
-  }
-
-  const onEokulFile = async () => {
-    setEokulExporting(true)
-    try {
-      const payload = await fetchEokulPayload(project.id)
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
-      downloadBlob(blob, 'eokul-ders-programi.json')
-      message.success('e-Okul dosyası indirildi. Chrome eklentisi bu dosyayı okur.')
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    } finally {
-      setEokulExporting(false)
     }
   }
 
@@ -510,6 +493,7 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
           ? shortClassroom(a.Classroom)
           : `${shortClassroom(a.Classroom)} · ${teacherNames(a)}`
     const clash = clashIds.has(l.id)
+    const tone = colors.swatchForId(a.subject_id)
     return (
       <div
         key={l.id}
@@ -523,8 +507,8 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
           setDropKey(null)
         }}
         style={{
-          background: subjectColor(a.subject_id, dark),
-          borderLeft: `4px solid ${clash ? token.colorError : subjectBorder(a.subject_id, dark)}`,
+          background: tone.bg,
+          borderLeft: `4px solid ${clash ? token.colorError : tone.border}`,
           outline: clash ? '1px solid #ff4d4f' : undefined,
           borderRadius: 4,
           padding: '3px 6px',
@@ -555,13 +539,13 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
             paddingRight: 16,
             paddingLeft: ctx.canDelete ? 12 : 0,
             lineHeight: 1.3,
-            color: token.colorText,
+            color: tone.text,
           }}
         >
           {a.Subject?.name}
         </div>
-        <div style={{ fontSize: 11, color: token.colorTextSecondary, lineHeight: 1.3 }}>{detail}</div>
-        {a.Room && mode !== 'room' && <div style={{ fontSize: 10, color: token.colorTextSecondary }}>{a.Room.name}</div>}
+        <div style={{ fontSize: 11, color: tone.muted, lineHeight: 1.3 }}>{detail}</div>
+        {a.Room && mode !== 'room' && <div style={{ fontSize: 10, color: tone.muted }}>{a.Room.name}</div>}
         {editable ? (
           <Tooltip title={l.is_locked ? 'Kilitli: yeniden çözümde yerinde kalır' : 'Kilitle'}>
             <span
@@ -611,16 +595,7 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
               İçe aktar
             </Button>
           )}
-          <Tooltip title="Chrome eklentisinin e-Okul ders programı ekranına işleyeceği dosya">
-            <Button
-              icon={<ChromeOutlined />}
-              loading={eokulExporting}
-              disabled={lessons.length === 0}
-              onClick={() => void onEokulFile()}
-            >
-              e-Okul
-            </Button>
-          </Tooltip>
+          <EokulExtensionButton projectId={project.id} hasLessons={lessons.length > 0} />
           <Dropdown
             disabled={exporting || lessons.length === 0}
             menu={{

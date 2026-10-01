@@ -1,3 +1,6 @@
+const API = 'https://api.oids.com.tr'
+const PANEL = 'https://uyg.oids.com.tr/*'
+
 const emptyEl = document.getElementById('empty')
 const readyEl = document.getElementById('ready')
 const summaryEl = document.getElementById('summary')
@@ -36,34 +39,34 @@ async function saveProgram(program) {
   setStatus('Program hazır.', 'ok')
 }
 
-async function libsSession() {
-  const tabs = await chrome.tabs.query({ url: ['http://localhost:5173/*', 'http://127.0.0.1:5173/*'] })
+async function oidsSession() {
+  const tabs = await chrome.tabs.query({ url: [PANEL] })
   const tab = tabs.find((item) => item.active) || tabs[0]
-  if (!tab?.id) throw new Error('Bu tarayıcıda açık bir Libs sekmesi yok (localhost:5173).')
-  const ask = () => chrome.tabs.sendMessage(tab.id, { type: 'libs-session' })
+  if (!tab?.id) throw new Error('Bu tarayıcıda açık bir OIDS sekmesi yok (uyg.oids.com.tr).')
+  const ask = () => chrome.tabs.sendMessage(tab.id, { type: 'oids-session' })
   let session
   try {
     session = await ask()
   } catch {
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content/libs.js'] })
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content/oids.js'] })
     session = await ask()
   }
-  if (!session?.token) throw new Error('Libs oturumu yok. Panelde giriş yapıp ders programı sayfasını bir kez açın.')
+  if (!session?.token) throw new Error('OIDS oturumu yok. Panelde giriş yapıp ders programı sekmesini bir kez açın.')
   return session
 }
 
-async function pullFromLibs() {
+async function pullFromOids() {
   setStatus('Program alınıyor…')
-  const session = await libsSession()
+  const session = await oidsSession()
   const headers = { Authorization: `Bearer ${session.token}`, Accept: 'application/json' }
-  const listRes = await fetch(`${session.origin}/api/timetable/projects`, { headers })
+  const listRes = await fetch(`${API}/api/timetable/projects`, { headers })
   const listBody = await listRes.json()
   if (!listRes.ok || listBody.success === false) throw new Error(listBody.message || 'Program listesi alınamadı')
   const projects = listBody.data || []
   if (!projects.length) throw new Error('Ders programı çalışması yok.')
   const preferred = new Set((session.projects || []).map((item) => item.projectId))
   const project = projects.find((item) => preferred.has(item.id)) || projects[0]
-  const res = await fetch(`${session.origin}/api/timetable/projects/${project.id}/eokul`, { headers })
+  const res = await fetch(`${API}/api/timetable/projects/${project.id}/eokul`, { headers })
   const body = await res.json()
   if (!res.ok || body.success === false) throw new Error(body.message || 'Program alınamadı')
   if (!isProgram(body.data)) throw new Error('Sunucu beklenen paketi döndürmedi.')
@@ -82,14 +85,14 @@ async function framesOf(tabId) {
 
 async function fillPage() {
   const { program } = await chrome.storage.local.get('program')
-  if (!isProgram(program)) throw new Error('Önce programı alın.')
+  if (!isProgram(program)) throw new Error('Önce programı Ders programı sekmesinden yükleyin.')
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
   if (!tab?.id || !tab.url || !/meb\.gov\.tr/i.test(tab.url)) {
     throw new Error('Doldurmadan önce e-Okul ders programı sekmesine geçin.')
   }
 
   const payload = {
-    type: 'libs-fill',
+    type: 'oids-fill',
     program,
     clearEmpty: clearEmpty.checked,
     classLabel: classPick.hidden ? '' : classSelect.value,
@@ -149,7 +152,7 @@ async function fillPage() {
 }
 
 document.getElementById('pull').addEventListener('click', () => {
-  pullFromLibs().catch((err) => setStatus(err.message || 'Alınamadı', 'error'))
+  pullFromOids().catch((err) => setStatus(err.message || 'Alınamadı', 'error'))
 })
 
 document.getElementById('file').addEventListener('change', () => {
@@ -159,7 +162,7 @@ document.getElementById('file').addEventListener('change', () => {
   reader.onload = () => {
     try {
       const program = JSON.parse(String(reader.result || ''))
-      if (!isProgram(program)) throw new Error('Bu dosya Libs e-Okul paketi değil.')
+      if (!isProgram(program)) throw new Error('Bu dosya OIDS e-Okul paketi değil.')
       saveProgram(program).catch((err) => setStatus(err.message, 'error'))
     } catch (err) {
       setStatus(err.message || 'Dosya okunamadı', 'error')

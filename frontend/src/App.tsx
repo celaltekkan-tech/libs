@@ -4,6 +4,7 @@ import trTR from 'antd/locale/tr_TR'
 import { AuthProvider } from './auth/AuthContext'
 import { ActiveSchoolProvider } from './auth/ActiveSchoolContext'
 import { ThemeProvider, useThemeMode } from './theme/ThemeContext'
+import { ObjectPaletteProvider } from './theme/ObjectPaletteContext'
 import { GuestRoute, LicenseGuard, ModuleRoute, PlatformAdminRoute, ProtectedRoute } from './auth/routes'
 import { LoginPage } from './pages/LoginPage'
 import { DashboardPage } from './pages/DashboardPage'
@@ -75,6 +76,7 @@ function ThemedApp() {
       }}
     >
       <AntApp>
+        <ObjectPaletteProvider>
         <AuthProvider>
           <ActiveSchoolProvider>
           <BrowserRouter>
@@ -170,6 +172,7 @@ function ThemedApp() {
           </BrowserRouter>
           </ActiveSchoolProvider>
         </AuthProvider>
+        </ObjectPaletteProvider>
       </AntApp>
     </ConfigProvider>
   )

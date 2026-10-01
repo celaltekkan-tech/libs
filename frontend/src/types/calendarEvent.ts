@@ -1,3 +1,5 @@
+import { type SwatchName } from '../theme/objectPalette'
+
 export type CalendarSourceId = 'work_tasks' | string
 
 export interface CalendarEventMeta {
@@ -36,9 +38,9 @@ export const CALENDAR_SOURCE_LABELS: Record<string, string> = {
   work_tasks: 'İş Takibi',
 }
 
-export const CALENDAR_COLOR_STYLES: Record<string, { bg: string; text: string; tag: string }> = {
-  work_tasks: { bg: '#e6f4ff', text: '#0958d9', tag: 'blue' },
-  work_tasks_due_soon: { bg: '#fff7e6', text: '#d46b08', tag: 'orange' },
-  work_tasks_overdue: { bg: '#fff1f0', text: '#cf1322', tag: 'red' },
-  work_tasks_paused: { bg: '#f5f5f5', text: '#595959', tag: 'default' },
+export const CALENDAR_COLOR_KEYS: Record<string, SwatchName> = {
+  work_tasks: 'blue',
+  work_tasks_due_soon: 'gold',
+  work_tasks_overdue: 'red',
+  work_tasks_paused: 'neutral',
 }

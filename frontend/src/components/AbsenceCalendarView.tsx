@@ -9,30 +9,24 @@ import { getErrorMessage } from '../api/client'
 import { FilterBar } from './FilterBar'
 import { ABSENCE_TYPE_COLORS, ABSENCE_TYPE_LABELS } from '../types/studentAbsence'
 import type { Student } from '../types/student'
+import { useObjectColors } from '../theme/ObjectPaletteContext'
+import { type SwatchName } from '../theme/objectPalette'
 
 const MONTH_NAMES = [
   'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
   'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
 ]
 
-// Genel görünümde devamsız oranına göre taban rengi (koyulaştıkça daha yüksek oran).
-function ratioBackgroundColor(ratio: number): string | undefined {
-  if (ratio <= 0) return undefined
-  const clamped = Math.min(1, ratio)
-  const lightness = 92 - clamped * 52
-  return `hsl(0, 75%, ${lightness}%)`
-}
-
-// Öğrenci bazlı görünümde devamsızlık türüne göre sabit renk.
-const ABSENCE_TYPE_BG: Record<string, string> = {
-  mazeretsiz: '#ffd6d6',
-  mazeretli: '#d6e4ff',
-  raporlu: '#e8d6ff',
-  yarim_gun: '#ffe7ba',
+const ABSENCE_TYPE_SWATCH: Record<string, SwatchName> = {
+  mazeretsiz: 'red',
+  mazeretli: 'blue',
+  raporlu: 'purple',
+  yarim_gun: 'gold',
 }
 
 export function AbsenceCalendarView() {
   const { message } = App.useApp()
+  const colors = useObjectColors()
 
   const [students, setStudents] = useState<Student[]>([])
   const [selectedStudentId, setSelectedStudentId] = useState<number | null>(null)
@@ -82,14 +76,22 @@ export function AbsenceCalendarView() {
     const key = current.format('YYYY-MM-DD')
     const dayInfo = days.get(key)
     let bg: string | undefined
+    let text = colors.swatch('red').text
     if (dayInfo) {
       if (selectedStudentId) {
         const entry = dayInfo.students.find((s) => s.student_id === selectedStudentId)
-        bg = entry ? ABSENCE_TYPE_BG[entry.absence_type] || '#ffd6d6' : undefined
+        if (entry) {
+          const tone = colors.swatch(ABSENCE_TYPE_SWATCH[entry.absence_type] || 'red')
+          bg = tone.bg
+          text = tone.text
+        }
       } else {
-        bg = ratioBackgroundColor(dayInfo.absent_ratio)
+        const heat = colors.heat('red', dayInfo.absent_ratio)
+        bg = heat.bg
+        text = heat.text
       }
     }
+    const holiday = colors.swatch('blue')
     return (
       <div
         style={{
@@ -97,21 +99,21 @@ export function AbsenceCalendarView() {
           borderRadius: 6,
           padding: '2px 4px',
           minHeight: 46,
-          border: dayInfo?.is_holiday ? '1px solid #1677ff' : undefined,
+          border: dayInfo?.is_holiday ? `1px solid ${holiday.border}` : undefined,
         }}
       >
         {dayInfo?.is_holiday && (
-          <div style={{ fontSize: 10, color: '#1677ff', fontWeight: 600, lineHeight: 1.2 }}>{dayInfo.holiday_name}</div>
+          <div style={{ fontSize: 10, color: holiday.text, fontWeight: 600, lineHeight: 1.2 }}>{dayInfo.holiday_name}</div>
         )}
         {selectedStudentId
           ? dayInfo && dayInfo.students.length > 0 && (
-              <div style={{ fontSize: 11, color: '#7a1f1f', fontWeight: 600 }}>
+              <div style={{ fontSize: 11, color: text, fontWeight: 600 }}>
                 {ABSENCE_TYPE_LABELS[dayInfo.students[0].absence_type] || dayInfo.students[0].absence_type}
               </div>
             )
           : dayInfo &&
             dayInfo.absent_count > 0 && (
-              <div style={{ fontSize: 11, color: '#7a1f1f', fontWeight: 600 }}>{dayInfo.absent_count} devamsız</div>
+              <div style={{ fontSize: 11, color: text, fontWeight: 600 }}>{dayInfo.absent_count} devamsız</div>
             )}
       </div>
     )
