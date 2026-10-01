@@ -39,6 +39,7 @@ export interface ScheduleEntry {
   classroom_id: number
   subject_id: number
   teacher_id: number | null
+  co_teacher_ids?: number[]
   day_of_week: number
   period_no: number
   academic_year: string | null

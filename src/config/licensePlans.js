@@ -96,7 +96,7 @@ const SCHOOL_CODE_ASSIGN_PLANS = new Set(['Premium', 'Kurumsal']);
 const ADDON_PLANS = {
   'SMS 3000': { kind: 'addon', category: 'sms', smsQuota: 3000 },
   'SMS 10000': { kind: 'addon', category: 'sms', smsQuota: 10000 },
-  // Yapay zekâ özellikleri (şimdilik: ders programında serbest metinle kısıt yazma).
+  // Yapay zekâ: soru cevap, ders programında serbest metinle kısıt ve çözücü başarısızsa yerleştirme.
   'Yapay Zekâ': { kind: 'addon', category: 'ai' },
 };
 

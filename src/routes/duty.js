@@ -10,6 +10,7 @@ const {
   generateDutySchema,
   copyDutyWeekSchema,
   exportDutySchema,
+  clearDutySchema,
 } = require('../validators/duty.validator');
 const auth = require('../middlewares/auth');
 const requireModule = require('../middlewares/moduleGuard');
@@ -25,6 +26,7 @@ router.delete('/locations/:id', auth, moduleGuard, permission('duty.delete'), ct
 router.get('/fairness', auth, moduleGuard, permission('duty.read'), ctrl.fairness);
 router.post('/generate', auth, moduleGuard, permission('duty.create'), validate(generateDutySchema), ctrl.generate);
 router.post('/copy-week', auth, moduleGuard, permission('duty.create'), validate(copyDutyWeekSchema), ctrl.copyWeek);
+router.post('/clear', auth, moduleGuard, permission('duty.delete'), validate(clearDutySchema), ctrl.clearRange);
 router.post('/export', auth, moduleGuard, permission('duty.read'), validate(exportDutySchema), ctrl.exportFile);
 
 router.get('/', auth, moduleGuard, permission('duty.read'), ctrl.list);

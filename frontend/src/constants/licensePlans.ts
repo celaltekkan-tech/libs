@@ -121,7 +121,9 @@ export const ADDON_LICENSE_PLANS: LicensePlanDefinition[] = [
     summary: 'Ana lisansa ek yapay zekâ özellikleri.',
     features: [
       'Ana lisansı ve SMS eklentisini iptal etmez; yanına eklenir',
+      'OIDS modülleri hakkında Türkçe soru sorma',
       'Otomatik ders programında istekleri Türkçe yazıp kısıta çevirme',
+      'Çözücü uygun program bulamazsa yerleştirmeyi yapay zekâ ile deneme',
       'Önerilen kısıtlar kullanıcı onayı olmadan eklenmez',
       'Kiracı başına günlük istek sınırı uygulanır',
     ],

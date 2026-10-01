@@ -94,7 +94,7 @@ export function SolveTab({ ctx, onShowGrid }: Props) {
         await loadRuns()
         await ctx.reloadProject()
         if (r.status === 'tamamlandi') {
-          message.success('Program oluşturuldu')
+          message.success(r.solver_status === 'AI' ? 'Program yapay zekâ ile oluşturuldu' : 'Program oluşturuldu')
         } else if (r.status === 'basarisiz') {
           message.error('Program oluşturulamadı; ayrıntılar aşağıda')
         }
@@ -208,23 +208,29 @@ export function SolveTab({ ctx, onShowGrid }: Props) {
               <>
                 <Space direction="vertical" style={{ width: '100%' }}>
                   <Typography.Text>
-                    Çözücü çalışıyor. Bu sayfadan ayrılabilirsiniz; işlem sunucuda devam eder.
+                    {active.progress?.phase === 'ai'
+                      ? active.progress.message || 'Çözücü uygun program bulamadı. Yapay zekâ yerleştiriyor.'
+                      : 'Çözücü çalışıyor. Bu sayfadan ayrılabilirsiniz; işlem sunucuda devam eder.'}
                   </Typography.Text>
-                  <Progress percent={pct} status="active" />
-                  <Row gutter={16}>
-                    <Col span={8}>
-                      <Statistic title="Bulunan çözüm" value={active.progress?.solutions ?? 0} />
-                    </Col>
-                    <Col span={8}>
-                      <Statistic title="Ceza puanı (düşük iyi)" value={active.progress?.objective ?? '—'} />
-                    </Col>
-                    <Col span={8}>
-                      <Statistic title="Geçen süre" value={`${Math.round(elapsed)} / ${active.time_limit} sn`} />
-                    </Col>
-                  </Row>
-                  <Button danger icon={<StopOutlined />} onClick={onCancel}>
-                    Durdur (en iyi sonucu al)
-                  </Button>
+                  <Progress percent={active.progress?.phase === 'ai' ? 100 : pct} status="active" showInfo={active.progress?.phase !== 'ai'} />
+                  {active.progress?.phase !== 'ai' && (
+                    <Row gutter={16}>
+                      <Col span={8}>
+                        <Statistic title="Bulunan çözüm" value={active.progress?.solutions ?? 0} />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic title="Ceza puanı (düşük iyi)" value={active.progress?.objective ?? '—'} />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic title="Geçen süre" value={`${Math.round(elapsed)} / ${active.time_limit} sn`} />
+                      </Col>
+                    </Row>
+                  )}
+                  {active.progress?.phase !== 'ai' && (
+                    <Button danger icon={<StopOutlined />} onClick={onCancel}>
+                      Durdur (en iyi sonucu al)
+                    </Button>
+                  )}
                 </Space>
               </>
             ) : (
@@ -243,6 +249,12 @@ export function SolveTab({ ctx, onShowGrid }: Props) {
                   >
                     Programı Oluştur
                   </Button>
+                )}
+                {ctx.meta.ai_enabled && (
+                  <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 12, marginBottom: 0 }}>
+                    Çözücü uygun bir program bulamazsa yerleştirmeyi yapay zekâ dener. Bu deneme günlük yapay zekâ
+                    hakkından düşer.
+                  </Typography.Paragraph>
                 )}
               </div>
             )}
@@ -279,11 +291,15 @@ export function SolveTab({ ctx, onShowGrid }: Props) {
               <Space direction="vertical" style={{ width: '100%' }}>
                 {selected.status === 'tamamlandi' && (
                   <Alert
-                    type="success"
+                    type={selected.solver_status === 'AI' ? 'warning' : 'success'}
                     showIcon
-                    message={`${selected.result?.lesson_count ?? 0} ders saati yerleştirildi${
-                      selected.solver_status === 'OPTIMAL' ? ' (en iyi çözüm kanıtlandı)' : ''
-                    }`}
+                    message={
+                      selected.solver_status === 'AI'
+                        ? `${selected.result?.lesson_count ?? 0} ders saati yapay zekâ ile yerleştirildi. Çözücü bu kurallarla uygun program bulamamıştı; taslağı kontrol edin.`
+                        : `${selected.result?.lesson_count ?? 0} ders saati yerleştirildi${
+                            selected.solver_status === 'OPTIMAL' ? ' (en iyi çözüm kanıtlandı)' : ''
+                          }`
+                    }
                   />
                 )}
                 {(selected.diagnostics || []).map((d, i) => (
@@ -331,7 +347,12 @@ export function SolveTab({ ctx, onShowGrid }: Props) {
             {
               title: 'Durum',
               dataIndex: 'status',
-              render: (v: TimetableRun['status']) => <Tag color={RUN_STATUS_LABELS[v].color}>{RUN_STATUS_LABELS[v].label}</Tag>,
+              render: (v: TimetableRun['status'], row: TimetableRun) => (
+                <Space size={4}>
+                  <Tag color={RUN_STATUS_LABELS[v].color}>{RUN_STATUS_LABELS[v].label}</Tag>
+                  {row.solver_status === 'AI' && <Tag>Yapay zekâ</Tag>}
+                </Space>
+              ),
             },
             { title: 'Süre', dataIndex: 'time_limit', render: (v: number) => `${v} sn` },
             { title: 'Ceza puanı', dataIndex: 'objective', render: (v: number | null) => (v == null ? '—' : Math.round(v)) },
