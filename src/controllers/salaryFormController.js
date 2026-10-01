@@ -7,6 +7,7 @@ const { fillSalaryChangeForm, buildSalaryFormModel } = require('../services/prom
 const { buildSalaryChangePdf } = require('../services/salaryFormPdfService');
 const { getSalaryPeriodRange } = require('../utils/salaryPeriod');
 const { syncTenantReportYear } = require('../services/reportSalarySync');
+const { resolvePrincipalName } = require('../services/schoolPrincipalService');
 
 const EMPTY_PAYLOAD = {
   institution_name: '',
@@ -64,10 +65,12 @@ async function loadExportContext(req, period) {
     entries[0]?.teacher.working_institution ||
     null;
 
+  const schoolId = entries[0]?.teacher.school_id || entries[0]?.teacher.School?.id || null;
   const options = {
     month: period.month,
     year: period.year,
     institutionName,
+    principalName: await resolvePrincipalName(tenantId, schoolId),
     draft: draft?.payload || EMPTY_PAYLOAD,
   };
 
@@ -103,13 +106,19 @@ module.exports = {
         },
       });
 
+      const payload = { ...EMPTY_PAYLOAD, ...(draft?.payload || {}) };
+      if (!String(payload.principal || '').trim()) {
+        const schoolId = req.query.school_id ? Number(req.query.school_id) : null;
+        payload.principal = (await resolvePrincipalName(tenantId, schoolId)) || '';
+      }
+
       res.json({
         success: true,
         data: {
           month: period.month,
           year: period.year,
           period_label: `${range.startLabel} – ${range.endLabel}`,
-          payload: { ...EMPTY_PAYLOAD, ...(draft?.payload || {}) },
+          payload,
           promotion_count: promotionCount,
           updated_at: draft?.updated_at || null,
         },

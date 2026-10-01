@@ -17,12 +17,14 @@ const createTenantWizardSchema = Joi.object({
     province_id: Joi.number().integer().allow(null).empty(''),
     district_id: Joi.number().integer().allow(null).empty(''),
     directory_school_id: Joi.number().integer().allow(null).empty(''),
+    principal_name: Joi.string().trim().max(150).allow('', null),
   }).required(),
   admin: Joi.object({
     full_name: Joi.string().required().min(2).max(100),
     email: email.required(),
     password: Joi.string().required().min(8).max(100),
     phone: Joi.string().trim().max(30).required(),
+    school_role: Joi.string().valid('Müdür', 'Müdür Yardımcısı').required(),
   }).required(),
 });
 
@@ -42,4 +44,13 @@ const updateTenantUserSchema = Joi.object({
   phone,
 }).or('full_name', 'email', 'phone');
 
-module.exports = { createTenantWizardSchema, updateTenantSchema, updateTenantUserSchema };
+const resetTenantUserPasswordSchema = Joi.object({
+  password: Joi.string().required().min(8).max(100),
+});
+
+module.exports = {
+  createTenantWizardSchema,
+  updateTenantSchema,
+  updateTenantUserSchema,
+  resetTenantUserPasswordSchema,
+};

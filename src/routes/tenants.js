@@ -6,6 +6,7 @@ const {
   createTenantWizardSchema,
   updateTenantSchema,
   updateTenantUserSchema,
+  resetTenantUserPasswordSchema,
 } = require('../validators/tenant.validator');
 const auth = require('../middlewares/auth');
 const platformAdmin = require('../middlewares/platformAdmin');
@@ -30,6 +31,13 @@ router.post(
   auth,
   platformAdmin,
   ctrl.resetUserSmsLoginRequests
+);
+router.post(
+  '/:id/users/:userId/reset-password',
+  auth,
+  platformAdmin,
+  validate(resetTenantUserPasswordSchema),
+  ctrl.resetUserPassword
 );
 router.delete('/:id', auth, platformAdmin, ctrl.remove);
 

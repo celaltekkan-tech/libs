@@ -86,7 +86,7 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       },
       {
         title: 'Düzenleme / silme',
-        body: 'Satırdaki düzenle veya sil işlemleriyle mevcut kaydı güncelleyebilirsiniz (yetkiye bağlı). Hesapta en az bir okul kalmalıdır; listede tek okul varken silme kapalıdır. Düzenle formundan okul logosu yükleyebilirsiniz; logosu olan okulların e-postalarında bu logo kullanılır. Birinci ve ikinci yabancı dil, sorumluluk sınavında Yabancı Dil ile İkinci Yabancı Dil derslerinin öğretmenini belirler.',
+        body: 'Satırdaki düzenle veya sil işlemleriyle mevcut kaydı güncelleyebilirsiniz (yetkiye bağlı). Hesapta en az bir okul kalmalıdır; listede tek okul varken silme kapalıdır. Düzenle formundan okul logosu yükleyebilirsiniz; logosu olan okulların e-postalarında bu logo kullanılır. Okul müdürü alanı evraklardaki müdür adıdır; hesabı açan kişi müdür olmak zorunda değildir. Birinci ve ikinci yabancı dil, sorumluluk sınavında Yabancı Dil ile İkinci Yabancı Dil derslerinin öğretmenini belirler.',
       },
     ],
   },
@@ -529,11 +529,11 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
     topics: [
       {
         title: 'Yeni hesap',
-        body: 'Sihirbaz ile kurum, okul ve yönetici kullanıcısını oluşturabilirsiniz. Plan ve süre Lisans Yönetimi sayfasından tanımlanır.',
+        body: 'Sihirbaz ile kurum, okul ve yönetici kullanıcısını oluşturabilirsiniz. Yönetici müdür veya müdür yardımcısı olabilir. Müdür adı okul kaydına yazılır. Plan ve süre Lisans Yönetimi sayfasından tanımlanır.',
       },
       {
         title: 'Detay',
-        body: 'Hesap satırından detaya giderek kullanıcı, lisans ve okul özetini görürsünüz.',
+        body: 'Hesap satırından detaya giderek kullanıcı, lisans ve okul özetini görürsünüz. Kullanıcı satırındaki Şifre sıfırla ile yeni şifre belirlersiniz; giriş kilidi de kalkar.',
       },
     ],
   },

@@ -182,6 +182,7 @@ export function SchoolsPage() {
       daily_period_count: 8,
       first_foreign_language: undefined,
       second_foreign_language: undefined,
+      principal_name: undefined,
     })
     clearLogoState()
     setModalOpen(true)
@@ -202,6 +203,7 @@ export function SchoolsPage() {
       directory_school_id: school.directory_school_id ?? undefined,
       first_foreign_language: school.meta?.first_foreign_language || undefined,
       second_foreign_language: school.meta?.second_foreign_language || undefined,
+      principal_name: school.principal_name || undefined,
     })
     clearLogoState()
     if (school.logo_url) void loadSchoolLogo(school.id)
@@ -222,6 +224,7 @@ export function SchoolsPage() {
         province_id: values.province_id || null,
         district_id: values.district_id || null,
         directory_school_id: values.directory_school_id || null,
+        principal_name: values.principal_name?.trim() || null,
         meta: {
           ...(editing?.meta || {}),
           first_foreign_language: values.first_foreign_language || null,
@@ -330,6 +333,11 @@ export function SchoolsPage() {
       ),
     },
     { title: 'Kod', dataIndex: 'code', width: 100 },
+    {
+      title: 'Okul müdürü',
+      dataIndex: 'principal_name',
+      render: (value: string | null | undefined) => value || '—',
+    },
     {
       title: 'İl',
       dataIndex: ['Province', 'name'],
@@ -545,6 +553,14 @@ export function SchoolsPage() {
               Katalogda MEB kodu varsa o kullanılır; yoksa 6 haneli benzersiz bir kod otomatik atanır.
             </Typography.Paragraph>
           )}
+          <Form.Item
+            name="principal_name"
+            label="Okul müdürü"
+            extra="Evrak ve formlarda bu ad kullanılır. Hesabı açan kişi müdür olmak zorunda değildir; müdür veya müdür yardımcısı olabilir."
+            rules={[{ max: 150, message: 'En fazla 150 karakter' }]}
+          >
+            <Input placeholder="Ad Soyad" maxLength={150} />
+          </Form.Item>
           <Form.Item
             name="program_type"
             label="Uygulanan program"

@@ -363,7 +363,7 @@ export function TeachersPage() {
       kariyer: kind === 'ucretli' ? undefined : 'Öğretmen',
       city: activeSchool?.Province?.name || undefined,
       district: activeSchool?.District?.name || undefined,
-      school_principal: session?.user.full_name || undefined,
+      school_principal: principalName || undefined,
     })
     setModalOpen(true)
   }
@@ -390,7 +390,7 @@ export function TeachersPage() {
       pension_degree: teacher.pension_degree || undefined,
       rank: teacher.rank || undefined,
       degree_rank_date: teacher.degree_rank_date ? dayjs(teacher.degree_rank_date) : null,
-      school_principal: teacher.school_principal || session?.user.full_name || undefined,
+      school_principal: teacher.school_principal || principalName || undefined,
       service_start_date: teacher.service_start_date ? dayjs(teacher.service_start_date) : null,
       first_duty_date: teacher.first_duty_date ? dayjs(teacher.first_duty_date) : null,
       annual_leave_quota: teacher.annual_leave_quota,

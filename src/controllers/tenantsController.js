@@ -5,7 +5,6 @@ const { seedDefaultHolidays } = require('../services/holidayService');
 const { applyDirectorySchoolToPayload } = require('../services/directorySchoolService');
 const licenseService = require('../services/licenseService');
 
-const MANAGER_ROLE_NAME = 'Müdür';
 const BCRYPT_ROUNDS = 10;
 
 async function countsByTenant(Model) {
@@ -193,6 +192,7 @@ module.exports = {
           province_id: schoolPayload.province_id || null,
           district_id: schoolPayload.district_id || null,
           directory_school_id: schoolPayload.directory_school_id || null,
+          principal_name: String(schoolPayload.principal_name || '').trim() || null,
         },
         { transaction }
       );
@@ -211,13 +211,18 @@ module.exports = {
         { transaction }
       );
 
-      const managerRole = await Role.findOne({ where: { role_name: MANAGER_ROLE_NAME }, transaction });
-      if (managerRole) {
-        await UserSchool.create(
-          { user_id: adminUser.id, school_id: school.id, role_id: managerRole.id },
-          { transaction }
-        );
+      const schoolRole = await Role.findOne({
+        where: { role_name: payload.admin.school_role },
+        transaction,
+      });
+      if (!schoolRole) {
+        await transaction.rollback();
+        return res.status(400).json({ success: false, message: 'Seçilen yetki grubu bulunamadı' });
       }
+      await UserSchool.create(
+        { user_id: adminUser.id, school_id: school.id, role_id: schoolRole.id },
+        { transaction }
+      );
 
       // Sabit tarihli resmi tatiller her yeni hesap için varsayılan olarak tanımlanır.
       await seedDefaultHolidays(tenant.id, { transaction });
@@ -413,6 +418,37 @@ module.exports = {
           sms_login_requests_count: 0,
           login_failed_count: 0,
         },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async resetUserPassword(req, res, next) {
+    try {
+      const tenant = await Tenant.findByPk(req.params.id);
+      if (!tenant) {
+        return res.status(404).json({ success: false, message: 'Hesap bulunamadı' });
+      }
+
+      const user = await User.findOne({
+        where: { id: req.params.userId, tenant_id: tenant.id },
+      });
+      if (!user || user.is_platform_admin) {
+        return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı' });
+      }
+
+      const payload = req.validatedBody || req.body;
+      const password_hash = await bcrypt.hash(payload.password, BCRYPT_ROUNDS);
+      await user.update({ password_hash });
+
+      const loginLockout = require('../services/loginLockoutService');
+      await loginLockout.clearFailures(user);
+
+      res.json({
+        success: true,
+        message: `Şifre sıfırlandı: ${user.full_name}`,
+        data: { user_id: user.id },
       });
     } catch (err) {
       next(err);

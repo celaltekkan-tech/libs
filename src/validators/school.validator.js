@@ -22,6 +22,7 @@ const createSchoolSchema = Joi.object({
   province_id: optionalId,
   district_id: optionalId,
   directory_school_id: optionalId,
+  principal_name: Joi.string().trim().max(150).allow('', null),
   meta: Joi.object().optional()
 });
 
@@ -37,6 +38,7 @@ const updateSchoolSchema = Joi.object({
   province_id: optionalId,
   district_id: optionalId,
   directory_school_id: optionalId,
+  principal_name: Joi.string().trim().max(150).allow('', null),
   meta: Joi.object().optional()
 }).min(1);
 
