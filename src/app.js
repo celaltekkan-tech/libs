@@ -78,6 +78,19 @@ const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+// Panel uyg.oids.com.tr, tanıtım sitesi oids.com.tr. CORS_ORIGIN eski app
+// adresinde kalsa bile bu kökenler 403 CORS_BLOCKED almasın.
+function isOidsHttpsOrigin(origin) {
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== 'https:') return false;
+    const host = url.hostname.toLowerCase();
+    return host === 'oids.com.tr' || host.endsWith('.oids.com.tr');
+  } catch {
+    return false;
+  }
+}
+
 const isDev = (process.env.NODE_ENV || 'development') !== 'production';
 
 // Geliştirmede panel LAN IP üzerinden açıldığında (örn. http://192.168.x.x:5173)
@@ -113,7 +126,7 @@ app.use(
   cors({
     origin(origin, callback) {
       // origin yoksa istek tarayıcı dışından gelmiştir (curl, Postman, testler)
-      if (!origin || allowedOrigins.includes(origin) || isPrivateLanDevOrigin(origin)) {
+      if (!origin || allowedOrigins.includes(origin) || isOidsHttpsOrigin(origin) || isPrivateLanDevOrigin(origin)) {
         return callback(null, true);
       }
       return callback(new Error(`CORS engellendi: ${origin}`));

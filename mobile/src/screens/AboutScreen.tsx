@@ -8,7 +8,7 @@ import { getAppVersionLabel } from '../update/appVersion';
 import type { ThemeColors } from '../theme/colors';
 
 const WEBSITE_URL = 'https://oids.com.tr';
-const PANEL_URL = 'https://app.oids.com.tr';
+const PANEL_URL = 'https://uyg.oids.com.tr';
 const ACCOUNT_DELETE_URL = 'https://oids.com.tr/hesap-silme';
 const CONTACT_EMAIL = 'info@oids.com.tr';
 
@@ -22,7 +22,7 @@ export function AboutScreen() {
     { label: 'Sunucu', value: getApiBaseUrl() || '—' },
     ...(user ? [{ label: 'Oturum', value: `${user.full_name}\n${user.email}` }] : []),
     { label: 'Web sitesi', value: 'oids.com.tr', url: WEBSITE_URL },
-    { label: 'Yönetim paneli', value: 'app.oids.com.tr', url: PANEL_URL },
+    { label: 'Yönetim paneli', value: 'uyg.oids.com.tr', url: PANEL_URL },
     { label: 'İletişim', value: CONTACT_EMAIL, url: `mailto:${CONTACT_EMAIL}` },
     { label: 'Hesap silme', value: 'oids.com.tr/hesap-silme', url: ACCOUNT_DELETE_URL },
   ];
