@@ -1,6 +1,6 @@
 const { Op } = require('sequelize');
 const bcrypt = require('bcrypt');
-const { User, Tenant, School, Role, UserSchool } = require('../models');
+const { User, Tenant, School, Role, UserSchool, Teacher } = require('../models');
 const licenseService = require('../services/licenseService');
 const { getUserLimitForPlan, isUnlimitedAccountRole, UNLIMITED_ACCOUNT_ROLES } = require('../config/licensePlans');
 const audit = require('../services/auditService');
@@ -300,6 +300,15 @@ module.exports = {
         role,
       });
 
+      let teacherId = null;
+      if (payload.teacher_id) {
+        const teacher = await Teacher.findByPk(payload.teacher_id);
+        if (!teacher || teacher.tenant_id !== payload.tenant_id) {
+          return res.status(400).json({ success: false, message: 'Seçilen personel bulunamadı' });
+        }
+        teacherId = teacher.id;
+      }
+
       const password_hash = await bcrypt.hash(payload.password, 10);
 
       const { assertValidMobilePhone } = require('../utils/phone');
@@ -326,6 +335,7 @@ module.exports = {
         role: 'user',
         is_active: payload.is_active !== false,
         phone,
+        teacher_id: teacherId,
       });
 
       await UserSchool.create({
@@ -424,6 +434,17 @@ module.exports = {
       }
       if (payload.password) {
         updates.password_hash = await bcrypt.hash(payload.password, 10);
+      }
+      if (payload.teacher_id !== undefined) {
+        if (!payload.teacher_id) {
+          updates.teacher_id = null;
+        } else {
+          const teacher = await Teacher.findByPk(payload.teacher_id);
+          if (!teacher || teacher.tenant_id !== tenantId) {
+            return res.status(400).json({ success: false, message: 'Seçilen personel bulunamadı' });
+          }
+          updates.teacher_id = teacher.id;
+        }
       }
 
       // Kullanıcı kendi hesabını pasife çekemez (kilitlenme riski).

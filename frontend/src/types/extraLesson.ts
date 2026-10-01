@@ -44,6 +44,25 @@ export interface ExtraLessonPayload {
   notes?: string | null
 }
 
+export const EXTRA_LESSON_ABSENCE_REASONS = [
+  { value: 'rapor', label: 'Rapor' },
+  { value: 'izin', label: 'İzin' },
+  { value: 'gorev', label: 'Görevli' },
+  { value: 'mazeret', label: 'Mazeret' },
+  { value: 'devamsiz', label: 'Devamsız' },
+] as const
+
+export type ExtraLessonAbsenceReason = (typeof EXTRA_LESSON_ABSENCE_REASONS)[number]['value']
+
+export interface ExtraLessonAbsence {
+  id: number
+  tenant_id: number
+  teacher_id: number
+  absence_date: string
+  reason: ExtraLessonAbsenceReason
+  note: string | null
+}
+
 export interface ExtraLessonMonthlySummaryRow {
   teacher_id: number
   teacher_name: string

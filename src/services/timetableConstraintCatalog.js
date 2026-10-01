@@ -20,6 +20,14 @@ const TYPES = {
     label: 'Öğretmen günlük azami ders',
     fields: ['teacher_id?', 'max'],
   },
+  teacher_duty_day_max_hours: {
+    label: 'Nöbet gününde azami ders',
+    fields: ['teacher_id?', 'max'],
+  },
+  teacher_no_duty: {
+    label: 'Nöbet tutmaz',
+    fields: ['teacher_ids'],
+  },
   teacher_min_days_off: {
     label: 'Öğretmen boş gün sayısı',
     fields: ['teacher_id?', 'count'],
@@ -108,6 +116,10 @@ function normalizeParams(type, params, ctx) {
       out.periods = list;
     } else if (key === 'days') {
       out.days = intList(v, 1, maxDay);
+    } else if (key === 'teacher_ids') {
+      const list = intList(v, 1, Number.MAX_SAFE_INTEGER);
+      if (!list.length) throw new Error(`${def.label}: en az bir öğretmen seçilmeli`);
+      out.teacher_ids = list;
     } else if (key === 'subject_ids') {
       const list = intList(v, 1, Number.MAX_SAFE_INTEGER);
       const schoolwide = type === 'subjects_not_same_day' && p.scope === 'school';
@@ -145,6 +157,10 @@ function describe(type, params, names = {}) {
       return `${r(p.room_id)} kullanılamaz: ${slots(p.slots)}`;
     case 'teacher_max_daily_hours':
       return `${t(p.teacher_id)} günde en fazla ${p.max} saat`;
+    case 'teacher_duty_day_max_hours':
+      return `${t(p.teacher_id)} nöbet gününde en fazla ${p.max} saat ders (daha az olabilir)`;
+    case 'teacher_no_duty':
+      return `${(p.teacher_ids || []).map((id) => t(id)).join(', ')} nöbet tutmaz`;
     case 'teacher_min_days_off':
       return `${t(p.teacher_id)} haftada en az ${p.count} boş gün`;
     case 'teacher_max_consecutive':

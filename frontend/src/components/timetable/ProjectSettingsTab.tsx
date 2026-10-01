@@ -129,7 +129,7 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
             <Form.Item
               name="days"
               label="Ders günleri"
-              extra="Ders günleri pazartesi–cumadır. Açık saat, gün sayısı ile günlük ders saatinin çarpımıdır (5 × 8 = 40). Cumartesi ve pazar müsaitlikte görünür; buraya eklenirse şubenin saati 56 olur."
+              extra="İşaretli günler zaman tablosunda görünür ve açık/kapalı saate katılır. Cumartesi ve pazar işaretli değilse çizelgede yer almaz."
               rules={[{ required: true, message: 'En az bir gün seçin' }]}
             >
               <Checkbox.Group options={DAY_OPTIONS} />
@@ -150,6 +150,17 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
             <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
               Her teneffüs ayrı yazılır. Örneğin 1. teneffüs 10 dakika, 2. teneffüs 5 dakika olabilir. Öğle arası en az 30 dakikadır.
             </Typography.Paragraph>
+            <Button
+              size="small"
+              style={{ marginBottom: 12 }}
+              onClick={() => {
+                const first = form.getFieldValue(['bell', 'breaks', 0]) ?? form.getFieldValue(['bell', 'break_minutes']) ?? 10
+                const count = Math.max(0, Number(form.getFieldValue('periods_per_day') || periods) - 1)
+                form.setFieldValue(['bell', 'breaks'], Array.from({ length: count }, () => first))
+              }}
+            >
+              Tüm teneffüslere ata
+            </Button>
             <Space size="middle" wrap>
               {Array.from({ length: Math.max(0, periods - 1) }, (_, index) => (
                 <Form.Item

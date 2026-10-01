@@ -122,6 +122,8 @@ export type ConstraintType =
   | 'classroom_unavailable'
   | 'room_unavailable'
   | 'teacher_max_daily_hours'
+  | 'teacher_duty_day_max_hours'
+  | 'teacher_no_duty'
   | 'teacher_min_days_off'
   | 'teacher_max_consecutive'
   | 'subject_period_preference'
@@ -137,6 +139,7 @@ export interface ConstraintSlot {
 
 export interface ConstraintParams {
   teacher_id?: number | null
+  teacher_ids?: number[]
   classroom_id?: number | null
   room_id?: number | null
   subject_id?: number | null

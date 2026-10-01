@@ -33,7 +33,7 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
     outside: `repeating-linear-gradient(135deg, ${token.colorFillSecondary} 0 6px, ${token.colorFillQuaternary} 6px 12px)`,
     closed: token.colorPrimary,
     avoid: token.colorWarningBg,
-    open: token.colorBgContainer,
+    open: token.colorBgContainer.toLowerCase() === '#ffffff' ? '#FFF9CE' : token.colorBgContainer,
   }
   const BORDERS: Record<CellState, string> = {
     outside: token.colorBorderSecondary,
@@ -54,7 +54,12 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
   const [range, setRange] = useState({ d1: project.days[0] || 1, d2: project.days[project.days.length - 1] || 5, p1: 1, p2: project.periods_per_day })
   const editable = ctx.canUpdate
   const periods = Array.from({ length: project.periods_per_day }, (_, i) => i + 1)
-  const schoolDays = [1, 2, 3, 4, 5, 6, 7]
+  const lessonDays = useMemo(
+    () => [...project.days].sort((a, b) => a - b),
+    [project.days],
+  )
+  const [panel, setPanel] = useState<'grid' | 'density'>('grid')
+  const [densityKey, setDensityKey] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -100,9 +105,21 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
   )
   const schoolCells = cellsOf('school', 0)
   const current = currentId == null ? {} : cellsOf(type, currentId)
-  const closedCount = useCallback(
-    (id: number) => Object.values(cellsOf(type, id)).filter((v) => v === 'closed').length,
-    [cellsOf, type],
+  const hourCounts = useCallback(
+    (id: number) => {
+      const cells = cellsOf(type, id)
+      let closed = 0
+      let open = 0
+      for (const d of lessonDays) {
+        for (const p of periods) {
+          if (type !== 'school' && schoolCells[`${d}-${p}`] === 'closed') continue
+          if (cells[`${d}-${p}`] === 'closed') closed += 1
+          else open += 1
+        }
+      }
+      return { closed, open }
+    },
+    [cellsOf, type, lessonDays, periods, schoolCells],
   )
 
   const targets = type === 'school' ? [0] : checked.length ? checked : currentId != null ? [currentId] : []
@@ -133,7 +150,9 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
   })
 
   const usable = (d: number, p: number) =>
-    p <= project.periods_per_day && (type === 'school' || schoolCells[`${d}-${p}`] !== 'closed')
+    lessonDays.includes(d) &&
+    p <= project.periods_per_day &&
+    (type === 'school' || schoolCells[`${d}-${p}`] !== 'closed')
 
   const startPaint = (key: string) => {
     if (!editable) return
@@ -155,7 +174,7 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
 
   const applyRange = (state: Brush) => {
     const out: Record<string, Brush> = {}
-    for (const d of schoolDays) {
+    for (const d of lessonDays) {
       if (d < Math.min(range.d1, range.d2) || d > Math.max(range.d1, range.d2)) continue
       for (let p = Math.min(range.p1, range.p2); p <= Math.max(range.p1, range.p2); p++) {
         if (usable(d, p)) out[`${d}-${p}`] = state
@@ -193,8 +212,27 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
   }, [lessons, currentId, type])
 
   const currentName = type === 'school' ? 'Okul geneli' : entities.find((e) => e.id === currentId)?.name || '—'
-  const dayOptions = DAY_OPTIONS
+  const dayOptions = DAY_OPTIONS.filter((d) => lessonDays.includes(d.value))
   const periodOptions = periods.map((p) => ({ value: p, label: `${p}. saat` }))
+  const sectionCount = ctx.classrooms.length
+  const density = useMemo(() => {
+    const map = new Map<string, { open: number; closed: number }>()
+    if (type !== 'teacher') return map
+    for (const d of lessonDays) {
+      for (const p of periods) {
+        if (schoolCells[`${d}-${p}`] === 'closed') continue
+        let open = 0
+        let closed = 0
+        for (const teacher of ctx.teachers) {
+          const value = cellsOf('teacher', teacher.id)[`${d}-${p}`]
+          if (value === 'closed') closed += 1
+          else open += 1
+        }
+        map.set(`${d}-${p}`, { open, closed })
+      }
+    }
+    return map
+  }, [type, lessonDays, periods, schoolCells, ctx.teachers, cellsOf])
 
   const cellState = (d: number, p: number): CellState => {
     if (!usable(d, p)) return 'outside'
@@ -206,10 +244,9 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
   return (
     <>
       <Typography.Paragraph type="secondary">
-        Cumartesi ve pazar müsaitlikte açık görünür; kapatmak istediğiniz saati siz boyarsınız. Bu günler ders günü değildir, şubenin haftalık saatine eklenmez.
-        Koyu renkli hücrede ders konmaz,
-        sarı hücreye mümkünse konmaz, boş hücreler açıktır. Fırçayı seçip hücrelere tıklayın ya da sürükleyin; gün
-        adına veya saat numarasına tıklamak tüm sütunu/satırı boyar.
+        Yalnızca okul saatlerinde işaretli ders günleri görünür. Kapalı saat ders konmaz, istenmiyor mümkünse konmaz, açık
+        saatlere ders yerleşir. Açık ve kapalı sayıları bu günlere göredir. Yoğunluk, her saatte kaç öğretmenin açık
+        olduğunu şube sayısıyla karşılaştırır; açık öğretmen şube sayısının bir eksiğine düşünce kırmızı uyarı verir.
       </Typography.Paragraph>
 
       <Segmented<AvailabilityEntity>
@@ -241,11 +278,17 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
                   {
                     title: 'Kapalı',
                     key: 'closed',
-                    width: 60,
+                    width: 64,
                     render: (_, e) => {
-                      const n = closedCount(e.id)
-                      return n ? <Tag>{n}</Tag> : null
+                      const n = hourCounts(e.id).closed
+                      return n ? <Tag>{n}</Tag> : <Tag>0</Tag>
                     },
+                  },
+                  {
+                    title: 'Açık',
+                    key: 'open',
+                    width: 64,
+                    render: (_, e) => <Tag color="green">{hourCounts(e.id).open}</Tag>,
                   },
                   {
                     title: (
@@ -278,7 +321,19 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
             size="small"
             title={currentName}
             extra={
-              editable && (
+              <Space wrap>
+                {type === 'teacher' && (
+                  <Segmented
+                    size="small"
+                    value={panel}
+                    onChange={setPanel}
+                    options={[
+                      { value: 'grid', label: 'Zaman tablosu' },
+                      { value: 'density', label: 'Yoğunluk' },
+                    ]}
+                  />
+                )}
+                {editable && panel === 'grid' && (
                 <Space wrap>
                   <span>Fırça:</span>
                   <Segmented<Brush>
@@ -292,7 +347,8 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
                     ]}
                   />
                 </Space>
-              )
+                )}
+              </Space>
             }
           >
             {type !== 'school' && checked.length > 0 && (
@@ -303,17 +359,99 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
                 message={`Değişiklikler işaretli ${checked.length} kayda uygulanır (tabloda "${currentName}" gösteriliyor).`}
               />
             )}
+            {type === 'teacher' && panel === 'density' ? (
+              <>
+                {sectionCount > 0 && [...density.values()].some((v) => v.open <= sectionCount - 1) && (
+                  <Alert
+                    type="error"
+                    showIcon
+                    style={{ marginBottom: 8 }}
+                    message={`Kırmızı saatlerde açık öğretmen sayısı ${sectionCount} şubenin bir eksiğine (${sectionCount - 1}) veya altına düştü.`}
+                  />
+                )}
+                <div style={{ overflowX: 'auto' }}>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: `44px repeat(${lessonDays.length}, minmax(108px, 1fr))`,
+                      gap: 2,
+                      minWidth: 44 + lessonDays.length * 112,
+                    }}
+                  >
+                    <div />
+                    {lessonDays.map((d) => (
+                      <div key={d} style={{ textAlign: 'center', fontWeight: 600, padding: 4, background: token.colorFillTertiary, borderRadius: 4 }}>
+                        {DAY_LABELS[d] || d}
+                      </div>
+                    ))}
+                    {periods.map((p) => (
+                      <Fragment key={p}>
+                        <div style={{ textAlign: 'center', fontWeight: 600, padding: 4, background: token.colorFillTertiary, borderRadius: 4 }}>{p}</div>
+                        {lessonDays.map((d) => {
+                          const key = `${d}-${p}`
+                          const cell = density.get(key)
+                          const open = cell?.open ?? 0
+                          const tight = sectionCount > 0 && open <= sectionCount - 1
+                          const slack = open - sectionCount
+                          const fill = !cell
+                            ? token.colorFillSecondary
+                            : tight
+                              ? '#ff4d4f'
+                              : slack <= 0
+                                ? '#ff7875'
+                                : slack === 1
+                                  ? '#ffa940'
+                                  : slack === 2
+                                    ? '#ffd666'
+                                    : slack === 3
+                                      ? '#ffe58f'
+                                      : '#95de64'
+                          return (
+                            <div
+                              key={key}
+                              onClick={() => setDensityKey(key)}
+                              style={{
+                                minHeight: 38,
+                                background: fill,
+                                border: densityKey === key ? '2px solid #141414' : '1px solid transparent',
+                                borderRadius: 4,
+                                textAlign: 'center',
+                                fontSize: 12,
+                                fontWeight: 600,
+                                padding: 4,
+                                cursor: 'pointer',
+                                color: tight ? '#fff' : '#141414',
+                              }}
+                            >
+                              {cell ? open : '—'}
+                            </div>
+                          )
+                        })}
+                      </Fragment>
+                    ))}
+                  </div>
+                </div>
+                {densityKey && density.get(densityKey) && (
+                  <Alert
+                    style={{ marginTop: 8 }}
+                    type={sectionCount > 0 && (density.get(densityKey)?.open || 0) <= sectionCount - 1 ? 'warning' : 'info'}
+                    showIcon
+                    message={`${DAY_LABELS[Number(densityKey.split('-')[0])]} ${densityKey.split('-')[1]}. saat: ${density.get(densityKey)?.open} öğretmen açık, ${density.get(densityKey)?.closed} kapalı. Şube sayısı ${sectionCount}.`}
+                  />
+                )}
+              </>
+            ) : (
             <div style={{ overflowX: 'auto', userSelect: 'none' }}>
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: `44px repeat(${schoolDays.length}, minmax(108px, 1fr))`,
+                  gridTemplateColumns: `44px repeat(${lessonDays.length}, minmax(108px, 1fr))`,
                   gap: 2,
-                  minWidth: 44 + schoolDays.length * 112,
+                  minWidth: 44 + lessonDays.length * 112,
                 }}
               >
                 <div />
-                {schoolDays.map((d) => (
+                {lessonDays.map((d) => (
                   <div
                     key={d}
                     onClick={() => editable && paintLine(periods.map((p) => [d, p]))}
@@ -334,12 +472,12 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
                 {periods.map((p) => (
                   <Fragment key={p}>
                     <div
-                      onClick={() => editable && paintLine(schoolDays.map((d) => [d, p]))}
+                      onClick={() => editable && paintLine(lessonDays.map((d) => [d, p]))}
                       style={{ textAlign: 'center', fontWeight: 600, padding: 4, cursor: editable ? 'pointer' : 'default', background: token.colorFillTertiary, color: token.colorText, borderRadius: 4 }}
                     >
                       {p}
                     </div>
-                    {schoolDays.map((d) => {
+                    {lessonDays.map((d) => {
                       const key = `${d}-${p}`
                       const ok = usable(d, p)
                       const items = placed.get(key) || []
@@ -372,6 +510,8 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
                 ))}
               </div>
             </div>
+            )}
+            {!(type === 'teacher' && panel === 'density') && (
             <Space wrap size={12} style={{ marginTop: 8, fontSize: 12 }}>
               {(['outside', 'closed', 'avoid', 'open'] as const).map((k) => (
                 <Space key={k} size={4}>
@@ -380,9 +520,10 @@ export function AvailabilityTab({ ctx }: { ctx: TimetableCtx }) {
                 </Space>
               ))}
             </Space>
+            )}
           </Card>
 
-          {editable && (
+          {editable && panel === 'grid' && (
             <Card size="small" title="Gün ve saat aralığına uygula" style={{ marginTop: 12 }}>
               <Space wrap>
                 <Select style={{ width: 130 }} value={range.d1} onChange={(v) => setRange((r) => ({ ...r, d1: v }))} options={dayOptions} />

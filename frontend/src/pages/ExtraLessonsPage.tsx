@@ -1,328 +1,228 @@
-import { useCallback, useEffect, useState } from 'react'
-import { App, Button, Collapse, Form, Input, InputNumber, Modal, Select, Space, Tag, Typography } from 'antd'
-import { SortableTable } from '../components/SortableTable'
-import { DeleteOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
-import type { ColumnsType } from 'antd/es/table'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { App, Button, Calendar, Card, Form, Input, List, Modal, Select, Space, Tabs, Tag, Typography } from 'antd'
+import type { Dayjs } from 'dayjs'
+import dayjs from 'dayjs'
+import 'dayjs/locale/tr'
 import { AppLayout } from '../components/AppLayout'
-import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
+import { useActiveSchool } from '../auth/ActiveSchoolContext'
 import { useAuth } from '../auth/AuthContext'
-import {
-  createExtraLesson,
-  deleteExtraLesson,
-  exportExtraLessons,
-  fetchExtraLessonMonthlySummary,
-  listExtraLessons,
-  suggestLessonLoad,
-} from '../api/extraLessons'
+import { deleteExtraLessonAbsence, listExtraLessonAbsences, saveExtraLessonAbsence } from '../api/extraLessons'
 import { listTeachers } from '../api/teachers'
 import { getErrorMessage } from '../api/client'
-import { EXTRA_LESSON_CATEGORY_LABELS, EXTRA_LESSON_CATEGORY_OPTIONS } from '../types/extraLesson'
-import type { ExtraLessonEntry, ExtraLessonMonthlySummaryRow, ExtraLessonPayload } from '../types/extraLesson'
+import { EXTRA_LESSON_ABSENCE_REASONS, type ExtraLessonAbsence, type ExtraLessonAbsenceReason } from '../types/extraLesson'
 import type { Teacher } from '../types/teacher'
-import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
-import { tablePagination } from '../utils/tablePagination'
-import { nestedPersonNameSorter, SORT_AZ } from '../utils/tableSort'
-import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 
-const now = new Date()
+dayjs.locale('tr')
+
+const now = dayjs()
+
+const REASON_LABEL = Object.fromEntries(EXTRA_LESSON_ABSENCE_REASONS.map((item) => [item.value, item.label]))
+
+function personName(teacher: Teacher) {
+  return `${teacher.first_name} ${teacher.last_name}`
+}
 
 export function ExtraLessonsPage() {
-  const { message, modal } = App.useApp()
-  const { session, hasPermission } = useAuth()
-
+  const { message } = App.useApp()
+  const { hasPermission } = useAuth()
+  const { activeSchoolId } = useActiveSchool()
   const [teachers, setTeachers] = useState<Teacher[]>([])
-  const [rows, setRows] = useState<ExtraLessonEntry[]>([])
-  const [summary, setSummary] = useState<ExtraLessonMonthlySummaryRow[]>([])
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
+  const [absences, setAbsences] = useState<ExtraLessonAbsence[]>([])
+  const [tab, setTab] = useState<'ucretli' | 'dis'>('ucretli')
+  const [teacherId, setTeacherId] = useState<number | null>(null)
+  const [cursor, setCursor] = useState(now.startOf('month'))
   const [loading, setLoading] = useState(true)
-  const [modalOpen, setModalOpen] = useState(false)
-  const [exportOpen, setExportOpen] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [suggestion, setSuggestion] = useState<{ suggested_hours: number; leave_days_in_period: number } | null>(null)
-  const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx')
-  const [form] = Form.useForm<ExtraLessonPayload>()
-
-  const canCreate = hasPermission('payroll.create')
+  const [day, setDay] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [form] = Form.useForm<{ reason: ExtraLessonAbsenceReason; note?: string }>()
+  const canUpdate = hasPermission('payroll.update') || hasPermission('payroll.create')
   const canDelete = hasPermission('payroll.delete')
 
-  const load = useCallback(async () => {
+  const loadTeachers = useCallback(async () => {
+    const rows = await listTeachers({
+      scope: 'teachers',
+      school_id: activeSchoolId ?? undefined,
+    })
+    setTeachers(rows)
+  }, [activeSchoolId])
+
+  const loadAbsences = useCallback(async () => {
     setLoading(true)
     try {
-      const [teacherData, rowsData, summaryData] = await Promise.all([
-        listTeachers({ scope: 'teachers' }),
-        listExtraLessons({ year, month }),
-        fetchExtraLessonMonthlySummary(year, month),
-      ])
-      setTeachers(teacherData)
-      setRows(rowsData)
-      setSummary(summaryData)
+      setAbsences(await listExtraLessonAbsences(cursor.year(), cursor.month() + 1, teacherId ?? undefined))
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
-  }, [year, month, message])
+  }, [cursor, teacherId, message])
 
   useEffect(() => {
-    void load()
-  }, [load])
+    void loadTeachers().catch((err) => message.error(getErrorMessage(err)))
+  }, [loadTeachers, message])
 
-  const { bulkOpen, setBulkOpen, bulkLoading, onBulkDelete } = useBulkTypedDelete({
-    getIds: () => rows.map((r) => r.id),
-    deleteOne: (id) => deleteExtraLesson(Number(id)),
-    noun: 'ek ders kaydı',
-    reload: () => void load(),
-    message,
-  })
+  useEffect(() => {
+    void loadAbsences()
+  }, [loadAbsences])
 
-  const openCreate = () => {
-    form.resetFields()
-    form.setFieldsValue({ year, month })
-    setSuggestion(null)
-    setModalOpen(true)
-  }
+  const visibleTeachers = useMemo(() => {
+    const rows = teachers.filter((teacher) =>
+      tab === 'ucretli' ? teacher.employment_type === 'ucretli' : Boolean(teacher.duty_assignment_type),
+    )
+    return [...rows].sort((a, b) => personName(a).localeCompare(personName(b), 'tr'))
+  }, [teachers, tab])
 
-  const onSuggest = async () => {
-    const teacherId = form.getFieldValue('teacher_id')
-    if (!teacherId) {
-      message.warning('Önce personel seçin')
-      return
+  useEffect(() => {
+    if (!visibleTeachers.some((teacher) => teacher.id === teacherId)) {
+      setTeacherId(visibleTeachers[0]?.id ?? null)
     }
-    try {
-      const result = await suggestLessonLoad(teacherId, year, month)
-      setSuggestion(result)
-    } catch (err) {
-      message.error(getErrorMessage(err))
+  }, [visibleTeachers, teacherId])
+
+  const byDate = useMemo(() => {
+    const map = new Map<string, ExtraLessonAbsence>()
+    for (const row of absences) {
+      if (teacherId && row.teacher_id !== teacherId) continue
+      map.set(String(row.absence_date).slice(0, 10), row)
     }
-  }
+    return map
+  }, [absences, teacherId])
 
-  const applySuggestion = () => {
-    if (!suggestion) return
-    form.setFieldsValue({ category: 'ders_yuku', hours: suggestion.suggested_hours })
-  }
-
-  const onFinish = async (values: ExtraLessonPayload) => {
-    if (!session) return
-    setSubmitting(true)
-    try {
-      await createExtraLesson(session.user.tenant_id, values)
-      message.success('Ek ders kaydı eklendi')
-      setModalOpen(false)
-      void load()
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const onDelete = (row: ExtraLessonEntry) => {
-    modal.confirm({
-      title: 'Ek ders kaydını sil',
-      content: 'Bu ek ders kaydını silmek istediğinize emin misiniz?',
-      okText: 'Sil',
-      okButtonProps: { danger: true },
-      cancelText: 'Vazgeç',
-      onOk: async () => {
-        try {
-          await deleteExtraLesson(row.id)
-          message.success('Kayıt silindi')
-          void load()
-        } catch (err) {
-          message.error(getErrorMessage(err))
-        }
-      },
+  const openDay = (value: Dayjs) => {
+    if (!teacherId || !canUpdate) return
+    const key = value.format('YYYY-MM-DD')
+    const existing = byDate.get(key)
+    setDay(key)
+    form.setFieldsValue({
+      reason: existing?.reason || 'rapor',
+      note: existing?.note || undefined,
     })
   }
 
-  const onExport = async () => {
-    setSubmitting(true)
+  const onSave = async (values: { reason: ExtraLessonAbsenceReason; note?: string }) => {
+    if (!teacherId || !day) return
+    setSaving(true)
     try {
-      const blob = await exportExtraLessons({ format: exportFormat, year, month })
-      downloadBlob(blob, exportFilename('ek-ders-cizelgesi', exportFormat))
-      message.success('Dışa aktarma indirildi')
-      setExportOpen(false)
+      await saveExtraLessonAbsence({
+        teacher_id: teacherId,
+        absence_date: day,
+        reason: values.reason,
+        note: values.note?.trim() || null,
+      })
+      message.success('Devamsızlık kaydedildi')
+      setDay(null)
+      await loadAbsences()
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
-      setSubmitting(false)
+      setSaving(false)
     }
   }
 
-  const columns: ColumnsType<ExtraLessonEntry> = [
-    {
-      title: 'Personel',
-      sorter: nestedPersonNameSorter((r: ExtraLessonEntry) => r.Teacher),
-      sortDirections: [...SORT_AZ],
-      render: (_: unknown, r: ExtraLessonEntry) => (r.Teacher ? `${r.Teacher.first_name} ${r.Teacher.last_name}` : '—'),
-    },
-    { title: 'Kategori', dataIndex: 'category', render: (v: string) => EXTRA_LESSON_CATEGORY_LABELS[v] || v },
-    { title: 'Saat', dataIndex: 'hours' },
-    { title: 'Not', dataIndex: 'notes', render: (v: string | null) => v || '—' },
-    ...(canDelete
-      ? [
-          {
-            title: 'İşlemler',
-            width: 80,
-            render: (_: unknown, record: ExtraLessonEntry) => (
-              <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onDelete(record)} />
-            ),
-          },
-        ]
-      : []),
-  ]
+  const onRemove = async () => {
+    if (!day) return
+    const existing = byDate.get(day)
+    if (!existing) {
+      setDay(null)
+      return
+    }
+    setSaving(true)
+    try {
+      await deleteExtraLessonAbsence(existing.id)
+      message.success('Devamsızlık silindi')
+      setDay(null)
+      await loadAbsences()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <AppLayout title="Ek Ders ve Ücret Puantajı">
-      <Typography.Title level={3} style={{ margin: 0, marginBottom: 16 }}>
+      <Typography.Title level={3} style={{ marginTop: 0 }}>
         Ek Ders ve Ücret Puantajı
       </Typography.Title>
-
-      <Space wrap style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Space>
-          <Select value={year} onChange={setYear} options={[year - 1, year, year + 1].map((y) => ({ value: y, label: y }))} style={{ width: 100 }} />
-          <Select
-            value={month}
-            onChange={setMonth}
-            options={Array.from({ length: 12 }, (_, i) => ({ value: i + 1, label: `${i + 1}. Ay` }))}
-            style={{ width: 100 }}
-          />
-        </Space>
-        <Space wrap>
-          {canDelete && rows.length > 0 && (
-            <Button danger icon={<DeleteOutlined />} onClick={() => setBulkOpen(true)}>
-              Toplu sil ({rows.length})
-            </Button>
-          )}
-          <Button icon={<DownloadOutlined />} onClick={() => setExportOpen(true)}>
-            Dışa Aktar
-          </Button>
-          {canCreate && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-              Yeni Kayıt
-            </Button>
-          )}
-        </Space>
-      </Space>
-
-      <SortableTable
-        rowKey="id"
-        loading={loading}
-        columns={columns}
-        dataSource={rows}
-        pagination={tablePagination(20)}
-        scroll={{ x: 'max-content' }}
+      <Typography.Paragraph type="secondary">
+        Ücretli öğretmenler ve dış kurum görevlendirmesi burada izlenir. Kendi kadrolu personel için puantaj tutulmaz.
+        Aylık takvimde güne tıklayıp devamsızlığı ve nedenini yazın. Puantaj çıktısı örnek form geldikten sonra eklenecek.
+      </Typography.Paragraph>
+      <Tabs
+        activeKey={tab}
+        onChange={(key) => setTab(key as 'ucretli' | 'dis')}
+        items={[
+          { key: 'ucretli', label: 'Ücretli' },
+          { key: 'dis', label: 'Dış kurum' },
+        ]}
       />
-
-      <Typography.Title level={4} style={{ marginTop: 32 }}>
-        Aylık Özet
-      </Typography.Title>
-      <Collapse
-        items={summary.map((row) => ({
-          key: row.teacher_id,
-          label: (
-            <Space>
-              <span>{row.teacher_name}</span>
-              <Tag color="blue">{row.total_hours} saat</Tag>
-            </Space>
-          ),
-          children: (
-            <SortableTable
-              size="small"
-              rowKey="name"
-              pagination={false}
-              dataSource={Object.entries(row.categories).map(([name, hours]) => ({ name, hours }))}
-              columns={[
-                { title: 'Kategori', dataIndex: 'name', render: (v: string) => EXTRA_LESSON_CATEGORY_LABELS[v] || v },
-                { title: 'Saat', dataIndex: 'hours' },
-              ]}
-              scroll={{ x: 'max-content' }}
-            />
-          ),
-        }))}
-      />
-
-      <Modal
-        title="Yeni Ek Ders Kaydı"
-        open={modalOpen}
-        onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={submitting}
-        okText="Oluştur"
-        cancelText="Vazgeç"
-        destroyOnHidden
-      >
-        <Form form={form} layout="vertical" onFinish={onFinish}>
-          <Form.Item name="teacher_id" label="Personel" rules={[{ required: true, message: 'Personel seçimi zorunludur' }]}>
-            <Select
-              showSearch
-              optionFilterProp="label"
-              options={teachers.map((t) => ({ value: t.id, label: `${t.first_name} ${t.last_name}` }))}
-            />
-          </Form.Item>
-          <Form.Item name="year" label="Yıl" rules={[{ required: true }]}>
-            <InputNumber style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="month" label="Ay" rules={[{ required: true }]}>
-            <InputNumber min={1} max={12} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="category" label="Kategori" rules={[{ required: true, message: 'Kategori zorunludur' }]}>
-            <Select options={EXTRA_LESSON_CATEGORY_OPTIONS} />
-          </Form.Item>
-          <Space style={{ marginBottom: 12 }}>
-            <Button size="small" onClick={() => void onSuggest()}>
-              Ders yükünden öner
-            </Button>
-            {suggestion && (
-              <Typography.Text type="secondary">
-                Önerilen: {suggestion.suggested_hours} saat
-                {suggestion.leave_days_in_period > 0 ? ` (bu ay ${suggestion.leave_days_in_period} gün izinli)` : ''}{' '}
-                <a onClick={applySuggestion}>uygula</a>
-              </Typography.Text>
+      <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: 16, alignItems: 'start' }}>
+        <Card size="small" title={tab === 'ucretli' ? 'Ücretli öğretmenler' : 'Dış kurum görevlendirmesi'} loading={loading}>
+          <List
+            size="small"
+            dataSource={visibleTeachers}
+            locale={{ emptyText: 'Bu grupta personel yok' }}
+            renderItem={(teacher) => (
+              <List.Item
+                style={{ cursor: 'pointer', background: teacher.id === teacherId ? '#fff7e6' : undefined }}
+                onClick={() => setTeacherId(teacher.id)}
+              >
+                <Space direction="vertical" size={0}>
+                  <span>{personName(teacher)}</span>
+                  <Typography.Text type="secondary">{teacher.brans || '—'}</Typography.Text>
+                </Space>
+              </List.Item>
             )}
-          </Space>
-          <Form.Item name="hours" label="Saat" rules={[{ required: true, message: 'Saat zorunludur' }]}>
-            <InputNumber min={-500} max={500} step={0.5} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="notes" label="Not">
-            <Input.TextArea rows={2} />
-          </Form.Item>
-        </Form>
-      </Modal>
-
+          />
+        </Card>
+        <Card size="small">
+          <Calendar
+            value={cursor}
+            onPanelChange={(value) => setCursor(value.startOf('month'))}
+            onSelect={(value) => {
+              if (value.month() !== cursor.month() || value.year() !== cursor.year()) {
+                setCursor(value.startOf('month'))
+                return
+              }
+              openDay(value)
+            }}
+            cellRender={(value) => {
+              const row = byDate.get(value.format('YYYY-MM-DD'))
+              if (!row) return null
+              return <Tag color="orange">{REASON_LABEL[row.reason] || row.reason}</Tag>
+            }}
+          />
+        </Card>
+      </div>
       <Modal
-        title="Ek Ders Çizelgesini Dışa Aktar"
-        open={exportOpen}
-        onCancel={() => setExportOpen(false)}
-        onOk={() => void onExport()}
-        confirmLoading={submitting}
-        okText="İndir"
+        title={day ? dayjs(day).format('D MMMM YYYY') : 'Devamsızlık'}
+        open={Boolean(day)}
+        onCancel={() => setDay(null)}
+        onOk={() => form.submit()}
+        confirmLoading={saving}
+        okText="Kaydet"
         cancelText="Vazgeç"
-        destroyOnHidden
+        okButtonProps={{ disabled: !canUpdate }}
+        footer={(_, { OkBtn, CancelBtn }) => (
+          <Space>
+            {canDelete && byDate.get(day || '') && (
+              <Button danger loading={saving} onClick={() => void onRemove()}>
+                Sil
+              </Button>
+            )}
+            <CancelBtn />
+            <OkBtn />
+          </Space>
+        )}
       >
-        <Form layout="vertical">
-          <Form.Item label="Biçim">
-            <Select
-              value={exportFormat}
-              onChange={setExportFormat}
-              options={[
-                { value: 'xlsx', label: 'Excel (.xlsx)' },
-                { value: 'csv', label: 'CSV (.csv)' },
-                { value: 'pdf', label: 'PDF' },
-              ]}
-            />
+        <Form form={form} layout="vertical" onFinish={(values) => void onSave(values)}>
+          <Form.Item name="reason" label="Neden" rules={[{ required: true, message: 'Neden seçin' }]}>
+            <Select options={EXTRA_LESSON_ABSENCE_REASONS.map((item) => ({ value: item.value, label: item.label }))} />
+          </Form.Item>
+          <Form.Item name="note" label="Açıklama">
+            <Input.TextArea rows={3} maxLength={300} placeholder="İsteğe bağlı" />
           </Form.Item>
         </Form>
       </Modal>
-      <TypedPhraseConfirmModal
-        open={bulkOpen}
-        title="Ek ders kayıtlarını toplu sil"
-        description={`Seçili ay filtresine uyan ${rows.length} ek ders kaydı silinecek.`}
-        loading={bulkLoading}
-        onCancel={() => setBulkOpen(false)}
-        onConfirm={onBulkDelete}
-      />
     </AppLayout>
   )
 }
