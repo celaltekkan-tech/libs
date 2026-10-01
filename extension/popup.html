@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Libs ders programı</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <strong>e-Okul ders programı</strong>
+      <p>MEBBİS şifresi istenmez. Siz giriş yapmışken çizelgeyi doldurur; Kaydet'e basmaz.</p>
+    </header>
+
+    <section id="empty">
+      <button id="pull" type="button">Açık Libs sekmesinden al</button>
+      <label class="file">
+        veya dosya seç
+        <input id="file" type="file" accept="application/json,.json" />
+      </label>
+      <p class="hint">
+        Dosyayı Otomatik Ders Programı sayfasındaki e-Okul düğmesi indirir. Sekmeden almak için
+        bu tarayıcıda Libs paneline giriş yapmış olun.
+      </p>
+    </section>
+
+    <section id="ready" hidden>
+      <p id="summary"></p>
+      <label class="check">
+        <input id="clear-empty" type="checkbox" />
+        Programda boş olan saatleri temizle
+      </label>
+      <label id="class-pick" hidden>
+        Şube
+        <select id="class-select"></select>
+      </label>
+      <button id="fill" type="button">Açık sayfayı doldur</button>
+      <button id="reset" type="button" class="ghost">Programı bırak</button>
+    </section>
+
+    <p id="status" role="status"></p>
+    <ol id="steps">
+      <li>MEBBİS'ten e-Okul'u açın.</li>
+      <li>Kurum İşlemleri → Ders İşlemleri → Ders Programı.</li>
+      <li>Şubeyi seçip Listele'ye basın.</li>
+      <li>Doldur'a basın, kontrol edip Kaydet'e siz basın.</li>
+    </ol>
+    <script src="popup.js"></script>
+  </body>
+</html>

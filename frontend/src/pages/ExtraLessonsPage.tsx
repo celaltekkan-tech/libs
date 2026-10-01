@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Button, Calendar, Card, Form, Input, List, Modal, Select, Space, Tabs, Tag, Typography } from 'antd'
+import { App, Button, Calendar, Card, Form, Input, List, Modal, Select, Space, Tabs, Tag, Typography, theme } from 'antd'
 import type { Dayjs } from 'dayjs'
 import dayjs from 'dayjs'
 import 'dayjs/locale/tr'
@@ -24,6 +24,7 @@ function personName(teacher: Teacher) {
 
 export function ExtraLessonsPage() {
   const { message } = App.useApp()
+  const { token } = theme.useToken()
   const { hasPermission } = useAuth()
   const { activeSchoolId } = useActiveSchool()
   const [teachers, setTeachers] = useState<Teacher[]>([])
@@ -161,17 +162,28 @@ export function ExtraLessonsPage() {
             size="small"
             dataSource={visibleTeachers}
             locale={{ emptyText: 'Bu grupta personel yok' }}
-            renderItem={(teacher) => (
-              <List.Item
-                style={{ cursor: 'pointer', background: teacher.id === teacherId ? '#fff7e6' : undefined }}
-                onClick={() => setTeacherId(teacher.id)}
-              >
-                <Space direction="vertical" size={0}>
-                  <span>{personName(teacher)}</span>
-                  <Typography.Text type="secondary">{teacher.brans || '—'}</Typography.Text>
-                </Space>
-              </List.Item>
-            )}
+            renderItem={(teacher) => {
+              const selected = teacher.id === teacherId
+              return (
+                <List.Item
+                  style={{
+                    cursor: 'pointer',
+                    background: selected ? '#fff7e6' : undefined,
+                    borderRadius: selected ? 8 : undefined,
+                  }}
+                  onClick={() => setTeacherId(teacher.id)}
+                >
+                  <Space direction="vertical" size={0}>
+                    <span style={{ color: selected ? '#0958d9' : token.colorText, fontWeight: selected ? 600 : 400 }}>
+                      {personName(teacher)}
+                    </span>
+                    <span style={{ fontSize: 12, color: selected ? '#003eb3' : token.colorTextSecondary }}>
+                      {teacher.brans || '—'}
+                    </span>
+                  </Space>
+                </List.Item>
+              )
+            }}
           />
         </Card>
         <Card size="small">

@@ -60,7 +60,10 @@ export function UsersPage() {
   const [bulkOpen, setBulkOpen] = useState(false)
   const [bulkLoading, setBulkLoading] = useState(false)
   const [form] = Form.useForm<UserFormValues>()
+  const [fieldLocked, setFieldLocked] = useState({ email: true, phone: true, password: true })
   const selectedRoleId = Form.useWatch('role_id', form)
+
+  const lockCredentialFields = () => setFieldLocked({ email: true, phone: true, password: true })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -126,7 +129,11 @@ export function UsersPage() {
       role_id: options.school_roles.find((r) => r.name === 'Memur')?.id || options.school_roles[0]?.id,
       is_active: true,
       school_id: activeSchoolId ?? options.schools[0]?.id,
+      email: '',
+      phone: '',
+      password: '',
     })
+    lockCredentialFields()
     setModalOpen(true)
   }
 
@@ -140,8 +147,9 @@ export function UsersPage() {
       role_id: resolveRoleId(user),
       is_active: user.is_active,
       phone: user.phone || undefined,
-      password: undefined,
+      password: '',
     })
+    lockCredentialFields()
     setModalOpen(true)
   }
 
@@ -407,7 +415,23 @@ export function UsersPage() {
         destroyOnHidden
         width={560}
       >
-        <Form form={form} layout="vertical" onFinish={onFinish}>
+        <Form form={form} layout="vertical" onFinish={onFinish} autoComplete="off">
+          <input
+            type="text"
+            name="prevent_autofill_user"
+            autoComplete="username"
+            tabIndex={-1}
+            aria-hidden="true"
+            style={{ position: 'absolute', opacity: 0, height: 0, width: 0, pointerEvents: 'none' }}
+          />
+          <input
+            type="password"
+            name="prevent_autofill_pass"
+            autoComplete="current-password"
+            tabIndex={-1}
+            aria-hidden="true"
+            style={{ position: 'absolute', opacity: 0, height: 0, width: 0, pointerEvents: 'none' }}
+          />
           <Form.Item name="full_name" hidden rules={[{ required: true, message: 'Personel seçin' }]}>
             <Input />
           </Form.Item>
@@ -428,11 +452,15 @@ export function UsersPage() {
               onChange={(id) => {
                 const teacher = teachers.find((item) => item.id === id)
                 if (!teacher) return
-                form.setFieldsValue({
-                  full_name: `${teacher.first_name} ${teacher.last_name}`.trim(),
-                  ...(teacher.email ? { email: teacher.email } : {}),
-                  ...(teacher.phone ? { phone: teacher.phone } : {}),
-                })
+                const email = teacher.email?.trim() || ''
+                const phone = teacher.phone?.trim() || ''
+                form.setFields([
+                  { name: 'full_name', value: `${teacher.first_name} ${teacher.last_name}`.trim(), errors: [] },
+                  { name: 'email', value: email, errors: [] },
+                  { name: 'phone', value: phone, errors: [] },
+                  { name: 'password', value: '', errors: [] },
+                ])
+                setFieldLocked((prev) => ({ ...prev, password: true }))
               }}
             />
           </Form.Item>
@@ -444,7 +472,11 @@ export function UsersPage() {
               { type: 'email', message: 'Geçerli bir e-posta girin' },
             ]}
           >
-            <Input placeholder="kullanici@okul.local" />
+            <Input
+              autoComplete="off"
+              readOnly={fieldLocked.email}
+              onFocus={() => setFieldLocked((prev) => ({ ...prev, email: false }))}
+            />
           </Form.Item>
           <Form.Item
             name="phone"
@@ -461,7 +493,13 @@ export function UsersPage() {
               requiredMobilePhoneRule(smsLoginRequiresPhone),
             ]}
           >
-            <Input placeholder="05xx xxx xx xx" maxLength={30} />
+            <Input
+              autoComplete="off"
+              inputMode="tel"
+              maxLength={30}
+              readOnly={fieldLocked.phone}
+              onFocus={() => setFieldLocked((prev) => ({ ...prev, phone: false }))}
+            />
           </Form.Item>
           <Form.Item
             name="password"
@@ -475,7 +513,12 @@ export function UsersPage() {
                   ]
             }
           >
-            <Input.Password placeholder="En az 8 karakter" />
+            <Input.Password
+              autoComplete="new-password"
+              placeholder="En az 8 karakter"
+              readOnly={fieldLocked.password}
+              onFocus={() => setFieldLocked((prev) => ({ ...prev, password: false }))}
+            />
           </Form.Item>
           <Form.Item name="school_id" label="Okul" rules={[{ required: true, message: 'Okul seçin' }]}>
             <Select
