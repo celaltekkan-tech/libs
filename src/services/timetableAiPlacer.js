@@ -2,10 +2,18 @@
 
 // Çözücü uygun program bulamadığında, yapay zekâ lisanslı kiracı için
 // yerleştirmeyi üretir. Gemini blok başlangıçlarını önerir; sunucu şube ve
-// öğretmen çakışmasını kabul etmez. Kapalı saat ancak başka yer kalmadıysa
+// öğretmen çakışmasını kabul etmez. Boş saat kalmadığında yerleşmiş dersler
+// zincirleme kaydırılarak yer açılır. Kapalı saat ancak başka yer kalmadıysa
 // kullanılır ve uyarıya yazılır.
 
 const gemini = require('./geminiService');
+
+// Yer değiştirme zincirinin derinliği ve toplam arama bütçesi.
+const TIME_BUDGET_MS = Number(process.env.AI_PLACER_TIME_MS) || 30000;
+const MAX_DEPTH = 8;
+const MIN_SLICE_MS = 40;
+const MAX_SLICE_MS = 1500;
+const REPAIR_ROUNDS = 3;
 
 const DAY_NAMES = { 1: 'Pazartesi', 2: 'Salı', 3: 'Çarşamba', 4: 'Perşembe', 5: 'Cuma', 6: 'Cumartesi' };
 
@@ -75,7 +83,8 @@ function geometryOk(payload, classroomId, vocational, start, length) {
   const end = start + length - 1;
   if (start < 1 || end > payload.periods) return false;
   const lunch = lunchAfter(payload, classroomId);
-  const span = Boolean(vocational) && Boolean(payload.block_across_lunch);
+  // Çözücüyle aynı kural: proje ayarı açıksa her blok, değilse yalnız meslek dersi öğleyi aşabilir.
+  const span = Boolean(payload.block_across_lunch) || Boolean(vocational);
   if (lunch && !span && start <= lunch && end > lunch) return false;
   return true;
 }
@@ -161,59 +170,142 @@ function teacherIds(assignment) {
   return [...new Set(ids.filter((id) => id != null))];
 }
 
-function emptyState() {
+function electiveOf(member) {
+  return String(member.elective_group || '').trim();
+}
+
+function makeCtx(payload) {
   return {
-    classOcc: new Map(),
-    teacherOcc: new Map(),
-    roomOcc: new Map(),
-    own: new Map(),
+    payload,
+    closed: closedMaps(payload),
+    capacity: new Map((payload.rooms || []).map((r) => [r.id, Number(r.capacity) || 1])),
+    activities: [],
+    classCells: new Map(), // "şube|gün-saat" -> Map(etkinlik -> seçmeli grup)
+    teacherCells: new Map(), // "öğretmen|gün-saat" -> Set(etkinlik)
+    roomCells: new Map(), // "mekan|gün-saat" -> { count, owners }
+    teacherDay: new Map(), // "öğretmen|gün" -> dolu saat
+    groupSlots: new Map(), // "şube|seçmeli grup" -> Map(gün-saat -> ders sayısı)
+    journal: null, // kayıt açıkken yerleştirmeler geri alınabilsin diye tutulur
   };
 }
 
-function classState(state, classroomId, slot) {
-  if (!state.classOcc.has(classroomId)) state.classOcc.set(classroomId, new Map());
-  const slots = state.classOcc.get(classroomId);
-  if (!slots.has(slot)) slots.set(slot, { core: false, groups: new Set() });
-  return slots.get(slot);
-}
-
-function peekClass(state, classroomId, slot) {
-  return state.classOcc.get(classroomId)?.get(slot) || { core: false, groups: new Set() };
-}
-
-function classAllows(current, electiveGroup) {
-  const group = String(electiveGroup || '').trim();
-  if (!group) return !current.core && current.groups.size === 0;
-  if (current.core) return false;
-  for (const name of current.groups) {
-    if (name !== group) return false;
+function groupCounter(ctx, member, create) {
+  const group = electiveOf(member);
+  if (!group) return null;
+  const key = `${member.classroom_id}|${group}`;
+  let slots = ctx.groupSlots.get(key);
+  if (!slots && create) {
+    slots = new Map();
+    ctx.groupSlots.set(key, slots);
   }
-  return true;
+  return slots || null;
 }
 
-function roomCount(state, roomId, slot) {
-  return state.roomOcc.get(roomId)?.get(slot) || 0;
+function addActivity(ctx, activity) {
+  ctx.activities.push({ ...activity, slot: null, warnings: [], siblings: [] });
+  return ctx.activities.length - 1;
 }
 
-function cloneState(state) {
-  const classOcc = new Map();
-  for (const [cid, slots] of state.classOcc) {
-    const copy = new Map();
-    for (const [slot, value] of slots) copy.set(slot, { core: value.core, groups: new Set(value.groups) });
-    classOcc.set(cid, copy);
+function place(ctx, index, day, start, warnings) {
+  const act = ctx.activities[index];
+  for (let offset = 0; offset < act.length; offset += 1) {
+    const slot = slotKey(day, start + offset);
+    for (const member of act.members) {
+      const classKey = `${member.classroom_id}|${slot}`;
+      let owners = ctx.classCells.get(classKey);
+      if (!owners) {
+        owners = new Map();
+        ctx.classCells.set(classKey, owners);
+      }
+      owners.set(index, electiveOf(member));
+      for (const id of teacherIds(member)) {
+        const key = `${id}|${slot}`;
+        let set = ctx.teacherCells.get(key);
+        if (!set) {
+          set = new Set();
+          ctx.teacherCells.set(key, set);
+        }
+        set.add(index);
+        const dayKey = `${id}|${day}`;
+        ctx.teacherDay.set(dayKey, (ctx.teacherDay.get(dayKey) || 0) + 1);
+      }
+      if (member.room_id) {
+        const key = `${member.room_id}|${slot}`;
+        let cell = ctx.roomCells.get(key);
+        if (!cell) {
+          cell = { count: 0, owners: new Set() };
+          ctx.roomCells.set(key, cell);
+        }
+        cell.count += 1;
+        cell.owners.add(index);
+      }
+      const group = groupCounter(ctx, member, true);
+      if (group) group.set(slot, (group.get(slot) || 0) + 1);
+    }
   }
-  const teacherOcc = new Map([...state.teacherOcc].map(([id, set]) => [id, new Set(set)]));
-  const roomOcc = new Map();
-  for (const [id, slots] of state.roomOcc) roomOcc.set(id, new Map(slots));
-  const own = new Map([...state.own].map(([id, set]) => [id, new Set(set)]));
-  return { classOcc, teacherOcc, roomOcc, own };
+  act.slot = { day, start };
+  act.warnings = warnings || [];
+  if (ctx.journal) ctx.journal.push({ type: 'place', index });
 }
 
-function restoreState(state, saved) {
-  state.classOcc = saved.classOcc;
-  state.teacherOcc = saved.teacherOcc;
-  state.roomOcc = saved.roomOcc;
-  state.own = saved.own;
+function unplace(ctx, index) {
+  const act = ctx.activities[index];
+  if (!act.slot) return;
+  const { day, start } = act.slot;
+  const warnings = act.warnings;
+  for (let offset = 0; offset < act.length; offset += 1) {
+    const slot = slotKey(day, start + offset);
+    for (const member of act.members) {
+      ctx.classCells.get(`${member.classroom_id}|${slot}`)?.delete(index);
+      for (const id of teacherIds(member)) {
+        ctx.teacherCells.get(`${id}|${slot}`)?.delete(index);
+        const dayKey = `${id}|${day}`;
+        ctx.teacherDay.set(dayKey, Math.max(0, (ctx.teacherDay.get(dayKey) || 0) - 1));
+      }
+      if (member.room_id) {
+        const cell = ctx.roomCells.get(`${member.room_id}|${slot}`);
+        if (cell) {
+          cell.count -= 1;
+          cell.owners.delete(index);
+        }
+      }
+      const group = groupCounter(ctx, member, false);
+      if (group) {
+        const left = (group.get(slot) || 0) - 1;
+        if (left > 0) group.set(slot, left);
+        else group.delete(slot);
+      }
+    }
+  }
+  act.slot = null;
+  act.warnings = [];
+  if (ctx.journal) ctx.journal.push({ type: 'unplace', index, day, start, warnings });
+}
+
+function snapshot(ctx) {
+  return ctx.activities.map((act) => (act.slot ? { ...act.slot, warnings: act.warnings } : null));
+}
+
+function applySnapshot(ctx, saved) {
+  const journal = ctx.journal;
+  ctx.journal = null;
+  for (let index = 0; index < ctx.activities.length; index += 1) unplace(ctx, index);
+  for (let index = 0; index < saved.length; index += 1) {
+    if (saved[index]) place(ctx, index, saved[index].day, saved[index].start, saved[index].warnings);
+  }
+  ctx.journal = journal;
+}
+
+/** Kayıttaki adımları tersten uygulayıp durumu işarete geri alır. */
+function rewind(ctx, mark) {
+  const journal = ctx.journal;
+  ctx.journal = null;
+  while (journal.length > mark) {
+    const step = journal.pop();
+    if (step.type === 'place') unplace(ctx, step.index);
+    else place(ctx, step.index, step.day, step.start, step.warnings);
+  }
+  ctx.journal = journal;
 }
 
 function isClosed(closed, member, day, period) {
@@ -228,113 +320,140 @@ function isClosed(closed, member, day, period) {
   return null;
 }
 
-function evaluate(payload, state, closed, members, day, start, length, relax) {
-  if (!payload.days.includes(day)) return null;
-  const cells = [];
-  for (let offset = 0; offset < length; offset += 1) cells.push([day, start + offset]);
-  const warnings = [];
-  for (const member of members) {
-    if (!geometryOk(payload, member.classroom_id, member.vocational, start, length)) return null;
+/**
+ * Etkinliğin gün/saat konumunu tartar.
+ * null: geometri veya kapalı saat yüzünden hiç olmaz.
+ * blockers: yer açmak için taşınması gereken etkinlikler (boşsa saat zaten uygun).
+ */
+function conflictsAt(ctx, index, day, start, relax) {
+  const { payload } = ctx;
+  const act = ctx.activities[index];
+  if (!payload.days.includes(day) || start < 1 || start + act.length - 1 > payload.periods) return null;
+  for (const member of act.members) {
+    if (!geometryOk(payload, member.classroom_id, member.vocational, start, act.length)) return null;
   }
-  const pendingClass = new Map();
-  const pendingTeachers = new Set();
-  const pendingRooms = new Map();
-  for (const [dayNo, period] of cells) {
-    const slot = slotKey(dayNo, period);
+  const blockers = new Set();
+  const warnings = [];
+  for (let offset = 0; offset < act.length; offset += 1) {
+    const period = start + offset;
+    const slot = slotKey(day, period);
     const roomExtra = new Map();
-    for (const member of members) {
-      if (state.own.get(member.id)?.has(slot)) return null;
-      const why = isClosed(closed, member, dayNo, period);
+    for (const member of act.members) {
+      const why = isClosed(ctx.closed, member, day, period);
       if (why === 'okul') return null;
       if (why && !relax) return null;
-      if (why && relax) warnings.push(`${why} kapalı`);
-      const classKey = `${member.classroom_id}|${slot}`;
-      if (!pendingClass.has(classKey)) {
-        const current = peekClass(state, member.classroom_id, slot);
-        pendingClass.set(classKey, { core: current.core, groups: new Set(current.groups) });
+      if (why) warnings.push(`${why} kapalı`);
+      const group = electiveOf(member);
+      const owners = ctx.classCells.get(`${member.classroom_id}|${slot}`);
+      if (owners) {
+        for (const [owner, ownerGroup] of owners) {
+          if (owner === index) continue;
+          if (group && ownerGroup === group) continue;
+          blockers.add(owner);
+        }
       }
-      const current = pendingClass.get(classKey);
-      const group = String(member.elective_group || '').trim();
-      if (!classAllows(current, group)) return null;
-      if (!group) current.core = true;
-      else current.groups.add(group);
       for (const id of teacherIds(member)) {
-        const mark = `${id}|${slot}`;
-        if (state.teacherOcc.get(id)?.has(slot) || pendingTeachers.has(mark)) return null;
-        pendingTeachers.add(mark);
+        const set = ctx.teacherCells.get(`${id}|${slot}`);
+        if (set) for (const owner of set) if (owner !== index) blockers.add(owner);
       }
       if (member.room_id) roomExtra.set(member.room_id, (roomExtra.get(member.room_id) || 0) + 1);
     }
     for (const [roomId, extra] of roomExtra) {
-      const capacity = Number((payload.rooms || []).find((r) => r.id === roomId)?.capacity) || 1;
-      const already = roomCount(state, roomId, slot) + (pendingRooms.get(`${roomId}|${slot}`) || 0);
-      if (already + extra > capacity) return null;
-      pendingRooms.set(`${roomId}|${slot}`, (pendingRooms.get(`${roomId}|${slot}`) || 0) + extra);
+      const cell = ctx.roomCells.get(`${roomId}|${slot}`);
+      if (!cell || cell.count + extra <= (ctx.capacity.get(roomId) || 1)) continue;
+      for (const owner of cell.owners) if (owner !== index) blockers.add(owner);
     }
   }
-  return { day, start, length, warnings };
+  return { blockers, warnings };
 }
 
-function commit(state, members, hit) {
-  for (let offset = 0; offset < hit.length; offset += 1) {
-    const period = hit.start + offset;
-    const slot = slotKey(hit.day, period);
-    for (const member of members) {
-      const group = String(member.elective_group || '').trim();
-      const current = classState(state, member.classroom_id, slot);
-      if (!group) current.core = true;
-      else current.groups.add(group);
-      for (const id of teacherIds(member)) {
-        if (!state.teacherOcc.has(id)) state.teacherOcc.set(id, new Set());
-        state.teacherOcc.get(id).add(slot);
-      }
-      if (member.room_id) {
-        if (!state.roomOcc.has(member.room_id)) state.roomOcc.set(member.room_id, new Map());
-        const counts = state.roomOcc.get(member.room_id);
-        counts.set(slot, (counts.get(slot) || 0) + 1);
-      }
-      if (!state.own.has(member.id)) state.own.set(member.id, new Set());
-      state.own.get(member.id).add(slot);
-    }
-  }
-}
-
-function candidates(payload, length, suggestion) {
+/**
+ * Aynı dersin blokları ayrı günlere, öğretmenin yükü günlere dengeli dağılsın;
+ * aynı seçmeli grubun dersleri de aynı saatlerde paralel gitsin.
+ */
+function rankedCandidates(ctx, index) {
+  const { payload } = ctx;
+  const act = ctx.activities[index];
+  const counters = act.members.map((member) => groupCounter(ctx, member, false)).filter(Boolean);
   const out = [];
-  const seen = new Set();
-  const push = (day, start) => {
-    const key = slotKey(day, start);
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push([day, start]);
-  };
-  if (suggestion && payload.days.includes(Number(suggestion.day))) push(Number(suggestion.day), Number(suggestion.start));
   for (const day of payload.days) {
-    for (let start = 1; start + length - 1 <= payload.periods; start += 1) push(day, start);
+    let penalty = 0;
+    for (const sibling of act.siblings) {
+      if (ctx.activities[sibling].slot?.day === day) penalty += 140;
+    }
+    for (const member of act.members) {
+      for (const id of teacherIds(member)) penalty += 2 * (ctx.teacherDay.get(`${id}|${day}`) || 0);
+    }
+    for (let start = 1; start + act.length - 1 <= payload.periods; start += 1) {
+      let score = penalty + Math.random() * 4;
+      if (act.hint && Number(act.hint.day) === day && Number(act.hint.start) === start) score -= 1000;
+      for (const counter of counters) {
+        for (let offset = 0; offset < act.length; offset += 1) {
+          if (counter.has(slotKey(day, start + offset))) score -= 30;
+        }
+      }
+      out.push({ day, start, score });
+    }
   }
+  out.sort((a, b) => a.score - b.score);
   return out;
 }
 
-function placeBlocks(payload, state, closed, members, lengths, suggestions, relax) {
-  const saved = cloneState(state);
-  const placed = [];
-  const warnings = [];
-  for (let index = 0; index < lengths.length; index += 1) {
-    const length = lengths[index];
-    let hit = null;
-    for (const [day, start] of candidates(payload, length, suggestions[index])) {
-      hit = evaluate(payload, state, closed, members, day, start, length, relax);
-      if (hit) break;
+/** Hiçbir dersi oynatmadan boş saat arar. */
+function placeFree(ctx, index, options, relax) {
+  for (const option of options) {
+    const hit = conflictsAt(ctx, index, option.day, option.start, relax);
+    if (hit && hit.blockers.size === 0) {
+      place(ctx, index, option.day, option.start, hit.warnings);
+      return true;
     }
-    if (!hit) {
-      restoreState(state, saved);
-      return null;
-    }
-    commit(state, members, hit);
-    placed.push(hit);
-    warnings.push(...hit.warnings);
   }
-  return { placed, warnings };
+  return false;
+}
+
+/**
+ * Saati tutan dersleri kaldırıp kendi yerleşir, kaldırdıklarını başka saatlere
+ * taşır. Zincir MAX_DEPTH kadar sürebilir; tutmazsa her adım geri alınır.
+ */
+function placeByMoving(ctx, index, options, depth, chain, budget, relax) {
+  const maxMove = depth === 0 ? 3 : 2;
+  chain.add(index);
+  for (const option of options) {
+    if (budget.nodes > budget.maxNodes || Date.now() > budget.deadline) break;
+    const hit = conflictsAt(ctx, index, option.day, option.start, relax);
+    if (!hit || !hit.blockers.size || hit.blockers.size > maxMove) continue;
+    const moving = [...hit.blockers];
+    if (moving.some((other) => ctx.activities[other].locked || chain.has(other))) continue;
+    const mark = ctx.journal.length;
+    for (const other of moving) unplace(ctx, other);
+    place(ctx, index, option.day, option.start, hit.warnings);
+    let done = true;
+    for (const other of moving) {
+      if (!tryPlace(ctx, other, depth + 1, chain, budget)) {
+        done = false;
+        break;
+      }
+    }
+    if (done) {
+      chain.delete(index);
+      return true;
+    }
+    rewind(ctx, mark);
+  }
+  chain.delete(index);
+  return false;
+}
+
+// Önce açık ve boş saat, sonra yer değiştirme, en son kapalı saat denenir.
+function tryPlace(ctx, index, depth, chain, budget) {
+  if (budget.nodes > budget.maxNodes || Date.now() > budget.deadline) return false;
+  budget.nodes += 1;
+  const options = rankedCandidates(ctx, index);
+  if (placeFree(ctx, index, options, false)) return true;
+  if (depth < MAX_DEPTH && placeByMoving(ctx, index, options, depth, chain, budget, false)) return true;
+  if (placeFree(ctx, index, options, true)) return true;
+  if (depth === 0 && placeByMoving(ctx, index, options, depth, chain, budget, true)) return true;
+  return false;
 }
 
 function labelOf(payload, assignment) {
@@ -356,92 +475,221 @@ function suggestionMap(raw) {
   return map;
 }
 
-/**
- * suggestions: Gemini'den gelen [{assignment_id, blocks:[{day,start}]}].
- * Boşsa yerleşim sunucuda, kapalı saatlere mümkün olduğunca girmeden aranır.
- */
-function assembleLessons(payload, suggestions) {
+// Kilitli saatler sabit etkinlik olur; kalan saatler blok desenine göre bölünür.
+function buildActivities(ctx, payload, hinted) {
   const byId = new Map((payload.assignments || []).map((a) => [a.id, a]));
-  const closed = closedMaps(payload);
-  const state = emptyState();
-  const lessons = [];
-  const warnings = [];
-
+  const lockedHours = new Map();
   for (const lock of payload.locked || []) {
     const assignment = byId.get(lock.assignment_id);
     if (!assignment || !payload.days.includes(lock.day)) continue;
     if (lock.period < 1 || lock.period > payload.periods) continue;
-    const hit = { day: lock.day, start: lock.period, length: 1, warnings: [] };
-    commit(state, [assignment], hit);
-    lessons.push({
-      assignment_id: assignment.id,
-      day: lock.day,
-      period: lock.period,
-      room_id: assignment.room_id || null,
-    });
+    const index = addActivity(ctx, { leader: assignment, members: [assignment], length: 1, locked: true, hint: null });
+    place(ctx, index, lock.day, lock.period, []);
+    lockedHours.set(assignment.id, (lockedHours.get(assignment.id) || 0) + 1);
   }
 
-  const hinted = suggestionMap(suggestions);
-  const leaders = leadersOf(payload).sort((a, b) => (b.hours || 0) - (a.hours || 0));
-  const failed = [];
-
-  for (const leader of leaders) {
+  const broken = [];
+  for (const leader of leadersOf(payload)) {
     const members = membersOf(payload, leader);
     const pattern = blocksOf(payload, leader);
     if (!pattern) {
-      failed.push(labelOf(payload, leader));
+      broken.push(labelOf(payload, leader));
       continue;
     }
-    const lockedHours = (state.own.get(leader.id) || new Set()).size;
     let lengths = pattern;
-    let hint = hinted.get(leader.id) || [];
-    if (lockedHours > 0) {
-      const left = pattern.reduce((sum, n) => sum + n, 0) - lockedHours;
+    let hints = hinted.get(leader.id) || [];
+    const already = lockedHours.get(leader.id) || 0;
+    if (already > 0) {
+      const left = pattern.reduce((sum, n) => sum + n, 0) - already;
       if (left < 0) {
-        failed.push(labelOf(payload, leader));
+        broken.push(labelOf(payload, leader));
         continue;
       }
       lengths = Array(left).fill(1);
-      hint = [];
+      hints = [];
     }
-    const strict = placeBlocks(payload, state, closed, members, lengths, hint, false);
-    const placed = strict || placeBlocks(payload, state, closed, members, lengths, hint, true);
-    if (!placed) {
-      failed.push(labelOf(payload, leader));
-      continue;
+    const group = lengths.map((length, order) =>
+      addActivity(ctx, { leader, members, length, locked: false, hint: hints[order] || null })
+    );
+    for (const index of group) ctx.activities[index].siblings = group.filter((other) => other !== index);
+  }
+  return broken;
+}
+
+// Zor yerleşenler önce: uzun bloklar, kalabalık senkron gruplar, yükü ağır öğretmenler.
+function placementOrder(ctx, payload, jitter) {
+  const load = new Map();
+  for (const assignment of payload.assignments || []) {
+    for (const id of teacherIds(assignment)) load.set(id, (load.get(id) || 0) + (Number(assignment.hours) || 0));
+  }
+  return ctx.activities
+    .map((act, index) => {
+      let busiest = 0;
+      for (const member of act.members) {
+        for (const id of teacherIds(member)) busiest = Math.max(busiest, load.get(id) || 0);
+      }
+      const score = act.length * 100 + act.members.length * 20 + busiest + Math.random() * jitter;
+      return { index, locked: act.locked, score };
+    })
+    .filter((item) => !item.locked)
+    .sort((a, b) => b.score - a.score)
+    .map((item) => item.index);
+}
+
+function unplacedOf(ctx) {
+  const out = [];
+  for (let index = 0; index < ctx.activities.length; index += 1) {
+    if (!ctx.activities[index].slot) out.push(index);
+  }
+  return out;
+}
+
+/**
+ * Son çare: ders zorla en az kişiyi rahatsız eden saate konur, oradan kalkanlar
+ * kuyruğa düşer. Yakında oynatılanı tekrar oynatmamak için ceza verilir; en çok
+ * ders yerleşmiş durum ayrıca saklanır ve sonunda ona dönülür.
+ */
+function walkPlace(ctx, pending, deadline) {
+  ctx.journal = null;
+  const queue = [...pending];
+  const stuck = [];
+  const movedAt = new Map();
+  let best = { missing: queue.length, state: snapshot(ctx) };
+  for (let step = 1; queue.length && Date.now() < deadline; step += 1) {
+    const index = queue.shift();
+    if (ctx.activities[index].slot) continue;
+    const options = rankedCandidates(ctx, index);
+    if (!placeFree(ctx, index, options, false) && !placeFree(ctx, index, options, true)) {
+      let pick = null;
+      for (const option of options) {
+        const hit = conflictsAt(ctx, index, option.day, option.start, true);
+        if (!hit || !hit.blockers.size) continue;
+        const blockers = [...hit.blockers];
+        if (blockers.some((other) => ctx.activities[other].locked)) continue;
+        let cost = blockers.length * 10 + option.score / 50;
+        for (const other of blockers) if (step - (movedAt.get(other) || -99) < 25) cost += 40;
+        if (!pick || cost < pick.cost) pick = { option, blockers, warnings: hit.warnings, cost };
+      }
+      if (!pick) {
+        stuck.push(index);
+        continue;
+      }
+      for (const other of pick.blockers) {
+        unplace(ctx, other);
+        movedAt.set(other, step);
+        queue.push(other);
+      }
+      place(ctx, index, pick.option.day, pick.option.start, pick.warnings);
     }
-    if (!strict && placed.warnings.length) {
-      warnings.push({
-        level: 'warning',
-        message: `${labelOf(payload, leader)} kapalı bir saate kondu; başka uygun saat kalmamıştı.`,
-      });
+    const missing = queue.length + stuck.length;
+    if (missing < best.missing) best = { missing, state: snapshot(ctx) };
+    if (!missing) break;
+  }
+  if (queue.length + stuck.length > best.missing) applySnapshot(ctx, best.state);
+  return unplacedOf(ctx);
+}
+
+/**
+ * Önce tüm etkinlikler oynatma yapmadan hızlıca yerleştirilir; yer bulamayanlar
+ * için kalan süre eşit paylaştırılarak yer değiştirme zinciri denenir, kalan
+ * boşluklar da zorla yerleştirmeyle kapatılmaya çalışılır.
+ */
+function fillTimetable(ctx, order, deadline) {
+  let pending = [];
+  for (const index of order) {
+    if (!placeFree(ctx, index, rankedCandidates(ctx, index), false)) pending.push(index);
+  }
+
+  const chainDeadline = Date.now() + (deadline - Date.now()) * 0.4;
+  for (let round = 0; round < REPAIR_ROUNDS && pending.length; round += 1) {
+    const missing = [];
+    for (let i = 0; i < pending.length; i += 1) {
+      const left = chainDeadline - Date.now();
+      if (left <= 0) {
+        missing.push(...pending.slice(i));
+        break;
+      }
+      const slice = Math.min(MAX_SLICE_MS, Math.max(MIN_SLICE_MS, left / (pending.length - i)));
+      ctx.journal = [];
+      const budget = { nodes: 0, maxNodes: 4000, deadline: Math.min(chainDeadline, Date.now() + slice) };
+      if (!tryPlace(ctx, pending[i], 0, new Set(), budget)) missing.push(pending[i]);
     }
-    for (const hit of placed.placed) {
-      for (let offset = 0; offset < hit.length; offset += 1) {
-        for (const member of members) {
-          lessons.push({
-            assignment_id: member.id,
-            day: hit.day,
-            period: hit.start + offset,
-            room_id: member.room_id || null,
-          });
-        }
+    const stalled = missing.length === pending.length;
+    pending = missing;
+    if (stalled) break;
+  }
+
+  return pending.length ? walkPlace(ctx, pending, deadline) : [];
+}
+
+function lessonsOf(ctx) {
+  const lessons = [];
+  const closedAt = new Set();
+  for (const act of ctx.activities) {
+    if (!act.slot) continue;
+    for (let offset = 0; offset < act.length; offset += 1) {
+      for (const member of act.members) {
+        lessons.push({
+          assignment_id: member.id,
+          day: act.slot.day,
+          period: act.slot.start + offset,
+          room_id: member.room_id || null,
+        });
       }
     }
+    if (act.warnings.length) closedAt.add(labelOf(ctx.payload, act.leader));
+  }
+  return { lessons, closedAt };
+}
+
+function nameList(names, limit) {
+  const unique = [...new Set(names)];
+  const more = unique.length > limit ? ` ve ${unique.length - limit} ders daha` : '';
+  return `${unique.slice(0, limit).join(', ')}${more}`;
+}
+
+/**
+ * suggestions: Gemini'den gelen [{assignment_id, blocks:[{day,start}]}].
+ * Öneri tutmazsa yerleşim sunucuda aranır; her denemede sıra biraz değişir.
+ */
+function assembleLessons(payload, suggestions) {
+  const hinted = suggestionMap(suggestions);
+  const started = Date.now();
+  let best = null;
+
+  // İlk deneme Gemini'nin önerdiği sırayla; kalan süre varsa sıra karıştırılıp tekrarlanır.
+  for (let attempt = 0; Date.now() - started < TIME_BUDGET_MS; attempt += 1) {
+    const ctx = makeCtx(payload);
+    const broken = buildActivities(ctx, payload, hinted);
+    const order = placementOrder(ctx, payload, attempt === 0 ? 0 : 120);
+    const share = attempt === 0 ? 0.7 : 1;
+    const missing = fillTimetable(ctx, order, Date.now() + (started + TIME_BUDGET_MS - Date.now()) * share);
+    const left = missing.reduce((sum, index) => sum + ctx.activities[index].length, 0);
+    if (!best || left < best.left) best = { ctx, broken, missing, left };
+    if (!left) break;
   }
 
-  if (failed.length) {
-    const shown = failed.slice(0, 8).join(', ');
-    const more = failed.length > 8 ? ` ve ${failed.length - 8} ders daha` : '';
-    return {
-      ok: false,
-      lessons: [],
-      warnings: [],
-      message: `Yapay zekâ da şu dersleri çakışmasız yerleştiremedi: ${shown}${more}.`,
-    };
+  const { ctx, broken, missing, left } = best;
+  const { lessons, closedAt } = lessonsOf(ctx);
+  if (!lessons.length) {
+    return { ok: false, lessons: [], warnings: [], message: 'Yapay zekâ da çakışmasız bir yerleştirme bulamadı.' };
   }
 
-  return { ok: true, lessons, warnings: warnings.slice(0, 12), message: '' };
+  const warnings = [];
+  if (left || broken.length) {
+    const names = [...missing.map((index) => labelOf(payload, ctx.activities[index].leader)), ...broken];
+    warnings.push({
+      level: 'error',
+      message: `${left} ders saati yerleştirilemedi, elle eklemeniz gerekiyor: ${nameList(names, 8)}.`,
+    });
+  }
+  if (closedAt.size) {
+    warnings.push({
+      level: 'warning',
+      message: `Kapalı saate konan dersler: ${nameList([...closedAt], 6)}. Bunlara başka uygun saat kalmamıştı.`,
+    });
+  }
+  return { ok: true, lessons, warnings, message: '' };
 }
 
 function placementRequest(payload, diagnostics) {
@@ -493,13 +741,22 @@ Kurallar:
 
 async function placeWithAi(payload, diagnostics) {
   const { system, data } = placementRequest(payload, diagnostics);
-  const raw = await gemini.generateJson(system, data, {
-    schema: PLACEMENT_SCHEMA,
-    maxOutputTokens: 16384,
-    temperature: 0.2,
-    timeoutMs: 90000,
-  });
-  return assembleLessons(payload, Array.isArray(raw?.placements) ? raw.placements : []);
+  let placements = [];
+  let answered = true;
+  try {
+    const raw = await gemini.generateJson(system, data, {
+      schema: PLACEMENT_SCHEMA,
+      maxOutputTokens: 16384,
+      temperature: 0.2,
+      timeoutMs: 90000,
+    });
+    placements = Array.isArray(raw?.placements) ? raw.placements : [];
+  } catch (err) {
+    // Gemini susarsa yerleştirme öneri olmadan sunucuda aranır; hak iade edilir.
+    console.warn('[timetable] Gemini yerleşim önerisi alınamadı:', err.message);
+    answered = false;
+  }
+  return { ...assembleLessons(payload, placements), answered };
 }
 
 module.exports = { assembleLessons, placeWithAi };

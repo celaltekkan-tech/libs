@@ -7,6 +7,10 @@ const REGULATIONS = {
     file: path.join(__dirname, '..', 'assets', 'regulations', 'ortaogretim-kurumlari-yonetmeligi.pdf'),
     filename: 'MEB-Ortaogretim-Kurumlari-Yonetmeligi.pdf',
   },
+  'ek-ders-yonetmeligi': {
+    file: path.join(__dirname, '..', 'assets', 'regulations', 'ek-ders-yonetmeligi.pdf'),
+    filename: 'Ek-Ders-Yonetmeligi.pdf',
+  },
 };
 
 module.exports = {
