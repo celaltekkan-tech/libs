@@ -756,15 +756,16 @@ Proje; veritabanı (`db`), backend (`backend`), yönetici paneli (`frontend`),
 tanıtım/landing sayfası (`landing`) ve mobil Expo geliştirme sunucusu (`mobile`)
 olmak üzere beş ayrı container olarak çalışacak şekilde yapılandırılmıştır.
 
-**Kullanılan kurulum: ayrı subdomain'ler** (`app.oids.com.tr` → frontend, `api.oids.com.tr`
-→ backend). Bu yüzden hem `frontend` hem `backend` NPM'in Docker network'üne katılır ve
+**Kullanılan kurulum: ayrı subdomain'ler** (`uyg.oids.com.tr` → frontend, `api.oids.com.tr`
+→ backend). MEB ağı `app.` alt alan adını engellediği için panel `uyg` üzerindedir.
+Bu yüzden hem `frontend` hem `backend` NPM'in Docker network'üne katılır ve
 `.env` içindeki `VITE_API_URL=https://api.oids.com.tr` ile frontend build'i API isteklerini
-doğrudan API subdomain'ine gönderir. Bu, gerçek bir cross-origin istektir; bu yüzden
-`CORS_ORIGIN` içine `https://app.oids.com.tr` mutlaka eklenmelidir (aksi halde tarayıcı
-istekleri backend tarafından reddedilir).
+doğrudan API subdomain'ine gönderir. Bu, gerçek bir cross-origin istektir. Backend,
+`https://oids.com.tr` ve `https://*.oids.com.tr` kökenlerini (panel `uyg`, site, `www`)
+kodda kabul eder; aksi halde tarayıcı istekleri 403 `CORS_BLOCKED` ile reddedilir.
 
 NPM'de oluşturulacak iki Proxy Host:
-- `app.oids.com.tr` → Forward Hostname/IP: `frontend`, Port: `80`
+- `uyg.oids.com.tr` → Forward Hostname/IP: `frontend`, Port: `80`
 - `api.oids.com.tr` → Forward Hostname/IP: `backend`, Port: `4000`
 
 (Frontend'in kendi nginx'i `/api` ve `/health`'i `backend`'e proxy'lemeye devam eder;
