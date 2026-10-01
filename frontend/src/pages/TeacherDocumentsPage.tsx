@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { App, Button, Card, Form, Input, Modal, Select, Space, Tabs, Tag, Typography } from 'antd'
 import { SortableTable } from '../components/SortableTable'
-import { CopyOutlined, DeleteOutlined, LinkOutlined, PlusOutlined } from '@ant-design/icons'
+import { CopyOutlined, DeleteOutlined, DownloadOutlined, LinkOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
@@ -14,8 +14,12 @@ import {
   reviewTeacherDocument,
 } from '../api/teacherDocuments'
 import { getErrorMessage } from '../api/client'
+import { downloadRegulation } from '../api/regulations'
+import { downloadBlob } from '../utils/download'
 import {
   DMK_657_URL,
+  EK_DERS_YONETMELIGI_FILENAME,
+  EK_DERS_YONETMELIGI_SLUG,
   DOC_CATEGORY_OPTIONS,
   DOC_STATUS_LABELS,
   DOC_STATUS_OPTIONS,
@@ -62,6 +66,7 @@ export function TeacherDocumentsPage() {
   const [form] = Form.useForm<TeacherDocumentPayload>()
   const [reviewForm] = Form.useForm<{ status: string; reviewer_note?: string }>()
   const [duplicateYear, setDuplicateYear] = useState('')
+  const [downloadingRegulation, setDownloadingRegulation] = useState(false)
 
   const canCreate = hasPermission('teacher_documents.create')
   const canUpdate = hasPermission('teacher_documents.update')
@@ -140,6 +145,18 @@ export function TeacherDocumentsPage() {
       message.error(getErrorMessage(err))
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const onDownloadEkDers = async () => {
+    setDownloadingRegulation(true)
+    try {
+      const blob = await downloadRegulation(EK_DERS_YONETMELIGI_SLUG)
+      downloadBlob(blob, EK_DERS_YONETMELIGI_FILENAME)
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setDownloadingRegulation(false)
     }
   }
 
@@ -232,14 +249,30 @@ export function TeacherDocumentsPage() {
       />
 
       {category === 'mevzuat' && (
-        <Card size="small" style={{ marginBottom: 16 }}>
-          <Space direction="vertical" size={4}>
-            <Typography.Text strong>657 sayılı Devlet Memurları Kanunu</Typography.Text>
-            <Button type="link" icon={<LinkOutlined />} href={DMK_657_URL} target="_blank" style={{ paddingLeft: 0 }}>
-              Mevzuat.gov.tr üzerinde aç
-            </Button>
-          </Space>
-        </Card>
+        <Space direction="vertical" size={12} style={{ width: '100%', marginBottom: 16 }}>
+          <Card size="small">
+            <Space direction="vertical" size={4}>
+              <Typography.Text strong>657 sayılı Devlet Memurları Kanunu</Typography.Text>
+              <Button type="link" icon={<LinkOutlined />} href={DMK_657_URL} target="_blank" style={{ paddingLeft: 0 }}>
+                Mevzuat.gov.tr üzerinde aç
+              </Button>
+            </Space>
+          </Card>
+          <Card size="small">
+            <Space direction="vertical" size={4}>
+              <Typography.Text strong>Ek Ders Yönetmeliği</Typography.Text>
+              <Button
+                type="link"
+                icon={<DownloadOutlined />}
+                loading={downloadingRegulation}
+                onClick={() => void onDownloadEkDers()}
+                style={{ paddingLeft: 0 }}
+              >
+                PDF olarak indir
+              </Button>
+            </Space>
+          </Card>
+        </Space>
       )}
 
       <SortableTable

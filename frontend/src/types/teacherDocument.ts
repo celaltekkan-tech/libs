@@ -15,6 +15,9 @@ export const DOC_CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
 export const DMK_657_URL =
   'https://www.mevzuat.gov.tr/mevzuat?MevzuatNo=657&MevzuatTur=1&MevzuatTertip=5'
 
+export const EK_DERS_YONETMELIGI_SLUG = 'ek-ders-yonetmeligi'
+export const EK_DERS_YONETMELIGI_FILENAME = 'Ek-Ders-Yonetmeligi.pdf'
+
 export const DOC_TYPE_OPTIONS = [
   { value: 'yillik_plan', label: 'Yıllık Plan' },
   { value: 'zumre_tutanagi', label: 'Zümre Tutanağı' },
