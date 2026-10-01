@@ -1,6 +1,6 @@
 'use strict';
 
-const { ExtraLessonEntry, Teacher, ScheduleEntry, LeaveRecord } = require('../models');
+const { ExtraLessonEntry, ExtraLessonAbsence, Teacher, ScheduleEntry, LeaveRecord } = require('../models');
 const { Op } = require('sequelize');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
@@ -239,6 +239,78 @@ module.exports = {
           r.notes || '',
         ]),
       });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async listAbsences(req, res, next) {
+    try {
+      const tenantId = req.user && req.user.tenant_id;
+      const year = Number(req.query.year);
+      const month = Number(req.query.month);
+      if (!year || !month || month < 1 || month > 12) {
+        return res.status(400).json({ success: false, message: 'Geçerli ay ve yıl gerekli' });
+      }
+      const start = `${year}-${String(month).padStart(2, '0')}-01`;
+      const endDate = new Date(Date.UTC(year, month, 0));
+      const end = endDate.toISOString().slice(0, 10);
+      const where = { absence_date: { [Op.between]: [start, end] } };
+      if (tenantId) where.tenant_id = tenantId;
+      if (req.query.teacher_id) where.teacher_id = Number(req.query.teacher_id);
+      const rows = await ExtraLessonAbsence.findAll({
+        where,
+        order: [['absence_date', 'ASC']],
+        limit: 2000,
+      });
+      res.json({ success: true, data: rows });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async upsertAbsence(req, res, next) {
+    try {
+      const payload = { ...(req.validatedBody || req.body) };
+      const tenantId = req.user && req.user.tenant_id;
+      if (tenantId) payload.tenant_id = tenantId;
+      const teacher = await Teacher.findByPk(payload.teacher_id);
+      if (!teacher || (tenantId && teacher.tenant_id !== tenantId)) {
+        return res.status(400).json({ success: false, message: 'Seçilen personel bulunamadı' });
+      }
+      if (teacher.employment_type !== 'ucretli' && !teacher.duty_assignment_type) {
+        return res.status(400).json({
+          success: false,
+          message: 'Devamsızlık yalnızca ücretli ve dış kurum görevlendirmesi için tutulur',
+        });
+      }
+      const note = payload.note ? String(payload.note).trim() : null;
+      const [row] = await ExtraLessonAbsence.findOrCreate({
+        where: {
+          tenant_id: payload.tenant_id,
+          teacher_id: payload.teacher_id,
+          absence_date: payload.absence_date,
+        },
+        defaults: { reason: payload.reason, note },
+      });
+      if (row.reason !== payload.reason || (row.note || null) !== note) {
+        await row.update({ reason: payload.reason, note });
+      }
+      res.json({ success: true, data: row });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async removeAbsence(req, res, next) {
+    try {
+      const row = await ExtraLessonAbsence.findByPk(req.params.id);
+      if (!row) return res.status(404).json({ success: false, message: 'Kayıt bulunamadı' });
+      if (!assertTenantAccess(req, row)) {
+        return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
+      }
+      await row.destroy();
+      res.json({ success: true, message: 'Devamsızlık silindi' });
     } catch (err) {
       next(err);
     }

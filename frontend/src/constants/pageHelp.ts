@@ -255,11 +255,16 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
   },
   '/extra-lessons': {
     title: 'Ek Ders ve Ücret Puantajı',
-    summary: 'Ek ders / ücret puantaj kayıtlarını tutar ve raporlarsınız.',
+    summary: 'Ücretli ve dış kurum görevlendirmesinin aylık devamsızlığını tutarsınız.',
     topics: [
       {
-        title: 'Puantaj girişi',
-        steps: ['Dönem veya ay bilgisini seçin.', 'Öğretmen / personel satırlarına saat veya gün girin.', 'Kaydedin.'],
+        title: 'Devamsızlık',
+        steps: [
+          'Ücretli veya Dış kurum sekmesini açın.',
+          'Öğretmeni seçin.',
+          'Takvimde güne tıklayıp nedeni yazın.',
+        ],
+        body: 'Kurumun kendi kadrolu personeli bu ekranda yoktur. Puantaj çıktısı örnek form geldikten sonra eklenecek.',
       },
     ],
   },
@@ -297,7 +302,7 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       {
         title: 'Adımlar',
         steps: [
-          'Okul saatlerinde başlangıç saatini ve ders dakikasını girin. Her teneffüsü ayrı yazın; 1. teneffüs 10, 2. teneffüs 5 dakika olabilir. Cuma namazı için güne özel ara ekleyin. Cumartesi ve pazar ders günü değildir; işaretlerseniz programa girer.',
+          'Okul saatlerinde başlangıç saatini ve ders dakikasını girin. Her teneffüsü ayrı yazın; Tüm teneffüslere ata, 1. teneffüsteki süreyi diğerlerine kopyalar. Cumartesi ve pazar işaretli değilse zaman tablosunda görünmez ve açık/kapalı saate katılmaz.',
           'Kültür dersi ile meslek/atölye dersinin günde en fazla kaç saat olacağını ayrı ayrı yazın. Atölye dersini ders havuzunda Meslek olarak işaretleyin; blok boşsa o sınıra göre tek parça konur.',
           'Ortak atölye varsa İstekler sekmesinde Aynı güne gelmesin ile o derslerin okul genelinde aynı güne düşmemesini söyleyin.',
           'Ders havuzunda ders ekleyin. Aynı sınıf için birden fazla saat yazabilirsiniz (örneğin 12. sınıfta Türk dili 3 veya 5 saat). Bu, her şubeye otomatik ders eklemez.',
@@ -432,7 +437,7 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
         title: 'Kullanıcı ekleme',
         steps: [
           'Kullanıcılar sekmesinde Yeni Kullanıcı’ya tıklayın.',
-          'Ad, e-posta, okul, yetki grubu ve isteğe bağlı telefon (SMS için) girin.',
+          'Ad soyad listesinden personeli seçin. E-posta ve telefon kayıttan gelir; değiştirebilirsiniz.',
           'Şifre belirleyip oluşturun.',
         ],
       },

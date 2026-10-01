@@ -6,6 +6,7 @@ const {
   createExtraLessonSchema,
   updateExtraLessonSchema,
   exportExtraLessonSchema,
+  upsertExtraLessonAbsenceSchema,
 } = require('../validators/extraLesson.validator');
 const auth = require('../middlewares/auth');
 const requireModule = require('../middlewares/moduleGuard');
@@ -13,6 +14,16 @@ const permission = require('../middlewares/permission');
 
 const moduleGuard = requireModule('payroll');
 
+router.get('/absences', auth, moduleGuard, permission('payroll.read'), ctrl.listAbsences);
+router.put(
+  '/absences',
+  auth,
+  moduleGuard,
+  permission('payroll.update'),
+  validate(upsertExtraLessonAbsenceSchema),
+  ctrl.upsertAbsence,
+);
+router.delete('/absences/:id', auth, moduleGuard, permission('payroll.delete'), ctrl.removeAbsence);
 router.get('/', auth, moduleGuard, permission('payroll.read'), ctrl.list);
 router.get('/suggest-lesson-load', auth, moduleGuard, permission('payroll.read'), ctrl.suggestLessonLoad);
 router.get('/monthly-summary', auth, moduleGuard, permission('payroll.read'), ctrl.monthlySummary);

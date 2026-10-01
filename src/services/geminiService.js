@@ -71,6 +71,7 @@ const RESPONSE_SCHEMA = {
               mode: { type: 'STRING', enum: ['only', 'avoid'], nullable: true },
               periods: intList,
               days: intList,
+              teacher_ids: intList,
             },
           },
         },
@@ -122,6 +123,8 @@ Kısıt türleri ve params alanları:
 - classroom_unavailable: classroom_id, slots. Şubenin o saatlerde dersi olmasın.
 - room_unavailable: room_id, slots. Mekan (laboratuvar, spor salonu vb.) kullanılamaz.
 - teacher_max_daily_hours: teacher_id (null=tümü), max.
+- teacher_duty_day_max_hours: teacher_id (null=nöbet tutan herkes), max. "Nöbet gününde en fazla 4 saat ders, daha azı olabilir, fazlası olamaz." Bu ders programı kısıtıdır.
+- teacher_no_duty: teacher_ids (birden fazla öğretmen tek listede). "Şu öğretmenler nöbet tutmaz." Bu da ders programı kısıtıdır; nöbet listesinden çıkarılır ve nöbet günü saat sınırına girmez.
 - teacher_min_days_off: teacher_id (null=tümü), count. "boş gün istiyor" -> count=1.
 - teacher_max_consecutive: teacher_id (null=tümü), max. Üst üste en fazla kaç saat.
 - subject_period_preference: subject_id, classroom_id (null=tüm şubeler), mode ("only"=yalnızca bu saatlerde, "avoid"=bu saatlere konmasın), periods, days (boş=tüm günler).
@@ -245,6 +248,9 @@ async function parseConstraints(ctx, userText) {
       }
       for (const sid of params.subject_ids || []) {
         if (!ids.subject_id.has(sid)) throw new Error(`listede olmayan subject_id=${sid}`);
+      }
+      for (const tid of params.teacher_ids || []) {
+        if (!ids.teacher_id.has(tid)) throw new Error(`listede olmayan teacher_id=${tid}`);
       }
       if (params.slots) {
         params.slots = params.slots.filter((s) => ctx.days.includes(s.day));

@@ -14,6 +14,7 @@ const createUserSchema = Joi.object({
   password: Joi.string().required().min(8).max(100),
   is_active: Joi.boolean(),
   phone: Joi.string().trim().max(30).allow('', null),
+  teacher_id: Joi.number().integer().allow(null),
 }).or('role_id', 'school_role');
 
 const updateUserSchema = Joi.object({
@@ -26,6 +27,7 @@ const updateUserSchema = Joi.object({
   password: Joi.string().min(8).max(100),
   is_active: Joi.boolean(),
   phone: Joi.string().trim().max(30).allow('', null),
+  teacher_id: Joi.number().integer().allow(null),
 })
   .or('role_id', 'school_role')
   .min(1);

@@ -41,4 +41,20 @@ const exportExtraLessonSchema = Joi.object({
   month: Joi.number().integer().min(1).max(12).optional(),
 });
 
-module.exports = { createExtraLessonSchema, updateExtraLessonSchema, exportExtraLessonSchema, CATEGORIES };
+const ABSENCE_REASONS = ['rapor', 'izin', 'gorev', 'mazeret', 'devamsiz'];
+
+const upsertExtraLessonAbsenceSchema = Joi.object({
+  teacher_id: Joi.number().integer().required(),
+  absence_date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),
+  reason: Joi.string().valid(...ABSENCE_REASONS).required(),
+  note: Joi.string().trim().max(300).allow('', null),
+});
+
+module.exports = {
+  createExtraLessonSchema,
+  updateExtraLessonSchema,
+  exportExtraLessonSchema,
+  upsertExtraLessonAbsenceSchema,
+  CATEGORIES,
+  ABSENCE_REASONS,
+};

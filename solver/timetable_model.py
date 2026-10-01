@@ -318,6 +318,10 @@ def constraint_label(ctx, c):
         return f"{ctx.label_room(p.get('room_id'))}: kapalı saatler"
     if t == 'teacher_max_daily_hours':
         return f"{who_t}: günde en fazla {p.get('max')} saat"
+    if t == 'teacher_duty_day_max_hours':
+        return f"{who_t}: nöbet gününde en fazla {p.get('max')} saat ders"
+    if t == 'teacher_no_duty':
+        return 'Nöbet tutmayan öğretmenler'
     if t == 'teacher_min_days_off':
         return f"{who_t}: en az {p.get('count')} boş gün"
     if t == 'teacher_max_consecutive':
@@ -769,6 +773,45 @@ def build(ctx, with_assumptions=False):
             for tid in targets_teachers(p):
                 for d in days:
                     at_most(sum(t_busy[(tid, d, pp)] for pp in periods), mx, f'mdh_{cid}_{tid}_{d}')
+
+        elif ctype == 'teacher_no_duty':
+            pass
+
+        elif ctype == 'teacher_duty_day_max_hours':
+            mx = max(1, min(int(p.get('max') or 4), ctx.P))
+            excluded = set()
+            for other in ctx.data.get('constraints', []):
+                if other.get('type') != 'teacher_no_duty':
+                    continue
+                if other.get('is_active') is False:
+                    continue
+                for raw_id in (other.get('params') or {}).get('teacher_ids') or []:
+                    try:
+                        excluded.add(int(raw_id))
+                    except (TypeError, ValueError):
+                        continue
+            for tid in targets_teachers(p):
+                if tid in excluded or tid not in teacher_canon:
+                    continue
+                flags = []
+                for d in days:
+                    is_duty = m.NewBoolVar(f'duty_{cid}_{tid}_{d}')
+                    hours = sum(t_busy[(tid, d, pp)] for pp in periods)
+                    gate = [is_duty] if lit is None else [lit, is_duty]
+                    if hard:
+                        m.Add(hours <= mx).OnlyEnforceIf(gate)
+                    else:
+                        ex = m.NewIntVar(0, ctx.P, f'dutyex_{cid}_{tid}_{d}')
+                        m.Add(ex >= hours - mx).OnlyEnforceIf(is_duty)
+                        m.Add(ex == 0).OnlyEnforceIf(is_duty.Not())
+                        b.violations[cid].append(ex)
+                        b.terms['soft_constraints'].append((w, ex))
+                    flags.append(is_duty)
+                if flags:
+                    if lit is None:
+                        m.Add(sum(flags) == 1)
+                    else:
+                        m.Add(sum(flags) == 1).OnlyEnforceIf(lit)
 
         elif ctype == 'teacher_min_days_off':
             cnt = int(p.get('count') or 1)

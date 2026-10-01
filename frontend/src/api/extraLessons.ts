@@ -1,5 +1,7 @@
 import client from './client'
 import type {
+  ExtraLessonAbsence,
+  ExtraLessonAbsenceReason,
   ExtraLessonEntry,
   ExtraLessonMonthlySummaryRow,
   ExtraLessonPayload,
@@ -50,6 +52,27 @@ export async function fetchExtraLessonMonthlySummary(year: number, month: number
     params: { year, month },
   })
   return data.data
+}
+
+export async function listExtraLessonAbsences(year: number, month: number, teacherId?: number): Promise<ExtraLessonAbsence[]> {
+  const { data } = await client.get<Envelope<ExtraLessonAbsence[]>>('/api/extra-lessons/absences', {
+    params: { year, month, teacher_id: teacherId },
+  })
+  return data.data
+}
+
+export async function saveExtraLessonAbsence(payload: {
+  teacher_id: number
+  absence_date: string
+  reason: ExtraLessonAbsenceReason
+  note?: string | null
+}): Promise<ExtraLessonAbsence> {
+  const { data } = await client.put<Envelope<ExtraLessonAbsence>>('/api/extra-lessons/absences', payload)
+  return data.data
+}
+
+export async function deleteExtraLessonAbsence(id: number): Promise<void> {
+  await client.delete(`/api/extra-lessons/absences/${id}`)
 }
 
 export async function exportExtraLessons(payload: { format: ExportFormat; year?: number; month?: number }): Promise<Blob> {

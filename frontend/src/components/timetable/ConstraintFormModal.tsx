@@ -92,6 +92,21 @@ export function ConstraintFormModal({ ctx, open, editing, seed, onCancel, onSubm
             />
           </Form.Item>
         )}
+        {has('teacher_ids') && (
+          <Form.Item
+            name="teacher_ids"
+            label="Öğretmenler"
+            rules={[{ required: true, message: 'En az bir öğretmen seçin' }]}
+            extra="Bu kişiler nöbet çizelgesine yazılmaz ve nöbet günü ders sınırına girmez."
+          >
+            <Select
+              mode="multiple"
+              showSearch
+              optionFilterProp="label"
+              options={ctx.teachers.map((t) => ({ value: t.id, label: `${t.first_name} ${t.last_name}` }))}
+            />
+          </Form.Item>
+        )}
         {has('subject_id') && (
           <Form.Item name="subject_id" label="Ders" rules={[{ required: true, message: 'Ders seçin' }]}>
             <Select showSearch optionFilterProp="label" options={ctx.subjects.map((s) => ({ value: s.id, label: s.name }))} />

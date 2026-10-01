@@ -20,10 +20,13 @@ import { getErrorMessage } from '../api/client'
 import type { ManagedUser, ManagedUserPayload, UserFormOptions } from '../types/managedUser'
 import { tablePagination } from '../utils/tablePagination'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
+import { listTeachers } from '../api/teachers'
+import type { Teacher } from '../types/teacher'
 import { requiredMobilePhoneRule } from '../utils/phone'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 interface UserFormValues {
+  teacher_id?: number
   full_name: string
   email: string
   phone?: string
@@ -38,6 +41,7 @@ export function UsersPage() {
   const { session, hasPermission } = useAuth()
   const { activeSchoolId } = useActiveSchool()
   const [users, setUsers] = useState<ManagedUser[]>([])
+  const [teachers, setTeachers] = useState<Teacher[]>([])
   const [options, setOptions] = useState<UserFormOptions>({
     school_roles: [],
     schools: [],
@@ -61,15 +65,20 @@ export function UsersPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [userData, formOptions] = await Promise.all([listManagedUsers(), fetchUserFormOptions()])
+      const [userData, formOptions, teacherData] = await Promise.all([
+        listManagedUsers(),
+        fetchUserFormOptions(),
+        listTeachers({ scope: 'all', school_id: activeSchoolId ?? undefined }),
+      ])
       setUsers(userData)
       setOptions(formOptions)
+      setTeachers(teacherData)
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
-  }, [message])
+  }, [message, activeSchoolId])
 
   useEffect(() => {
     void load()
@@ -124,6 +133,7 @@ export function UsersPage() {
   const openEdit = (user: ManagedUser) => {
     setEditing(user)
     form.setFieldsValue({
+      teacher_id: user.teacher_id || teachers.find((teacher) => `${teacher.first_name} ${teacher.last_name}`.trim().toLocaleLowerCase('tr-TR') === user.full_name.trim().toLocaleLowerCase('tr-TR'))?.id,
       full_name: user.full_name,
       email: user.email,
       school_id: user.assigned_school_id || user.school_id || undefined,
@@ -161,6 +171,7 @@ export function UsersPage() {
         school_role: roleMeta?.name || 'Memur',
         is_active: isSelf ? true : values.is_active,
         phone: values.phone?.trim() || null,
+        teacher_id: values.teacher_id || null,
       }
       if (values.password) payload.password = values.password
 
@@ -397,8 +408,33 @@ export function UsersPage() {
         width={560}
       >
         <Form form={form} layout="vertical" onFinish={onFinish}>
-          <Form.Item name="full_name" label="Ad soyad" rules={[{ required: true, message: 'Ad soyad zorunludur' }]}>
-            <Input placeholder="Ad Soyad" />
+          <Form.Item name="full_name" hidden rules={[{ required: true, message: 'Personel seçin' }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item
+            name="teacher_id"
+            label="Ad soyad"
+            rules={editing ? [] : [{ required: true, message: 'Personel seçin' }]}
+            extra="Personel kaydındaki e-posta ve telefon gelir. İsterseniz aşağıdan değiştirebilirsiniz."
+          >
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="Personel seçin"
+              options={teachers.map((teacher) => ({
+                value: teacher.id,
+                label: `${teacher.first_name} ${teacher.last_name}`,
+              }))}
+              onChange={(id) => {
+                const teacher = teachers.find((item) => item.id === id)
+                if (!teacher) return
+                form.setFieldsValue({
+                  full_name: `${teacher.first_name} ${teacher.last_name}`.trim(),
+                  ...(teacher.email ? { email: teacher.email } : {}),
+                  ...(teacher.phone ? { phone: teacher.phone } : {}),
+                })
+              }}
+            />
           </Form.Item>
           <Form.Item
             name="email"

@@ -1,7 +1,7 @@
 'use strict';
 
 const { Op } = require('sequelize');
-const { DutyLocation, DutyAssignment, Teacher, LeaveRecord, sequelize } = require('../models');
+const { DutyLocation, DutyAssignment, Teacher, LeaveRecord, TimetableProject, TimetableConstraint, sequelize } = require('../models');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
 
@@ -123,6 +123,29 @@ async function isTeacherOnLeave(tenantId, teacherId, dateISO, leaveCache) {
  * 2) Her sonraki hafta öğretmenler bir üst kata kaydırılır
  * 3) Aynı kattaki birden fazla nöbetçi sırayla döner
  */
+async function noDutyTeacherIds(tenantId) {
+  const projects = await TimetableProject.findAll({
+    where: { tenant_id: tenantId, status: { [Op.in]: ['taslak', 'yayinda'] } },
+    attributes: ['id'],
+  });
+  if (!projects.length) return new Set();
+  const rows = await TimetableConstraint.findAll({
+    where: {
+      project_id: { [Op.in]: projects.map((p) => p.id) },
+      type: 'teacher_no_duty',
+      is_active: true,
+    },
+  });
+  const ids = new Set();
+  for (const row of rows) {
+    for (const id of (row.params && row.params.teacher_ids) || []) {
+      const n = Number(id);
+      if (Number.isInteger(n) && n > 0) ids.add(n);
+    }
+  }
+  return ids;
+}
+
 async function generateWeeklyRotate({ tenantId, locations, start_date, end_date, include_weekends }) {
   const sortedLocs = sortLocations(locations);
   const locationIds = sortedLocs.map((l) => l.id);
@@ -130,6 +153,7 @@ async function generateWeeklyRotate({ tenantId, locations, start_date, end_date,
   const startDateStr = dateStr(start_date);
   const leaveCache = new Map();
   const skipped = [];
+  const skippedDuty = await noDutyTeacherIds(tenantId);
   let created = 0;
 
   // Şablon günü bul: aralıkta seçilen yerlerin tamamının dolu olduğu ilk iş günü
@@ -163,7 +187,9 @@ async function generateWeeklyRotate({ tenantId, locations, start_date, end_date,
 
   // Şablon yoksa ilk iş gününe adil atama yaparak şablon oluştur
   if (baseMap.size < locationIds.length) {
-    const teachers = await Teacher.findAll({ where: { tenant_id: tenantId }, order: [['id', 'ASC']] });
+    const teachers = (
+      await Teacher.findAll({ where: { tenant_id: tenantId }, order: [['id', 'ASC']] })
+    ).filter((teacher) => !skippedDuty.has(teacher.id));
     if (teachers.length === 0) {
       return {
         created: 0,
@@ -243,6 +269,10 @@ async function generateWeeklyRotate({ tenantId, locations, start_date, end_date,
         }
 
         let teacherId = dayMap.get(loc.id);
+        if (teacherId != null && skippedDuty.has(teacherId)) {
+          skipped.push({ date: cursor, location: loc.name, reason: 'Öğretmen nöbet tutmuyor' });
+          continue;
+        }
         if (teacherId == null || assignedToday.has(teacherId)) {
           skipped.push({
             date: cursor,
@@ -255,7 +285,9 @@ async function generateWeeklyRotate({ tenantId, locations, start_date, end_date,
         const onLeave = await isTeacherOnLeave(tenantId, teacherId, cursor, leaveCache);
         if (onLeave) {
           // Aynı kattaki sıradaki yedek (şablondaki diğer öğretmenler)
-          const alternates = [...dayMap.values()].filter((id) => id !== teacherId && !assignedToday.has(id));
+          const alternates = [...dayMap.values()].filter(
+            (id) => id !== teacherId && !assignedToday.has(id) && !skippedDuty.has(id),
+          );
           let replaced = null;
           for (const alt of alternates) {
             if (!(await isTeacherOnLeave(tenantId, alt, cursor, leaveCache))) {
