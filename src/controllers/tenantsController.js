@@ -419,6 +419,37 @@ module.exports = {
     }
   },
 
+  async resetUserPassword(req, res, next) {
+    try {
+      const tenant = await Tenant.findByPk(req.params.id);
+      if (!tenant) {
+        return res.status(404).json({ success: false, message: 'Hesap bulunamadı' });
+      }
+
+      const user = await User.findOne({
+        where: { id: req.params.userId, tenant_id: tenant.id },
+      });
+      if (!user || user.is_platform_admin) {
+        return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı' });
+      }
+
+      const payload = req.validatedBody || req.body;
+      const password_hash = await bcrypt.hash(payload.password, BCRYPT_ROUNDS);
+      await user.update({ password_hash });
+
+      const loginLockout = require('../services/loginLockoutService');
+      await loginLockout.clearFailures(user);
+
+      res.json({
+        success: true,
+        message: `Şifre sıfırlandı: ${user.full_name}`,
+        data: { user_id: user.id },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async updateUser(req, res, next) {
     try {
       const tenant = await Tenant.findByPk(req.params.id);

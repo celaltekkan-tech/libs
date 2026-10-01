@@ -82,6 +82,18 @@ export async function resetTenantUserSmsLogin(
   return data.data
 }
 
+export async function resetTenantUserPassword(
+  tenantId: number,
+  userId: number,
+  password: string,
+): Promise<{ user_id: number }> {
+  const { data } = await client.post<Envelope<{ user_id: number }>>(
+    `/api/tenants/${tenantId}/users/${userId}/reset-password`,
+    { password },
+  )
+  return data.data
+}
+
 export async function updateTenantUser(
   tenantId: number,
   userId: number,

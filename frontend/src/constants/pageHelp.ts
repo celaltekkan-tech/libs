@@ -533,7 +533,7 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       },
       {
         title: 'Detay',
-        body: 'Hesap satırından detaya giderek kullanıcı, lisans ve okul özetini görürsünüz.',
+        body: 'Hesap satırından detaya giderek kullanıcı, lisans ve okul özetini görürsünüz. Kullanıcı satırındaki Şifre sıfırla ile yeni şifre belirlersiniz; giriş kilidi de kalkar.',
       },
     ],
   },

@@ -42,4 +42,13 @@ const updateTenantUserSchema = Joi.object({
   phone,
 }).or('full_name', 'email', 'phone');
 
-module.exports = { createTenantWizardSchema, updateTenantSchema, updateTenantUserSchema };
+const resetTenantUserPasswordSchema = Joi.object({
+  password: Joi.string().required().min(8).max(100),
+});
+
+module.exports = {
+  createTenantWizardSchema,
+  updateTenantSchema,
+  updateTenantUserSchema,
+  resetTenantUserPasswordSchema,
+};

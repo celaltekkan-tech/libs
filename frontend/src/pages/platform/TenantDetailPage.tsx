@@ -11,6 +11,7 @@ import {
   listTenantSchools,
   listTenantUsers,
   resetTenantTwoFactor,
+  resetTenantUserPassword,
   resetTenantUserTwoFactor,
   resetTenantUserSmsLogin,
   updateTenant,
@@ -27,6 +28,11 @@ interface EditUserForm {
   full_name: string
   email: string
   phone?: string
+}
+
+interface ResetPasswordForm {
+  password: string
+  confirm_password: string
 }
 
 interface TenantContactForm {
@@ -52,9 +58,12 @@ export function TenantDetailPage() {
   const [resettingUserId, setResettingUserId] = useState<number | null>(null)
   const [resettingSmsUserId, setResettingSmsUserId] = useState<number | null>(null)
   const [editingUser, setEditingUser] = useState<TenantUser | null>(null)
+  const [passwordUser, setPasswordUser] = useState<TenantUser | null>(null)
   const [savingUser, setSavingUser] = useState(false)
+  const [savingPassword, setSavingPassword] = useState(false)
   const [savingPhone, setSavingPhone] = useState(false)
   const [editForm] = Form.useForm<EditUserForm>()
+  const [passwordForm] = Form.useForm<ResetPasswordForm>()
   const [contactForm] = Form.useForm<TenantContactForm>()
 
   const load = useCallback(async () => {
@@ -77,6 +86,37 @@ export function TenantDetailPage() {
       setLoading(false)
     }
   }, [tenantId, message, contactForm])
+
+  function openResetPassword(user: TenantUser) {
+    setPasswordUser(user)
+    passwordForm.resetFields()
+  }
+
+  function closeResetPassword() {
+    setPasswordUser(null)
+    passwordForm.resetFields()
+  }
+
+  async function handleResetPassword(values: ResetPasswordForm) {
+    if (!passwordUser) return
+    setSavingPassword(true)
+    try {
+      await resetTenantUserPassword(tenantId, passwordUser.id, values.password)
+      setUsers((prev) =>
+        prev.map((user) =>
+          user.id === passwordUser.id
+            ? { ...user, login_failed_count: 0, login_locked_until: null }
+            : user,
+        ),
+      )
+      message.success(`${passwordUser.full_name} için şifre sıfırlandı`)
+      closeResetPassword()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSavingPassword(false)
+    }
+  }
 
   const activeLicense = licenses.find((license) => license.status === 'active' && !isAddonPlan(license.plan))
   const activeSmsLicense = licenses.find((license) => license.status === 'active' && isSmsPlan(license.plan))
@@ -585,6 +625,9 @@ export function TenantDetailPage() {
                               >
                                 Düzenle
                               </Button>
+                              <Button size="small" onClick={() => openResetPassword(record)}>
+                                Şifre sıfırla
+                              </Button>
                               <Popconfirm
                                 title={`${record.full_name} için 2FA sıfırlansın mı?`}
                                 okText="Sıfırla"
@@ -675,6 +718,51 @@ export function TenantDetailPage() {
             ]}
           >
             <Input placeholder="05xx xxx xx xx" maxLength={30} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={passwordUser ? `${passwordUser.full_name} — şifre sıfırla` : 'Şifre sıfırla'}
+        open={Boolean(passwordUser)}
+        onCancel={closeResetPassword}
+        onOk={() => passwordForm.submit()}
+        confirmLoading={savingPassword}
+        okText="Şifreyi kaydet"
+        cancelText="Vazgeç"
+        destroyOnClose
+      >
+        <Typography.Paragraph type="secondary">
+          Yeni şifre en az 8 karakter olmalıdır. Kayıt sonrası giriş kilidi de kalkar.
+        </Typography.Paragraph>
+        <Form form={passwordForm} layout="vertical" onFinish={(values) => void handleResetPassword(values)}>
+          <Form.Item
+            name="password"
+            label="Yeni şifre"
+            rules={[
+              { required: true, message: 'Yeni şifre zorunludur' },
+              { min: 8, message: 'Şifre en az 8 karakter olmalı' },
+            ]}
+          >
+            <Input.Password autoComplete="new-password" placeholder="En az 8 karakter" />
+          </Form.Item>
+          <Form.Item
+            name="confirm_password"
+            label="Yeni şifre (tekrar)"
+            dependencies={['password']}
+            rules={[
+              { required: true, message: 'Şifre tekrarı zorunludur' },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('password') === value) {
+                    return Promise.resolve()
+                  }
+                  return Promise.reject(new Error('Şifreler eşleşmiyor'))
+                },
+              }),
+            ]}
+          >
+            <Input.Password autoComplete="new-password" />
           </Form.Item>
         </Form>
       </Modal>
