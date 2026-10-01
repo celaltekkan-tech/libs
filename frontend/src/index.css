@@ -722,6 +722,141 @@ body {
   flex-shrink: 0;
 }
 
+.duty-workspace {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.duty-teacher-panel {
+  background: var(--app-header-bg);
+  border: 1px solid var(--app-header-border);
+  border-radius: 12px;
+  padding: 12px;
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 140px);
+  display: flex;
+  flex-direction: column;
+  min-height: 240px;
+}
+
+.duty-teacher-panel-list {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+}
+
+.duty-teacher-panel-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.duty-teacher-panel-item:hover {
+  background: rgba(29, 78, 137, 0.08);
+}
+
+.duty-teacher-panel-item.is-selected {
+  background: rgba(29, 78, 137, 0.14);
+}
+
+.duty-schedule-block {
+  margin-bottom: 12px;
+}
+
+.duty-schedule-status {
+  padding: 12px 0;
+}
+
+.duty-schedule-cards {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.duty-schedule-card {
+  background: var(--app-header-bg);
+  border: 1px solid var(--app-header-border);
+  border-top: 3px solid;
+  border-radius: 10px;
+  padding: 8px 10px;
+  min-width: 0;
+}
+
+.duty-schedule-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 6px;
+  text-transform: capitalize;
+}
+
+.duty-schedule-duty {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--app-muted);
+  text-transform: none;
+}
+
+.duty-schedule-slot {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 2px 0;
+}
+
+.duty-schedule-slot.is-free {
+  color: var(--app-muted);
+}
+
+.duty-schedule-period {
+  flex: 0 0 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--app-muted);
+}
+
+.duty-grid-day-clear {
+  display: block;
+  margin-top: 4px;
+  padding: 0;
+  height: auto;
+  font-size: 11px;
+  white-space: normal;
+  text-align: left;
+}
+
+@media (max-width: 1100px) {
+  .duty-schedule-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .duty-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .duty-teacher-panel {
+    position: static;
+    max-height: 320px;
+  }
+}
+
 [data-theme='dark'] .duty-grid-cell:hover,
 [data-theme='dark'] .duty-grid-cell.is-active {
   background: rgba(96, 165, 250, 0.1);

@@ -127,10 +127,12 @@ PLATFORM_ADMIN_PASSWORD=SuperAdmin1234
 ## Yapay Zekâ ve Ders Programı Çözücüsü Ayarları
 
 "Otomatik Ders Programı" sayfasında programı **Google OR-Tools** (`solver` servisi) üretir.
-Yapay zekâ (Google Gemini) yalnızca kullanıcının Türkçe yazdığı isteği ("Ayşe Hoca cuma
-gelemiyor") ders programı kısıtına çevirir; kullanıcı onaylamadan hiçbir şey eklenmez.
-Yapay zekâ **yalnızca ders programı işleri** için kullanılır; kapsam dışı istekler sunucuda
-reddedilir ve denetim kaydına yazılır.
+Yapay zekâ (Google Gemini) iki iş yapar: kullanıcının Türkçe yazdığı ders programı isteğini
+("Ayşe Hoca cuma gelemiyor") kısıta çevirir ve OIDS modülleriyle ilgili sorulara kısa cevap verir
+(nöbet, sınav, ek ders, rapor, devamsızlık ve diğer okul işleri ders programına bağlı olabilir).
+Kısıt, kullanıcı onaylamadan eklenmez. OIDS dışı istekler sunucuda reddedilir ve denetim kaydına yazılır.
+Çözücü uygun program bulamazsa ve kiracıda Yapay Zekâ lisansı varsa yerleştirmeyi Gemini dener.
+Çakışmasız bir program çıkarsa çalıştırma tamamlanır; çıkmazsa çalıştırma başarısız kalır. Bu deneme günlük kotadan düşer.
 
 ### Anahtar ve faturalandırma
 

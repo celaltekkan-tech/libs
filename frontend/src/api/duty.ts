@@ -70,6 +70,14 @@ export async function deleteDutyAssignment(id: number): Promise<void> {
   await client.delete(`/api/duty/${id}`)
 }
 
+export async function clearDutyAssignments(payload: {
+  start_date: string
+  end_date: string
+}): Promise<{ deleted: number }> {
+  const { data } = await client.post<Envelope<{ deleted: number }>>('/api/duty/clear', payload)
+  return data.data
+}
+
 export async function generateDutyRoster(
   tenantId: number,
   payload: {

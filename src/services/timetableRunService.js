@@ -1,9 +1,13 @@
 'use strict';
 
 const { Op } = require('sequelize');
-const { sequelize, TimetableRun, TimetableLesson, TimetableAssignment } = require('../models');
+const { sequelize, TimetableRun, TimetableLesson, TimetableAssignment, TimetableProject } = require('../models');
 const solver = require('./timetableSolverClient');
 const { buildPayload } = require('./timetableBuildService');
+const gemini = require('./geminiService');
+const licenseService = require('./licenseService');
+const aiUsage = require('./aiUsageService');
+const { placeWithAi } = require('./timetableAiPlacer');
 
 const POLL_MS = 2000;
 const pollers = new Map();
@@ -96,7 +100,28 @@ async function pollOnce(runId) {
   }
 
   const result = job.result || {};
-  const hasLessons = Array.isArray(result.lessons) && result.lessons.length > 0;
+  let lessons = Array.isArray(result.lessons) && result.lessons.length ? result.lessons : null;
+  let solverStatus = result.status || null;
+  let diagnostics = result.diagnostics || [];
+  let score = result.score;
+  let violations = result.violations;
+  let objective = result.objective ?? run.objective;
+
+  if (!lessons && canAskAi(job, result)) {
+    const ai = await tryAiFallback(run, result);
+    if (ai?.lessons?.length) {
+      lessons = ai.lessons;
+      solverStatus = 'AI';
+      diagnostics = ai.diagnostics;
+      score = {};
+      violations = [];
+      objective = null;
+    } else if (ai?.diagnostics?.length) {
+      diagnostics = [...diagnostics, ...ai.diagnostics];
+    }
+  }
+
+  const hasLessons = Boolean(lessons?.length);
   let status = 'tamamlandi';
   if (job.status === 'failed') status = 'basarisiz';
   else if (job.status === 'cancelled' && !hasLessons) status = 'iptal';
@@ -104,11 +129,11 @@ async function pollOnce(runId) {
 
   await run.update({
     status,
-    solver_status: result.status || null,
-    objective: result.objective ?? run.objective,
+    solver_status: solverStatus,
+    objective,
     best_bound: result.best_bound ?? run.best_bound,
-    result: hasLessons ? { lessons: result.lessons, score: result.score, violations: result.violations } : null,
-    diagnostics: result.diagnostics || [],
+    result: hasLessons ? { lessons, score, violations } : null,
+    diagnostics,
     error: job.error || null,
     finished_at: new Date(),
   });
@@ -119,6 +144,70 @@ async function pollOnce(runId) {
     if (existing === 0) await applyRun(run);
   }
   return true;
+}
+
+function canAskAi(job, result) {
+  if (job.status === 'failed' || job.status === 'cancelled') return false;
+  if (result.status === 'CANCELLED' || result.status === 'INVALID') return false;
+  return true;
+}
+
+// Çözücü ders üretemediyse ve kiracıda yapay zekâ lisansı varsa yerleştirmeyi dener.
+// Lisans yoksa null döner; çağrı hata verirse kotayı iade eder.
+async function tryAiFallback(run, result) {
+  const project = await TimetableProject.findByPk(run.project_id);
+  if (!project) return null;
+  const license = await licenseService.getActiveAiLicense(project.tenant_id);
+  if (!license) return null;
+  if (!gemini.isEnabled()) {
+    return {
+      diagnostics: [
+        {
+          level: 'warning',
+          message: 'Çözücü uygun program bulamadı. Yapay zekâ lisansınız var ama sunucuda anahtar tanımlı değil.',
+        },
+      ],
+    };
+  }
+
+  const limit = aiUsage.resolveLimit(license);
+  try {
+    await aiUsage.consume(project.tenant_id, limit);
+  } catch (err) {
+    return { diagnostics: [{ level: 'warning', message: err.message }] };
+  }
+
+  await run.update({
+    progress: {
+      phase: 'ai',
+      message: 'Çözücü uygun program bulamadı. Yapay zekâ yerleştiriyor.',
+      solutions: run.progress?.solutions || 0,
+      objective: run.objective,
+      best_bound: run.best_bound,
+      elapsed: run.progress?.elapsed,
+    },
+  });
+
+  try {
+    const payload = await buildPayload(project);
+    const placed = await placeWithAi(payload, result.diagnostics || []);
+    if (!placed.ok) return { diagnostics: [{ level: 'error', message: placed.message }] };
+    return {
+      lessons: placed.lessons,
+      diagnostics: [
+        {
+          level: 'warning',
+          message: `Çözücü uygun program bulamadı (${result.status || 'sonuç yok'}). ${placed.lessons.length} ders saati yapay zekâ ile yerleştirildi. Taslağı kontrol edin.`,
+        },
+        ...placed.warnings,
+      ],
+    };
+  } catch (err) {
+    await aiUsage.refund(project.tenant_id);
+    return {
+      diagnostics: [{ level: 'error', message: `Yapay zekâ yerleştirmesi yapılamadı: ${err.message}` }],
+    };
+  }
 }
 
 async function cancelRun(run) {

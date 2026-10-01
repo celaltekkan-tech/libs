@@ -26,6 +26,7 @@ import isoWeek from 'dayjs/plugin/isoWeek'
 import { AppLayout } from '../components/AppLayout'
 import { useAuth } from '../auth/AuthContext'
 import {
+  clearDutyAssignments,
   copyDutyWeek,
   createDutyAssignment,
   createDutyLocation,
@@ -36,10 +37,12 @@ import {
   listDutyLocations,
   updateDutyLocation,
 } from '../api/duty'
+import { listScheduleEntries } from '../api/schedule'
 import { listTeachers } from '../api/teachers'
 import { ApiError, getErrorMessage } from '../api/client'
 import type { DutyAssignment, DutyLocation } from '../types/duty'
 import type { Teacher } from '../types/teacher'
+import type { ScheduleEntry } from '../types/scheduleEntry'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
 
 dayjs.extend(isoWeek)
@@ -90,14 +93,40 @@ function compareTeachersTr(a: Teacher, b: Teacher) {
   return teacherLabel(a).localeCompare(teacherLabel(b), 'tr')
 }
 
-function TeacherDutyName({ name, dayIndexes }: { name: string; dayIndexes: number[] }) {
+function currentAcademicYear(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  return now.getMonth() >= 8 ? `${year}-${year + 1}` : `${year - 1}-${year}`
+}
+
+function trDayLabel(day: dayjs.Dayjs) {
+  const raw = day.format('dddd')
+  return raw.charAt(0).toLocaleUpperCase('tr-TR') + raw.slice(1)
+}
+
+function classroomShort(entry: ScheduleEntry) {
+  const room = entry.Classroom
+  if (!room) return ''
+  return `${room.class_level}/${room.section}`
+}
+
+function TeacherDutyName({
+  name,
+  dayIndexes,
+  count = 0,
+}: {
+  name: string
+  dayIndexes: number[]
+  count?: number
+}) {
+  const label = count > 0 ? `(${count}) ${name}` : name
   const unique = [...new Set(dayIndexes)].sort((a, b) => a - b)
-  if (unique.length === 0) return <span>{name}</span>
+  if (unique.length === 0) return <span>{label}</span>
   if (unique.length === 1) {
     const color = DUTY_DAY_COLORS[unique[0] % DUTY_DAY_COLORS.length]
     return (
       <span className="duty-teacher-name" style={{ background: color, color: '#fff' }}>
-        {name}
+        {label}
       </span>
     )
   }
@@ -114,7 +143,7 @@ function TeacherDutyName({ name, dayIndexes }: { name: string; dayIndexes: numbe
       className="duty-teacher-name"
       style={{ backgroundImage: `linear-gradient(90deg, ${stops})`, color: '#fff' }}
     >
-      {name}
+      {label}
     </span>
   )
 }
@@ -142,6 +171,10 @@ export function DutyPage() {
   const [exportOpen, setExportOpen] = useState(false)
   const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx')
   const [teacherQuery, setTeacherQuery] = useState('')
+  const [listQuery, setListQuery] = useState('')
+  const [selectedTeacherId, setSelectedTeacherId] = useState<number | null>(null)
+  const [schedule, setSchedule] = useState<ScheduleEntry[]>([])
+  const [scheduleReady, setScheduleReady] = useState(false)
   const [copyOpen, setCopyOpen] = useState(false)
   const [shiftLocations, setShiftLocations] = useState(false)
   const teacherListRef = useRef<HTMLDivElement>(null)
@@ -153,6 +186,7 @@ export function DutyPage() {
 
   const canCreate = hasPermission('duty.create')
   const canDelete = hasPermission('duty.delete')
+  const canReadSchedule = hasPermission('schedule.read')
   const ensuredAdminPlace = useRef(false)
 
   const weekDays = useMemo(
@@ -196,6 +230,31 @@ export function DutyPage() {
   }, [load])
 
   useEffect(() => {
+    if (!canReadSchedule) {
+      setSchedule([])
+      setScheduleReady(true)
+      return
+    }
+    let cancelled = false
+    setScheduleReady(false)
+    const year = currentAcademicYear()
+    ;(async () => {
+      try {
+        let rows = await listScheduleEntries({ academic_year: year })
+        if (rows.length === 0) rows = await listScheduleEntries()
+        if (!cancelled) setSchedule(rows)
+      } catch {
+        if (!cancelled) setSchedule([])
+      } finally {
+        if (!cancelled) setScheduleReady(true)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [canReadSchedule])
+
+  useEffect(() => {
     if (!loading && locations.length === 0 && canCreate) {
       setupForm.setFieldsValue({ location_names: 'Nöbetçi İdareci', capacity })
       setSetupOpen(true)
@@ -210,6 +269,12 @@ export function DutyPage() {
     ensuredAdminPlace.current = true
     void createDutyLocation(tenantId, { name: 'Nöbetçi İdareci' }).then(() => load())
   }, [loading, locations, canCreate, tenantId, load])
+
+  const dutyCountByTeacher = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const a of assignments) map.set(a.teacher_id, (map.get(a.teacher_id) || 0) + 1)
+    return map
+  }, [assignments])
 
   const teacherDayMap = useMemo(() => {
     const map = new Map<number, number[]>()
@@ -437,6 +502,44 @@ export function DutyPage() {
     }
   }
 
+  const clearRange = async (start: string, end: string, successText: string) => {
+    setSubmitting(true)
+    try {
+      const result = await clearDutyAssignments({ start_date: start, end_date: end })
+      message.success(result.deleted > 0 ? successText : 'Silinecek atama yoktu')
+      setPickerOpen(false)
+      setActiveCell(null)
+      void load()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const confirmClearWeek = () => {
+    if (assignments.length === 0) return
+    modal.confirm({
+      title: 'Tüm atamaları sil',
+      content: `${weekDays[0].format('DD.MM.YYYY')} – ${weekDays[weekDays.length - 1].format('DD.MM.YYYY')} arasındaki tüm nöbet atamaları silinecek.`,
+      okText: 'Sil',
+      okButtonProps: { danger: true },
+      cancelText: 'Vazgeç',
+      onOk: () => clearRange(startDate, endDate, 'Bu haftanın nöbet atamaları silindi'),
+    })
+  }
+
+  const confirmClearDay = (date: string, label: string) => {
+    modal.confirm({
+      title: 'Gün atamasını sil',
+      content: `${label} günündeki nöbet atamaları silinecek.`,
+      okText: 'Sil',
+      okButtonProps: { danger: true },
+      cancelText: 'Vazgeç',
+      onOk: () => clearRange(date, date, `${label} nöbet atamaları silindi`),
+    })
+  }
+
   const onExport = async () => {
     setSubmitting(true)
     try {
@@ -521,7 +624,11 @@ export function DutyPage() {
               disabled={busyOther || submitting || !canCreate}
               onClick={() => void assignTeacher(t.id)}
             >
-              <TeacherDutyName name={teacherLabel(t)} dayIndexes={days} />
+              <TeacherDutyName
+                name={teacherLabel(t)}
+                dayIndexes={days}
+                count={dutyCountByTeacher.get(t.id) || 0}
+              />
               {days.length > 0 && (
                 <span className="duty-teacher-picker-hint">
                   {[...days]
@@ -540,6 +647,38 @@ export function DutyPage() {
 
   const slotIndexes = useMemo(() => Array.from({ length: capacity }, (_, i) => i), [capacity])
 
+  const listedTeachers = useMemo(() => {
+    const q = listQuery.trim().toLocaleLowerCase('tr-TR')
+    if (!q) return teachers
+    return teachers.filter((t) => teacherLabel(t).toLocaleLowerCase('tr-TR').includes(q))
+  }, [teachers, listQuery])
+
+  const periodCount = useMemo(() => {
+    const max = schedule.reduce((highest, entry) => Math.max(highest, entry.period_no || 0), 0)
+    return max
+  }, [schedule])
+
+  const selectedTeacher = teachers.find((t) => t.id === selectedTeacherId) || null
+
+  const selectedLessons = useMemo(() => {
+    if (selectedTeacherId == null) return []
+    return schedule.filter(
+      (entry) =>
+        entry.teacher_id === selectedTeacherId ||
+        (entry.co_teacher_ids || []).includes(selectedTeacherId),
+    )
+  }, [schedule, selectedTeacherId])
+
+  const dutyDatesByTeacher = useMemo(() => {
+    const map = new Map<number, Set<string>>()
+    for (const a of assignments) {
+      const set = map.get(a.teacher_id) || new Set<string>()
+      set.add(a.duty_date.slice(0, 10))
+      map.set(a.teacher_id, set)
+    }
+    return map
+  }, [assignments])
+
   return (
     <AppLayout title="Nöbet Programı">
       <Space wrap style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
@@ -548,7 +687,7 @@ export function DutyPage() {
             Nöbet Programı
           </Typography.Title>
           <Typography.Text type="secondary">
-            Bir yere birden fazla kişi yazılabilir. Aynı kişi aynı gün yalnızca bir kez yazılır; haftanın başka günlerinde de olabilir. Listede hangi günlerde yazıldığı görünür.
+            Bir yere birden fazla kişi yazılabilir. Aynı kişi aynı gün yalnızca bir kez yazılır; haftanın başka günlerinde de olabilir. Öğretmen listesinde kaç nöbet yazıldığı görünür; ada tıklayınca ders programı açılır.
           </Typography.Text>
         </div>
         <Space wrap>
@@ -581,6 +720,11 @@ export function DutyPage() {
             Sonraki haftaya aktar
           </Button>
         )}
+        {canDelete && (
+          <Button danger disabled={assignments.length === 0 || submitting} onClick={confirmClearWeek}>
+            Tüm atamaları sil
+          </Button>
+        )}
       </Space>
 
       <Spin spinning={loading}>
@@ -596,6 +740,117 @@ export function DutyPage() {
             )}
           </div>
         ) : (
+          <div className="duty-workspace">
+            <aside className="duty-teacher-panel">
+              <Typography.Text strong>Öğretmenler</Typography.Text>
+              <Input
+                allowClear
+                size="small"
+                placeholder="Öğretmen ara"
+                value={listQuery}
+                onChange={(event) => setListQuery(event.target.value)}
+                style={{ marginTop: 8 }}
+              />
+              <div className="duty-teacher-panel-list">
+                {listedTeachers.map((t) => {
+                  const days = teacherDayMap.get(t.id) || []
+                  const selected = selectedTeacherId === t.id
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className={`duty-teacher-panel-item${selected ? ' is-selected' : ''}`}
+                      onClick={() =>
+                        setSelectedTeacherId((current) => (current === t.id ? null : t.id))
+                      }
+                    >
+                      <TeacherDutyName
+                        name={teacherLabel(t)}
+                        dayIndexes={days}
+                        count={dutyCountByTeacher.get(t.id) || 0}
+                      />
+                    </button>
+                  )
+                })}
+                {listedTeachers.length === 0 && (
+                  <Typography.Text type="secondary">Öğretmen bulunamadı</Typography.Text>
+                )}
+              </div>
+            </aside>
+            <div className="duty-workspace-main">
+              {selectedTeacher && (
+                <div className="duty-schedule-block">
+                  <Typography.Text strong>
+                    {teacherLabel(selectedTeacher)} — ders programı
+                  </Typography.Text>
+                  {!scheduleReady ? (
+                    <div className="duty-schedule-status">
+                      <Spin size="small" />
+                    </div>
+                  ) : !canReadSchedule ? (
+                    <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                      Ders programını görmek için yetki gerekir.
+                    </Typography.Paragraph>
+                  ) : periodCount === 0 ? (
+                    <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                      Yayınlanmış ders programı bulunamadı.
+                    </Typography.Paragraph>
+                  ) : selectedLessons.length === 0 ? (
+                    <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                      Bu öğretmenin ders programında kaydı yok.
+                    </Typography.Paragraph>
+                  ) : (
+                    <div className="duty-schedule-cards">
+                      {weekDays.map((day) => {
+                        const dayIndex = day.isoWeekday() - 1
+                        const dow = dayIndex + 1
+                        const date = day.format('YYYY-MM-DD')
+                        const onDuty = dutyDatesByTeacher.get(selectedTeacher.id)?.has(date)
+                        const color = DUTY_DAY_COLORS[dayIndex]
+                        return (
+                          <article
+                            key={date}
+                            className="duty-schedule-card"
+                            style={{ borderTopColor: color }}
+                          >
+                            <header className="duty-schedule-card-head">
+                              <span style={{ color }}>{trDayLabel(day)}</span>
+                              {onDuty ? <span className="duty-schedule-duty">nöbetli</span> : null}
+                            </header>
+                            {Array.from({ length: periodCount }, (_, index) => index + 1).map((period) => {
+                              const lessons = selectedLessons.filter(
+                                (entry) => entry.day_of_week === dow && entry.period_no === period,
+                              )
+                              if (lessons.length === 0) {
+                                return (
+                                  <div key={period} className="duty-schedule-slot is-free">
+                                    <span className="duty-schedule-period">{period}</span>
+                                    <span>boş</span>
+                                  </div>
+                                )
+                              }
+                              return (
+                                <div key={period} className="duty-schedule-slot">
+                                  <span className="duty-schedule-period">{period}</span>
+                                  <span>
+                                    {lessons
+                                      .map((lesson) => {
+                                        const subject = lesson.Subject?.name || 'Ders'
+                                        const room = classroomShort(lesson)
+                                        return room ? `${subject} · ${room}` : subject
+                                      })
+                                      .join(', ')}
+                                  </span>
+                                </div>
+                              )
+                            })}
+                          </article>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
           <div className="duty-grid-wrap">
             <table className="duty-grid">
               <thead>
@@ -630,6 +885,18 @@ export function DutyPage() {
                             <span className="duty-grid-day-meta">
                               {day.format('DD.MM')} · {dayCount} kişi
                             </span>
+                            {canDelete && (
+                              <Button
+                                type="link"
+                                size="small"
+                                danger
+                                className="duty-grid-day-clear"
+                                disabled={dayCount === 0 || submitting}
+                                onClick={() => confirmClearDay(dateStr, trDayLabel(day))}
+                              >
+                                Gün atamasını sil
+                              </Button>
+                            )}
                           </th>
                         ) : null}
 
@@ -663,6 +930,7 @@ export function DutyPage() {
                                   dayIndexes={
                                     teacherDayMap.get(cellAssignment.teacher_id) || [dayIndex]
                                   }
+                                  count={dutyCountByTeacher.get(cellAssignment.teacher_id) || 0}
                                 />
                               ) : locked ? (
                                 <span className="duty-grid-placeholder is-muted">—</span>
@@ -712,6 +980,8 @@ export function DutyPage() {
                   </span>
                 )
               })}
+            </div>
+            </div>
             </div>
           </div>
         )}

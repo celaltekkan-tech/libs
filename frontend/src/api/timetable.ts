@@ -164,6 +164,7 @@ export async function aiParseConstraints(
 ): Promise<{
       proposals: AiProposal[]
       unresolved: string[]
+      answer?: string
       rejected?: boolean
       message?: string
       usage?: { used: number; limit: number }
@@ -172,6 +173,7 @@ export async function aiParseConstraints(
     Envelope<{
       proposals: AiProposal[]
       unresolved: string[]
+      answer?: string
       rejected?: boolean
       message?: string
       usage?: { used: number; limit: number }

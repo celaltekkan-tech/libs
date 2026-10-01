@@ -205,7 +205,14 @@ export interface TimetableRun {
   solver_status: string | null
   objective: number | null
   best_bound: number | null
-  progress: { solutions: number; objective: number; best_bound: number; elapsed: number } | null
+  progress: {
+    solutions?: number
+    objective?: number
+    best_bound?: number
+    elapsed?: number
+    phase?: 'ai'
+    message?: string
+  } | null
   result: {
     lesson_count: number
     score: Record<string, number>

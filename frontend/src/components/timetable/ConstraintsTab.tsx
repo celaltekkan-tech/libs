@@ -18,10 +18,10 @@ import type { TimetableCtx } from './shared'
 const EXAMPLES = [
   'Ayşe Hoca cuma günleri gelemiyor.',
   'Matematik dersleri mümkünse sabah saatlerinde olsun.',
-  'Beden eğitimi 1. saate konmasın.',
-  'Öğretmenler üst üste 4 saatten fazla derse girmesin.',
-  'Tüm öğretmenlere haftada bir boş gün verelim.',
-  'Fizik laboratuvarı salı öğleden sonra kapalı.',
+  'Nöbet gününde en fazla 4 saat ders olsun.',
+  'Sınav öğretmeni ders programından mı geliyor?',
+  'Ek ders saati ders programından nasıl hesaplanır?',
+  'Raporlu öğretmenin dersi o güne konmasın.',
 ]
 
 interface ProposalRow extends AiProposal {
@@ -37,6 +37,7 @@ export function ConstraintsTab({ ctx }: { ctx: TimetableCtx }) {
   const [parsing, setParsing] = useState(false)
   const [proposals, setProposals] = useState<ProposalRow[]>([])
   const [unresolved, setUnresolved] = useState<string[]>([])
+  const [answer, setAnswer] = useState('')
   const [rejected, setRejected] = useState<string | null>(null)
   const [lastPrompt, setLastPrompt] = useState('')
   const [usage, setUsage] = useState(ctx.meta.ai_usage)
@@ -67,18 +68,21 @@ export function ConstraintsTab({ ctx }: { ctx: TimetableCtx }) {
     setParsing(true)
     setProposals([])
     setUnresolved([])
+    setAnswer('')
     setRejected(null)
     try {
       const res = await aiParseConstraints(project.id, text.trim())
       if (res.usage) setUsage(res.usage)
       if (res.rejected) {
-        setRejected(res.message || 'Bu istek ders programıyla ilgili değil.')
+        setRejected(res.message || 'Bu istek OIDS modülleriyle ilgili değil.')
         return
       }
+      const reply = res.answer?.trim() || ''
+      setAnswer(reply)
       setProposals(res.proposals.map((p, i) => ({ ...p, key: i, checked: true })))
       setUnresolved(res.unresolved)
       setLastPrompt(text.trim())
-      if (!res.proposals.length && !res.unresolved.length) message.info('Metinden kısıt çıkarılamadı')
+      if (!res.proposals.length && !res.unresolved.length && !reply) message.info('Metinden kısıt veya cevap çıkarılamadı')
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
@@ -144,7 +148,7 @@ export function ConstraintsTab({ ctx }: { ctx: TimetableCtx }) {
         title={
           <Space>
             <RobotOutlined />
-            Yapay zekâ ile kısıt yaz
+            Yapay zekâ asistanı
             {ctx.meta.ai_model && <Tag>{ctx.meta.ai_model}</Tag>}
             {usage && usage.limit > 0 && (
               <Tag color={usage.used >= usage.limit ? 'red' : 'default'}>
@@ -159,7 +163,7 @@ export function ConstraintsTab({ ctx }: { ctx: TimetableCtx }) {
             type="info"
             showIcon
             message="Yapay zekâ eklenti lisansı gerekli"
-            description='İstekleri Türkçe yazıp kısıta çevirmek için hesabınıza "Yapay Zekâ" eklenti lisansı tanımlanmalıdır. Kısıtları aşağıdan elle ekleyebilirsiniz; program oluşturma lisanstan bağımsız çalışır.'
+            description='Türkçe soru sormak ve istekleri kısıta çevirmek için hesabınıza "Yapay Zekâ" eklenti lisansı tanımlanmalıdır. Kısıtları aşağıdan elle ekleyebilirsiniz; program oluşturma lisanstan bağımsız çalışır.'
           />
         ) : !ctx.meta.ai_configured ? (
           <Alert
@@ -171,7 +175,9 @@ export function ConstraintsTab({ ctx }: { ctx: TimetableCtx }) {
         ) : (
           <>
             <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
-              İsteğinizi düz Türkçe yazın. Örneğin "Ayşe Hoca cuma günü gelemiyor". Öneri siz onaylamadan eklenmez.
+              Ders programı kuralını veya OIDS modülleriyle ilgili sorunuzu düz Türkçe yazın. Örneğin &quot;Ayşe Hoca cuma
+              gelemiyor&quot; kısıt olur; &quot;sınav öğretmeni nereden geliyor&quot; sorusu cevaplanır. Kısıt siz
+              onaylamadan eklenmez.
             </Typography.Paragraph>
             <Input.TextArea
               rows={4}
@@ -194,8 +200,9 @@ export function ConstraintsTab({ ctx }: { ctx: TimetableCtx }) {
             </Space>
 
             {rejected && <Alert style={{ marginTop: 16 }} type="warning" showIcon message={rejected} />}
-            {(proposals.length > 0 || unresolved.length > 0) && (
+            {(answer || proposals.length > 0 || unresolved.length > 0) && (
               <div style={{ marginTop: 16 }}>
+                {answer && <Alert style={{ marginBottom: 12 }} type="info" showIcon message="Cevap" description={answer} />}
                 {proposals.length > 0 && (
                   <List
                     size="small"

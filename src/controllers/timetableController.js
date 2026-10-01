@@ -928,7 +928,7 @@ module.exports = {
           action: 'create',
           entityType: 'timetable_ai',
           entityId: project.id,
-          summary: 'Ders programı dışı yapay zekâ isteği reddedildi',
+          summary: 'OIDS dışı yapay zekâ isteği reddedildi',
           meta: { text: req.validatedBody.text.slice(0, 500) },
         });
       }

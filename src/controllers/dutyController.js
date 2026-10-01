@@ -509,6 +509,35 @@ module.exports = {
     }
   },
 
+  async clearRange(req, res, next) {
+    try {
+      const tenantId = req.user && req.user.tenant_id;
+      if (!tenantId) {
+        return res.status(403).json({ success: false, message: 'Erişim reddedildi' });
+      }
+      const body = req.validatedBody || req.body;
+      const start = dateStr(body.start_date);
+      const end = dateStr(body.end_date);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || start > end) {
+        return res.status(400).json({ success: false, message: 'Geçersiz tarih aralığı' });
+      }
+      const deleted = await DutyAssignment.destroy({
+        where: {
+          tenant_id: tenantId,
+          duty_date: { [Op.gte]: start, [Op.lte]: end },
+        },
+      });
+      await audit.log(req, {
+        action: 'delete',
+        entityType: 'duty_assignment_batch',
+        summary: `Nöbet atamaları silindi: ${deleted} kayıt (${start} - ${end})`,
+      });
+      res.json({ success: true, data: { deleted } });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   // --- Otomatik nöbet dağıtımı: fair (adil) veya weekly_rotate (kat kaydırma) ---
   async generate(req, res, next) {
     try {
