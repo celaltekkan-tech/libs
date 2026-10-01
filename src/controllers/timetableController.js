@@ -25,6 +25,7 @@ const licenseService = require('../services/licenseService');
 const solver = require('../services/timetableSolverClient');
 const runService = require('../services/timetableRunService');
 const timetableExport = require('../services/timetableExportService');
+const { buildEokulPayload } = require('../services/timetableEokulPayload');
 const gemini = require('../services/geminiService');
 const aiUsage = require('../services/aiUsageService');
 const branchService = require('../services/branchService');
@@ -1027,6 +1028,17 @@ module.exports = {
     try {
       const project = await loadProject(req);
       res.json({ success: true, data: await lessonsWithAssignments(project) });
+    } catch (err) {
+      sendError(res, next, err);
+    }
+  },
+
+  // e-Okul ders programı ekranını dolduracak Chrome eklentisinin okuduğu paket.
+  async eokulPayload(req, res, next) {
+    try {
+      const project = await loadProject(req);
+      const lessons = await lessonsWithAssignments(project);
+      res.json({ success: true, data: buildEokulPayload(project, lessons) });
     } catch (err) {
       sendError(res, next, err);
     }

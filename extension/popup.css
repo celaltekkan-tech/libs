@@ -1,0 +1,41 @@
+* { box-sizing: border-box; }
+body {
+  width: 340px;
+  margin: 0;
+  padding: 14px 14px 12px;
+  font: 13px/1.45 "Segoe UI", sans-serif;
+  color: #1c2833;
+  background: #f7f8f6;
+}
+header p, .hint, #summary, #status { margin: 6px 0 0; color: #52616e; }
+header strong { font-size: 15px; }
+button, select {
+  font: inherit;
+}
+button {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: #1f6b4a;
+  color: #fff;
+  cursor: pointer;
+}
+button.ghost { background: #e6ebe8; color: #1c2833; }
+button:disabled { opacity: 0.6; cursor: default; }
+.file {
+  display: block;
+  margin-top: 8px;
+  color: #1f6b4a;
+  cursor: pointer;
+}
+.file input { display: block; margin-top: 4px; max-width: 100%; }
+.check, #class-pick { display: block; margin-top: 8px; }
+#class-pick select { width: 100%; margin-top: 4px; }
+#status:empty { display: none; }
+#status.error { color: #9b1c1c; }
+#status.ok { color: #1f6b4a; }
+#steps { margin: 12px 0 0; padding-left: 18px; color: #52616e; }
+#steps li { margin: 2px 0; }

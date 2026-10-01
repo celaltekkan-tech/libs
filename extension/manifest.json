@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Libs e-Okul Ders Programı",
+  "version": "1.0.0",
+  "description": "Libs ders programını e-Okul ders programı ekranına işler. MEBBİS oturumunu kullanır, şifre istemez.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Libs ders programı"
+  },
+  "permissions": ["storage", "tabs", "scripting", "webNavigation"],
+  "host_permissions": [
+    "http://localhost:5173/*",
+    "http://127.0.0.1:5173/*",
+    "http://localhost:4000/*",
+    "http://127.0.0.1:4000/*",
+    "https://e-okul.meb.gov.tr/*",
+    "https://mebbis.meb.gov.tr/*",
+    "https://*.meb.gov.tr/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://e-okul.meb.gov.tr/*", "https://*.meb.gov.tr/*"],
+      "js": ["content/eokul.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    },
+    {
+      "matches": ["http://localhost:5173/*", "http://127.0.0.1:5173/*"],
+      "js": ["content/libs.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

@@ -221,6 +221,37 @@ export async function listTimetableLessons(projectId: number): Promise<Timetable
   return data.data
 }
 
+export interface EokulSlotSubject {
+  name: string
+  code: string | null
+  teacher: string
+}
+
+export interface EokulSlot {
+  day: number
+  period: number
+  subjects: EokulSlotSubject[]
+}
+
+export interface EokulClassPayload {
+  class_level: string
+  section: string
+  label: string
+  slots: EokulSlot[]
+}
+
+export interface EokulPayload {
+  version: 1
+  source: 'libs'
+  project: { id: number; name: string; academic_year: string | null }
+  classes: EokulClassPayload[]
+}
+
+export async function fetchEokulPayload(projectId: number): Promise<EokulPayload> {
+  const { data } = await client.get<Envelope<EokulPayload>>(`${BASE}/projects/${projectId}/eokul`)
+  return data.data
+}
+
 export interface ProgramImportGap {
   kind: 'subject' | 'teacher' | 'classroom'
   raw: string

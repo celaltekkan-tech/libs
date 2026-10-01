@@ -5,6 +5,7 @@ import {
   CloudUploadOutlined,
   DeleteOutlined,
   DownOutlined,
+  ChromeOutlined,
   FileExcelOutlined,
   LeftOutlined,
   LockFilled,
@@ -17,6 +18,7 @@ import {
   clearPublishedSchedule,
   clearTimetableLessons,
   exportTimetableLessons,
+  fetchEokulPayload,
   listAvailability,
   listTimetableLessons,
   lockTimetableLessons,
@@ -58,6 +60,7 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
   const [publishing, setPublishing] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [eokulExporting, setEokulExporting] = useState(false)
   const [availability, setAvailability] = useState<TimetableAvailability[]>([])
   const [wipe, setWipe] = useState<WipeScope | null>(null)
   const [wiping, setWiping] = useState(false)
@@ -241,6 +244,20 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
       message.error(getErrorMessage(err))
     } finally {
       setPublishing(false)
+    }
+  }
+
+  const onEokulFile = async () => {
+    setEokulExporting(true)
+    try {
+      const payload = await fetchEokulPayload(project.id)
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+      downloadBlob(blob, 'eokul-ders-programi.json')
+      message.success('e-Okul dosyası indirildi. Chrome eklentisi bu dosyayı okur.')
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setEokulExporting(false)
     }
   }
 
@@ -594,6 +611,16 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
               İçe aktar
             </Button>
           )}
+          <Tooltip title="Chrome eklentisinin e-Okul ders programı ekranına işleyeceği dosya">
+            <Button
+              icon={<ChromeOutlined />}
+              loading={eokulExporting}
+              disabled={lessons.length === 0}
+              onClick={() => void onEokulFile()}
+            >
+              e-Okul
+            </Button>
+          </Tooltip>
           <Dropdown
             disabled={exporting || lessons.length === 0}
             menu={{
