@@ -1,9 +1,9 @@
 'use strict';
 
 const { Op } = require('sequelize');
-const { DutyLocation, DutyAssignment, Teacher, LeaveRecord, TimetableProject, TimetableConstraint, sequelize } = require('../models');
+const { DutyLocation, DutyAssignment, Teacher, LeaveRecord, TimetableProject, TimetableConstraint, School, sequelize } = require('../models');
 const audit = require('../services/auditService');
-const { sendTableExport } = require('../services/exportService');
+const { sendDutyGrid } = require('../services/dutyGridExport');
 
 function assertTenantAccess(req, row) {
   if (req.user && req.user.tenant_id && row.tenant_id !== req.user.tenant_id) return false;
@@ -777,6 +777,37 @@ module.exports = {
     }
   },
 
+  async rules(req, res, next) {
+    try {
+      const tenantId = req.user && req.user.tenant_id;
+      const schoolId = Number(req.query.school_id);
+      if (!schoolId) return res.status(400).json({ success: false, message: 'school_id gerekli' });
+      const school = await School.findByPk(schoolId);
+      if (!school || (tenantId && school.tenant_id !== tenantId)) {
+        return res.status(404).json({ success: false, message: 'Okul bulunamadı' });
+      }
+      res.json({ success: true, data: { rules: school.meta?.duty_rules || '' } });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async saveRules(req, res, next) {
+    try {
+      const tenantId = req.user && req.user.tenant_id;
+      const { school_id: schoolId, rules } = req.validatedBody || req.body;
+      const school = await School.findByPk(schoolId);
+      if (!school || (tenantId && school.tenant_id !== tenantId)) {
+        return res.status(404).json({ success: false, message: 'Okul bulunamadı' });
+      }
+      const text = String(rules || '').trim();
+      await school.update({ meta: { ...(school.meta || {}), duty_rules: text } });
+      res.json({ success: true, data: { rules: text } });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async exportFile(req, res, next) {
     try {
       const tenantId = req.user && req.user.tenant_id;
@@ -795,16 +826,58 @@ module.exports = {
         limit: 5000,
       });
 
-      await sendTableExport(res, {
+      const schoolIds = [...new Set(rows.map((row) => row.school_id).filter(Boolean))];
+      const locationWhere = { is_active: true };
+      if (tenantId) locationWhere.tenant_id = tenantId;
+      if (schoolIds.length) locationWhere.school_id = { [Op.in]: schoolIds };
+      const locations = await DutyLocation.findAll({
+        where: locationWhere,
+        order: [['sort_order', 'ASC'], ['name', 'ASC']],
+      });
+      const placeList = locations.length
+        ? locations
+        : [...new Map(rows.filter((row) => row.DutyLocation).map((row) => [row.duty_location_id, row.DutyLocation])).values()];
+
+      const schools = schoolIds.length
+        ? await School.findAll({ where: { id: schoolIds } })
+        : [];
+      const rules = schools.map((school) => String(school.meta?.duty_rules || '').trim()).filter(Boolean).join('\n');
+
+      const byKey = new Map();
+      for (const row of rows) {
+        const date = String(row.duty_date).slice(0, 10);
+        const key = `${row.duty_location_id}|${date}`;
+        const name = row.Teacher ? `${row.Teacher.first_name} ${row.Teacher.last_name}` : '';
+        const list = byKey.get(key) || [];
+        if (name) list.push(name);
+        byKey.set(key, list);
+      }
+
+      const start = start_date ? String(start_date).slice(0, 10) : rows[0] ? String(rows[0].duty_date).slice(0, 10) : null;
+      const end = end_date ? String(end_date).slice(0, 10) : start;
+      const days = [];
+      if (start && end) {
+        const cursor = new Date(`${start}T12:00:00`);
+        const last = new Date(`${end}T12:00:00`);
+        const labels = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+        while (cursor <= last) {
+          const date = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
+          const [year, month, day] = date.split('-');
+          days.push({
+            label: `${labels[cursor.getDay()]}\n${day}.${month}.${year}`,
+            cells: placeList.map((location) => (byKey.get(`${location.id}|${date}`) || []).join('\n')),
+          });
+          cursor.setDate(cursor.getDate() + 1);
+        }
+      }
+
+      const rangeLabel = start && end ? `${start.split('-').reverse().join('.')} – ${end.split('-').reverse().join('.')}` : '';
+      await sendDutyGrid(res, {
         format,
-        filename: 'nobet-cizelgesi',
-        title: 'Nöbet Çizelgesi',
-        headers: ['Tarih', 'Nöbet Yeri', 'Öğretmen'],
-        rows: rows.map((r) => [
-          r.duty_date,
-          r.DutyLocation?.name || '',
-          r.Teacher ? `${r.Teacher.first_name} ${r.Teacher.last_name}` : '',
-        ]),
+        title: rangeLabel ? `Nöbet Çizelgesi (${rangeLabel})` : 'Nöbet Çizelgesi',
+        locations: placeList,
+        days,
+        rules,
       });
     } catch (err) {
       next(err);

@@ -50,6 +50,7 @@ export const EXTRA_LESSON_ABSENCE_REASONS = [
   { value: 'gorev', label: 'Görevli', swatch: 'purple' },
   { value: 'mazeret', label: 'Mazeret', swatch: 'gold' },
   { value: 'devamsiz', label: 'Devamsız', swatch: 'red' },
+  { value: 'kismi', label: 'Kısmi', swatch: 'orange' },
 ] as const
 
 export type ExtraLessonAbsenceReason = (typeof EXTRA_LESSON_ABSENCE_REASONS)[number]['value']
@@ -60,7 +61,48 @@ export interface ExtraLessonAbsence {
   teacher_id: number
   absence_date: string
   reason: ExtraLessonAbsenceReason
+  missed_hours: number | null
   note: string | null
+}
+
+export interface ExtraLessonPayrollLine {
+  code: string
+  label: string
+  hours: number
+}
+
+export interface ExtraLessonPayrollDay {
+  date: string
+  label: string
+  lesson_hours: number
+  extra_hours: number
+}
+
+export interface ExtraLessonPayrollWeek {
+  week: string
+  taught: number
+  salary?: number
+  extra?: number
+  social?: number
+  prep?: number
+  yep?: number
+  days: ExtraLessonPayrollDay[]
+}
+
+export interface ExtraLessonWeekdayHours {
+  day: number
+  label: string
+  hours: number
+}
+
+export interface ExtraLessonPayroll {
+  mode: 'ucretli' | 'gorevlendirme'
+  weekday_hours: ExtraLessonWeekdayHours[]
+  missed_hours: number
+  lesson_hours: number
+  lines: ExtraLessonPayrollLine[]
+  weeks: ExtraLessonPayrollWeek[]
+  note: string
 }
 
 export interface ExtraLessonMonthlySummaryRow {

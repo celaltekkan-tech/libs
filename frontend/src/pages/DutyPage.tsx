@@ -25,6 +25,7 @@ import 'dayjs/locale/tr'
 import isoWeek from 'dayjs/plugin/isoWeek'
 import { AppLayout } from '../components/AppLayout'
 import { useAuth } from '../auth/AuthContext'
+import { useActiveSchool } from '../auth/ActiveSchoolContext'
 import {
   clearDutyAssignments,
   copyDutyWeek,
@@ -33,8 +34,10 @@ import {
   deleteDutyAssignment,
   deleteDutyLocation,
   exportDuty,
+  fetchDutyRules,
   listDutyAssignments,
   listDutyLocations,
+  saveDutyRules,
   updateDutyLocation,
 } from '../api/duty'
 import { listScheduleEntries } from '../api/schedule'
@@ -158,6 +161,7 @@ interface CellTarget {
 export function DutyPage() {
   const { message, modal } = App.useApp()
   const { session, hasPermission } = useAuth()
+  const { activeSchoolId } = useActiveSchool()
   const tenantId = session?.user.tenant_id
 
   const [locations, setLocations] = useState<DutyLocation[]>([])
@@ -181,12 +185,15 @@ export function DutyPage() {
   const [submitting, setSubmitting] = useState(false)
   const [activeCell, setActiveCell] = useState<CellTarget | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [dutyRules, setDutyRules] = useState('')
+  const [rulesSaving, setRulesSaving] = useState(false)
 
   const [setupForm] = Form.useForm<{ location_names: string; capacity: number }>()
 
   const canCreate = hasPermission('duty.create')
   const canDelete = hasPermission('duty.delete')
   const canReadSchedule = hasPermission('schedule.read')
+  const canUpdate = hasPermission('duty.update')
   const ensuredAdminPlace = useRef(false)
 
   const weekDays = useMemo(
@@ -228,6 +235,16 @@ export function DutyPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    if (!activeSchoolId) {
+      setDutyRules('')
+      return
+    }
+    void fetchDutyRules(activeSchoolId)
+      .then(setDutyRules)
+      .catch(() => setDutyRules(''))
+  }, [activeSchoolId])
 
   useEffect(() => {
     if (!canReadSchedule) {
@@ -726,6 +743,33 @@ export function DutyPage() {
           </Button>
         )}
       </Space>
+
+      <div style={{ marginBottom: 12 }}>
+        <Typography.Text strong>Açıklamalar</Typography.Text>
+        <Input.TextArea
+          rows={3}
+          style={{ marginTop: 6 }}
+          value={dutyRules}
+          disabled={!activeSchoolId || !canUpdate}
+          placeholder="Nöbet kurallarını buraya yazın. Excel ve PDF çıktısının üstünde de yer alır."
+          onChange={(event) => setDutyRules(event.target.value)}
+        />
+        {canUpdate && activeSchoolId && (
+          <Button
+            style={{ marginTop: 8 }}
+            loading={rulesSaving}
+            onClick={() => {
+              setRulesSaving(true)
+              void saveDutyRules(activeSchoolId, dutyRules)
+                .then(() => message.success('Nöbet kuralları kaydedildi'))
+                .catch((err) => message.error(getErrorMessage(err)))
+                .finally(() => setRulesSaving(false))
+            }}
+          >
+            Kuralları kaydet
+          </Button>
+        )}
+      </div>
 
       <Spin spinning={loading}>
         {locations.length === 0 ? (

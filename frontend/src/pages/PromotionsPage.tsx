@@ -165,9 +165,9 @@ export function PromotionsPage() {
         if (teacher?.school_id && teacher.school_id !== activeSchoolId) return false
       }
       if (period) {
-        if (!r.degree_rank_date || !anniversaryInPeriod(r.degree_rank_date, period.start, period.end)) {
-          return false
-        }
+        const inMonth = Boolean(r.degree_rank_date && anniversaryInPeriod(r.degree_rank_date, period.start, period.end))
+        const overdue = r.days_remaining != null && r.days_remaining < 0
+        if (!inMonth && !overdue && !r.kariyer_eligible) return false
       }
       if (typeFilter && r.personnel_type !== typeFilter) return false
       if (onlyDue && !isDue(r)) return false
@@ -219,9 +219,10 @@ export function PromotionsPage() {
         is_permanent: applyTarget.type === 'manuel' ? Boolean(values.is_permanent) : true,
       }
       const { history } = await applyPromotion(applyTarget.row.teacher_id, payload)
-      message.success('Terfi/kademe ilerlemesi uygulandı')
+      message.success(applyTarget.type === 'manuel' ? 'Terfi tarihi kaydedildi' : 'Terfi/kademe ilerlemesi uygulandı')
       setApplyTarget(null)
       void load()
+      if (applyTarget.type === 'manuel') return
       try {
         const blob = await downloadPromotionForm(history.id)
         downloadBlob(blob, `terfi-formu-${applyTarget.row.personnel_no || applyTarget.row.teacher_id}.xlsx`)
@@ -269,7 +270,7 @@ export function PromotionsPage() {
     if (!row.next_promotion_date) return
     modal.confirm({
       title: 'Terfi uygulandı olarak işaretlensin mi?',
-      content: 'Derece ve kademe değişmez. Süre, sistem dışında yapıldığı için yeniden ileri sayılır.',
+      content: 'Kademe, gerekirse derece ilerletilir. Süre bir sonraki yıla alınır.',
       okText: 'Terfi uygulandı',
       cancelText: 'Vazgeç',
       onOk: async () => {
@@ -519,7 +520,7 @@ export function PromotionsPage() {
         onCancel={() => setApplyTarget(null)}
         onOk={() => applyForm.submit()}
         confirmLoading={applySubmitting}
-        okText="Uygula ve Formu İndir"
+        okText={applyTarget?.type === 'manuel' ? 'Kaydet' : 'Uygula ve Formu İndir'}
         cancelText="Vazgeç"
         destroyOnHidden
       >

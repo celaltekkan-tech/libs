@@ -17,6 +17,8 @@ export const DMK_657_URL =
 
 export const EK_DERS_YONETMELIGI_SLUG = 'ek-ders-yonetmeligi'
 export const EK_DERS_YONETMELIGI_FILENAME = 'Ek-Ders-Yonetmeligi.pdf'
+export const AYAKTA_TEDAVI_SLUG = 'ayakta-tedavi-beyan-belgesi'
+export const AYAKTA_TEDAVI_FILENAME = 'Ayakta-Tedavi-Beyan-Belgesi.docx'
 
 export const DOC_TYPE_OPTIONS = [
   { value: 'yillik_plan', label: 'Yıllık Plan' },

@@ -20,6 +20,8 @@ import {
   DMK_657_URL,
   EK_DERS_YONETMELIGI_FILENAME,
   EK_DERS_YONETMELIGI_SLUG,
+  AYAKTA_TEDAVI_FILENAME,
+  AYAKTA_TEDAVI_SLUG,
   DOC_CATEGORY_OPTIONS,
   DOC_STATUS_LABELS,
   DOC_STATUS_OPTIONS,
@@ -273,6 +275,26 @@ export function TeacherDocumentsPage() {
             </Space>
           </Card>
         </Space>
+      )}
+
+      {category === 'dilekce' && (
+        <Card size="small" style={{ marginBottom: 16 }}>
+          <Space direction="vertical" size={4}>
+            <Typography.Text strong>Ayakta Tedavi Beyan Belgesi</Typography.Text>
+            <Button
+              type="link"
+              icon={<DownloadOutlined />}
+              style={{ paddingLeft: 0 }}
+              onClick={() => {
+                void downloadRegulation(AYAKTA_TEDAVI_SLUG)
+                  .then((blob) => downloadBlob(blob, AYAKTA_TEDAVI_FILENAME))
+                  .catch((err) => message.error(getErrorMessage(err)))
+              }}
+            >
+              Word olarak indir
+            </Button>
+          </Space>
+        </Card>
       )}
 
       <SortableTable

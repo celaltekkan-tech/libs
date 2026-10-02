@@ -59,6 +59,11 @@ const clearDutySchema = Joi.object({
   end_date: Joi.date().iso().min(Joi.ref('start_date')).required(),
 });
 
+const dutyRulesSchema = Joi.object({
+  school_id: Joi.number().integer().required(),
+  rules: Joi.string().allow('').max(4000).required(),
+});
+
 module.exports = {
   createDutyLocationSchema,
   updateDutyLocationSchema,
@@ -68,4 +73,5 @@ module.exports = {
   copyDutyWeekSchema,
   exportDutySchema,
   clearDutySchema,
+  dutyRulesSchema,
 };

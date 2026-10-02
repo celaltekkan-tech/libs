@@ -1,9 +1,10 @@
 'use strict';
 
 const { Op } = require('sequelize');
-const { SalaryFormDraft, PromotionHistory, Teacher, School, sequelize } = require('../models');
+const { SalaryFormDraft, PromotionHistory, sequelize } = require('../models');
 const audit = require('../services/auditService');
 const { fillSalaryChangeForm, buildSalaryFormModel } = require('../services/promotionFormService');
+const { collectSalaryPromotionEntries } = require('../services/salaryPromotionEntries');
 const { buildSalaryChangePdf } = require('../services/salaryFormPdfService');
 const { getSalaryPeriodRange } = require('../utils/salaryPeriod');
 const { syncTenantReportYear } = require('../services/reportSalarySync');
@@ -49,16 +50,7 @@ async function loadExportContext(req, period) {
     where: { tenant_id: tenantId, month: period.month, year: period.year },
   });
 
-  const histories = await PromotionHistory.findAll({
-    where: {
-      tenant_id: tenantId,
-      new_degree_rank_date: { [Op.gte]: range.start, [Op.lt]: range.endExclusive },
-    },
-    include: [{ model: Teacher, include: [{ model: School, required: false }] }],
-    order: [['new_degree_rank_date', 'ASC']],
-  });
-
-  const entries = histories.filter((h) => h.Teacher).map((h) => ({ history: h, teacher: h.Teacher }));
+  const entries = await collectSalaryPromotionEntries(tenantId, range);
   const institutionName =
     draft?.payload?.institution_name ||
     entries[0]?.teacher.School?.name ||

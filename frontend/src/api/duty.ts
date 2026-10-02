@@ -45,6 +45,16 @@ export interface DutyFilters {
   end_date?: string
 }
 
+export async function fetchDutyRules(schoolId: number): Promise<string> {
+  const { data } = await client.get<Envelope<{ rules: string }>>('/api/duty/rules', { params: { school_id: schoolId } })
+  return data.data.rules || ''
+}
+
+export async function saveDutyRules(schoolId: number, rules: string): Promise<string> {
+  const { data } = await client.put<Envelope<{ rules: string }>>('/api/duty/rules', { school_id: schoolId, rules })
+  return data.data.rules || ''
+}
+
 export async function listDutyAssignments(params?: DutyFilters): Promise<DutyAssignment[]> {
   const { data } = await client.get<Envelope<DutyAssignment[]>>('/api/duty', { params })
   return data.data
