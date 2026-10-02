@@ -206,6 +206,7 @@ export function BackupsPage() {
     {
       title: 'Alınma Zamanı',
       dataIndex: 'created_at',
+      defaultSortOrder: 'descend',
       render: (value: string) => new Date(value).toLocaleString('tr-TR'),
     },
     {

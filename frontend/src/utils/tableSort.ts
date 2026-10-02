@@ -89,9 +89,16 @@ function isNameColumn(title: string): boolean {
   return /ad|isim|personel|öğret|öğrenc|ders|branş|sınıf|şube|kurum|okul|konu/i.test(title)
 }
 
+function hasExplicitDefault<T extends object>(columns: ColumnsType<T>): boolean {
+  return columns.some((col) => {
+    if ('children' in col && Array.isArray(col.children)) return hasExplicitDefault(col.children)
+    return Boolean((col as ColumnType<T>).defaultSortOrder)
+  })
+}
+
 /** dataIndex (veya uygun key) olan sütunlara A-Z / Z-A sıralama ekler. Ad sütunu varsa liste A'dan açılır. */
 export function withColumnSorters<T extends object>(columns: ColumnsType<T>): ColumnsType<T> {
-  let defaulted = false
+  let defaulted = hasExplicitDefault(columns)
   return columns.map((col) => {
     const enhanced = enhanceColumn(col)
     if (defaulted || !('sorter' in enhanced) || !enhanced.sorter) return enhanced
