@@ -18,7 +18,9 @@ import type { TimetableCtx } from './shared'
 const EXAMPLES = [
   'Ayşe Hoca cuma günleri gelemiyor.',
   'Matematik dersleri mümkünse sabah saatlerinde olsun.',
+  'Nöbet programını nasıl oluştururum?',
   'Nöbet gününde en fazla 4 saat ders olsun.',
+  'Sorumluluk sınavını nasıl tarihlendiririm?',
   'Sınav öğretmeni ders programından mı geliyor?',
   'Ek ders saati ders programından nasıl hesaplanır?',
   'Raporlu öğretmenin dersi o güne konmasın.',
@@ -175,8 +177,9 @@ export function ConstraintsTab({ ctx }: { ctx: TimetableCtx }) {
         ) : (
           <>
             <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
-              Ders programı kuralını veya OIDS modülleriyle ilgili sorunuzu düz Türkçe yazın. Örneğin &quot;Ayşe Hoca cuma
-              gelemiyor&quot; kısıt olur; &quot;sınav öğretmeni nereden geliyor&quot; sorusu cevaplanır. Kısıt siz
+              Ders programı kuralını veya OIDS ile ilgili sorunuzu düz Türkçe yazın. Örneğin &quot;Ayşe Hoca cuma
+              gelemiyor&quot; kısıt olur; &quot;sınav öğretmeni nereden geliyor&quot; cevaplanır. &quot;Nöbet programını
+              nasıl oluştururum&quot; gibi kullanım sorularında asistan menü yolunu ve adımları yazar. Kısıt siz
               onaylamadan eklenmez.
             </Typography.Paragraph>
             <Input.TextArea
@@ -202,7 +205,15 @@ export function ConstraintsTab({ ctx }: { ctx: TimetableCtx }) {
             {rejected && <Alert style={{ marginTop: 16 }} type="warning" showIcon message={rejected} />}
             {(answer || proposals.length > 0 || unresolved.length > 0) && (
               <div style={{ marginTop: 16 }}>
-                {answer && <Alert style={{ marginBottom: 12 }} type="info" showIcon message="Cevap" description={answer} />}
+                {answer && (
+                  <Alert
+                    style={{ marginBottom: 12 }}
+                    type="info"
+                    showIcon
+                    message="Cevap"
+                    description={<div style={{ whiteSpace: 'pre-wrap' }}>{answer}</div>}
+                  />
+                )}
                 {proposals.length > 0 && (
                   <List
                     size="small"

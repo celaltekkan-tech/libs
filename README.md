@@ -128,8 +128,13 @@ PLATFORM_ADMIN_PASSWORD=SuperAdmin1234
 
 "Otomatik Ders Programı" sayfasında programı **Google OR-Tools** (`solver` servisi) üretir.
 Yapay zekâ (Google Gemini) iki iş yapar: kullanıcının Türkçe yazdığı ders programı isteğini
-("Ayşe Hoca cuma gelemiyor") kısıta çevirir ve OIDS modülleriyle ilgili sorulara kısa cevap verir
-(nöbet, sınav, ek ders, rapor, devamsızlık ve diğer okul işleri ders programına bağlı olabilir).
+("Ayşe Hoca cuma gelemiyor") kısıta çevirir ve OIDS hakkındaki sorulara cevap verir. Cevap verdiği
+sorular hem işleyişle ("sınav öğretmeni nereden geliyor") hem de kullanımla ilgili olabilir
+("nöbet programını nasıl oluştururum"); kullanım sorularında menü yolunu ve adımları yazar.
+Asistanın ürün bilgisi `src/services/oidsProductGuide.js` içindeki rehberden gelir (menü menü
+tanıtım, adımlar, lisans ve mobil uygulama notları). Ekranlar değişince bu dosya güncellenmelidir;
+asistan rehberin dışına çıkmaz, rehberde olmayan menü veya düğme adı uydurmaz ve hiçbir modülde
+kayıt açıp silemez, kayıt içeriğini (maaş, not, devamsızlık) okumaz.
 Kısıt, kullanıcı onaylamadan eklenmez. OIDS dışı istekler sunucuda reddedilir ve denetim kaydına yazılır.
 Çözücü uygun program bulamazsa ve kiracıda Yapay Zekâ lisansı varsa yerleştirmeyi Gemini dener.
 Çakışmasız bir program çıkarsa çalıştırma tamamlanır; çıkmazsa çalıştırma başarısız kalır. Bu deneme günlük kotadan düşer.
@@ -152,6 +157,9 @@ Tek bir **ücretli** Gemini anahtarı tüm kiracılarca kullanılır.
 GEMINI_API_KEY=buraya_anahtar
 # Sabit model adı yazın; "gemini-flash-latest" gibi takma adlar yeni sürümde
 # sessizce değişir (fiyat/davranış değişebilir).
+# Model adı "gemini-3" ile başlıyorsa istekte temperature gönderilmez: Gemini 3.x'te
+# örnekleme ayarları önerilmiyor, düşük sıcaklık yapılandırılmış çıktıda alan atlamaya
+# ve token döngüsüne yol açıyor.
 GEMINI_MODEL=gemini-3.5-flash-lite
 # İsteğe bağlı, varsayılan 45000 ms
 # GEMINI_TIMEOUT_MS=45000
@@ -185,8 +193,9 @@ oluşturma bundan etkilenmez. `.env` değiştikten sonra backend yeniden başlat
 | `gemini-3.5-flash-lite` (önerilen) | $0,30 | $2,50 |
 | `gemini-3.8-flash` | $0,75 | $3,75 (31.12.2026'ya kadar indirimli; 2027'de iki katı) |
 
-Bir istek yaklaşık 3–5 bin girdi + 1–2 bin çıktı token'ı kullanır: Flash-Lite ile istek başına
-≈ $0,005. Örnek: 30 okul × ayda 100 istek ≈ ayda $15. Güncel fiyatlar:
+Bir istek yaklaşık 8–10 bin girdi (ürün rehberi + okulun öğretmen/şube/ders listeleri) + 1–2 bin
+çıktı token'ı kullanır: Flash-Lite ile istek başına ≈ $0,007. Örnek: 30 okul × ayda 100 istek
+≈ ayda $20. Güncel fiyatlar:
 https://ai.google.dev/gemini-api/docs/pricing
 
 ## Demo Kullanıcı
