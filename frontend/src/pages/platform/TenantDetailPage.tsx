@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { App, Button, Card, Descriptions, Form, Input, Modal, Popconfirm, Space, Switch, Tag, Typography } from 'antd'
 import { SortableTable } from '../../components/SortableTable'
-import { ArrowLeftOutlined, CommentOutlined, EditOutlined, IdcardOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, CommentOutlined, EditOutlined, IdcardOutlined, SafetyCertificateOutlined, UnlockOutlined } from '@ant-design/icons'
 import { AppLayout } from '../../components/AppLayout'
 import { SortableDashboard } from '../../components/SortableDashboard'
 import { useAuth } from '../../auth/AuthContext'
@@ -14,6 +14,7 @@ import {
   resetTenantUserPassword,
   resetTenantUserTwoFactor,
   resetTenantUserSmsLogin,
+  unlockTenantUserLogin,
   updateTenant,
   updateTenantUser,
 } from '../../api/tenants'
@@ -39,6 +40,15 @@ interface TenantContactForm {
   phone?: string
 }
 
+function isLoginLocked(user: TenantUser) {
+  if (!user.login_locked_until) return false
+  return new Date(user.login_locked_until).getTime() > Date.now()
+}
+
+function hasLoginLock(user: TenantUser) {
+  return isLoginLocked(user) || Number(user.login_failed_count || 0) > 0
+}
+
 export function TenantDetailPage() {
   const { id } = useParams<{ id: string }>()
   const tenantId = Number(id)
@@ -57,6 +67,7 @@ export function TenantDetailPage() {
   const [resetting2fa, setResetting2fa] = useState(false)
   const [resettingUserId, setResettingUserId] = useState<number | null>(null)
   const [resettingSmsUserId, setResettingSmsUserId] = useState<number | null>(null)
+  const [unlockingUserId, setUnlockingUserId] = useState<number | null>(null)
   const [editingUser, setEditingUser] = useState<TenantUser | null>(null)
   const [passwordUser, setPasswordUser] = useState<TenantUser | null>(null)
   const [savingUser, setSavingUser] = useState(false)
@@ -234,6 +245,25 @@ export function TenantDetailPage() {
       message.error(getErrorMessage(err))
     } finally {
       setResettingSmsUserId(null)
+    }
+  }
+
+  async function handleUnlockUserLogin(userId: number) {
+    setUnlockingUserId(userId)
+    try {
+      await unlockTenantUserLogin(tenantId, userId)
+      setUsers((prev) =>
+        prev.map((user) =>
+          user.id === userId
+            ? { ...user, login_failed_count: 0, login_locked_until: null }
+            : user,
+        ),
+      )
+      message.success('Giriş kilidi kaldırıldı')
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setUnlockingUserId(null)
     }
   }
 
@@ -614,6 +644,28 @@ export function TenantDetailPage() {
                             enabled ? <Tag color="blue">Açık</Tag> : <Tag>Kapalı</Tag>,
                         },
                         {
+                          title: 'Giriş kilidi',
+                          key: 'login_lock',
+                          render: (_: unknown, record: TenantUser) => {
+                            if (isLoginLocked(record)) {
+                              return (
+                                <Tag color="red">
+                                  {new Date(record.login_locked_until as string).toLocaleString(
+                                    'tr-TR',
+                                  )}
+                                  ’e kadar kilitli
+                                </Tag>
+                              )
+                            }
+                            const failed = Number(record.login_failed_count || 0)
+                            return failed > 0 ? (
+                              <Tag color="orange">{failed} hatalı deneme</Tag>
+                            ) : (
+                              <Tag color="green">Açık</Tag>
+                            )
+                          },
+                        },
+                        {
                           title: 'İşlem',
                           key: 'actions',
                           render: (_: unknown, record: TenantUser) => (
@@ -628,6 +680,23 @@ export function TenantDetailPage() {
                               <Button size="small" onClick={() => openResetPassword(record)}>
                                 Şifre sıfırla
                               </Button>
+                              <Popconfirm
+                                title={`${record.full_name} için giriş kilidi kaldırılsın mı?`}
+                                description="Hatalı şifre sayacı sıfırlanır, kullanıcı hemen giriş yapabilir."
+                                okText="Kaldır"
+                                cancelText="Vazgeç"
+                                disabled={!hasLoginLock(record)}
+                                onConfirm={() => void handleUnlockUserLogin(record.id)}
+                              >
+                                <Button
+                                  size="small"
+                                  icon={<UnlockOutlined />}
+                                  disabled={!hasLoginLock(record)}
+                                  loading={unlockingUserId === record.id}
+                                >
+                                  Kilidi kaldır
+                                </Button>
+                              </Popconfirm>
                               <Popconfirm
                                 title={`${record.full_name} için 2FA sıfırlansın mı?`}
                                 okText="Sıfırla"

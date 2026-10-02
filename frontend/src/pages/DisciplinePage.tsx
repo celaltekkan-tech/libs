@@ -9,6 +9,7 @@ import { FilterBar } from '../components/FilterBar'
 import { AppLayout } from '../components/AppLayout'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { DisciplineIncidentWizardModal } from '../components/DisciplineIncidentWizardModal'
+import type { DisciplineIncidentPrefill } from '../components/DisciplineIncidentWizardModal'
 import { DisciplineIncidentDrawer } from '../components/DisciplineIncidentDrawer'
 import { DisciplineBehaviorPointModal } from '../components/DisciplineBehaviorPointModal'
 import { DisciplineRegulationArticleModal } from '../components/DisciplineRegulationArticleModal'
@@ -87,6 +88,7 @@ export function DisciplinePage() {
   const [incidents, setIncidents] = useState<DisciplineIncident[]>([])
   const [loadingIncidents, setLoadingIncidents] = useState(true)
   const [wizardOpen, setWizardOpen] = useState(false)
+  const [wizardPrefill, setWizardPrefill] = useState<DisciplineIncidentPrefill | null>(null)
   const [selectedIncident, setSelectedIncident] = useState<DisciplineIncident | null>(null)
   const selectedIncidentIdRef = useRef<number | null>(null)
   const [search, setSearch] = useState('')
@@ -348,6 +350,19 @@ export function DisciplinePage() {
     )
   }, [teacherNotes, noteSearchQuery])
 
+  // Öğretmen bildirimini sihirbaza taşıyıp olay kaydına çevirir.
+  const startIncidentFromNote = (row: TeacherNote) => {
+    const studentName = row.Student ? `${row.Student.first_name} ${row.Student.last_name}` : 'Öğrenci'
+    const reasons = [...row.tags, row.note].filter(Boolean).join(', ')
+    setWizardPrefill({
+      title: reasons ? `${studentName} — ${row.tags[0] || 'Öğretmen bildirimi'}` : `${studentName} — Öğretmen bildirimi`,
+      incident_date: row.created_at.slice(0, 10),
+      summary: `${row.Teacher?.full_name || 'Öğretmen'} bildirimi: ${reasons || '—'}`,
+      student_id: row.student_id,
+    })
+    setWizardOpen(true)
+  }
+
   const onDeleteTeacherNote = (row: TeacherNote) => {
     modal.confirm({
       title: 'Bildirimi sil',
@@ -389,7 +404,14 @@ export function DisciplinePage() {
                     </Button>
                   )}
                   {canCreate && (
-                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setWizardOpen(true)}>
+                    <Button
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      onClick={() => {
+                        setWizardPrefill(null)
+                        setWizardOpen(true)
+                      }}
+                    >
                       Yeni Disiplin Olayı
                     </Button>
                   )}
@@ -611,9 +633,17 @@ export function DisciplinePage() {
                     { title: 'Tarih', dataIndex: 'created_at', render: (v: string) => new Date(v).toLocaleString('tr-TR') },
                     {
                       title: 'İşlemler',
-                      width: 80,
-                      render: (_: unknown, record: TeacherNote) =>
-                        canDelete && <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onDeleteTeacherNote(record)} />,
+                      width: 220,
+                      render: (_: unknown, record: TeacherNote) => (
+                        <Space size="small">
+                          {canCreate && (
+                            <Button size="small" type="primary" icon={<PlusOutlined />} onClick={() => startIncidentFromNote(record)}>
+                              Disiplin işlemi başlat
+                            </Button>
+                          )}
+                          {canDelete && <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onDeleteTeacherNote(record)} />}
+                        </Space>
+                      ),
                     },
                   ]}
                 />
@@ -627,6 +657,7 @@ export function DisciplinePage() {
         open={wizardOpen}
         schools={session?.schools || []}
         defaultSchoolId={session?.user.school_id ?? null}
+        prefill={wizardPrefill}
         onCancel={() => setWizardOpen(false)}
         onFinished={onWizardFinished}
       />

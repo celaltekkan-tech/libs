@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
-import { App, Button, Card, Checkbox, Col, Form, Input, InputNumber, Row, Select, Space, Switch, TimePicker, Typography } from 'antd'
-import { MinusCircleOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons'
+import { App, Button, Card, Checkbox, Col, Form, Input, InputNumber, Row, Select, Space, Switch, TimePicker, Tooltip, Typography } from 'antd'
+import { MinusCircleOutlined, PlusOutlined, QuestionCircleOutlined, SaveOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { updateTimetableProject } from '../../api/timetable'
 import { getErrorMessage } from '../../api/client'
 import { DAY_OPTIONS } from '../../types/scheduleEntry'
 import { DEFAULT_BELL, WEIGHT_LABELS, type BellSchedule, type SameClassSubjectsMode, type TimetableWeights } from '../../types/timetable'
 import { EffortPicker } from './EffortPicker'
+import { ImportanceSlider } from './ImportanceSlider'
 import type { TimetableCtx } from './shared'
 
 interface FormValues {
@@ -46,13 +47,33 @@ function breakList(periods: number, saved: number[] | undefined, fallback: numbe
 const WEIGHT_HELP: Record<keyof TimetableWeights, string> = {
   teacher_gaps: 'Öğretmenin iki dersi arasında boş saat kalması',
   class_compact: 'Şubenin günü 1. saatte başlamaması veya arada boş saat kalması',
-  teacher_single_hour_day: 'Öğretmenin bir gün yalnızca 1 saat dersi olması',
-  hard_subject_late: 'Zorluk seviyesi "zor" olan derslerin son iki saate düşmesi',
+  teacher_single_hour_day: 'Öğretmenin bir gün yalnızca 1 saat dersi olmaması',
+  hard_subject_late: 'Zorluk seviyesi "zor" olan derslerin son iki saate düşmemesi',
   soft_constraint: 'Ağırlığı belirtilmeyen esnek kısıtların ihlal cezası',
   availability_avoid: 'Zaman tablosunda sarı ("istenmiyor") işaretli saate ders konması',
   block_flex: 'Blok düzeni tutmuyorsa programın ne kadar esneyeceği',
   teacher_day_off: 'Boş gün istenirken öğretmenin her gün okula gelmesi. "Öğretmenlere boş gün vermeye çalış" kapalıysa bu puan kullanılmaz.',
 }
+
+type AlgorithmKey = 'cpsat' | 'greedy' | 'local'
+
+const ALGORITHM_INFO: Array<{ value: AlgorithmKey; label: string; help: string }> = [
+  {
+    value: 'cpsat',
+    label: 'Kısıt çözücü',
+    help: 'Bütün dersleri, kesin kuralları ve önem puanlarını tek bir matematik modeline çevirir; "Dağıtım süresi" boyunca arar ve bulabildiği en iyi programı çıkarır. Kesin kuralların tamamını denetleyen tek algoritma budur: kilitli dersler ve diğer ikisinin tanımadığı özel kurallar yalnız burada geçerli olur. En yavaşıdır ama en güvenilir sonucu verir, bu yüzden kapatmanız önerilmez.',
+  },
+  {
+    value: 'greedy',
+    label: 'Sıkışık ders önce',
+    help: 'Haftalık saati en çok olan ve en fazla öğretmeni ilgilendiren dersleri en başta yerleştirir, kolay yerleşenleri sona bırakır; böylece sıkışık dersler yer bulamadan kalmaz. Saniyeler içinde biter, rastgele birkaç farklı sıra dener ve cezası en düşük olanı saklar. Kesin kuralı bozan programı kabul etmez. Kilitli ders varsa veya tanımadığı bir kesin kural girilmişse çalışmaz, raporda sebebini yazar.',
+  },
+  {
+    value: 'local',
+    label: 'Yerel iyileştirme',
+    help: '"Sıkışık ders önce" ile çıkan programı alır, ders bloklarını başka gün ve saatlere taşıyarak pencere, boşluk ve şube sıkışıklığı cezasını düşürmeye çalışır. Yalnızca cezayı gerçekten azaltan taşımayı tutar, kötüleşirse bloğu eski yerine koyar. Tek başına seçilse de o başlangıç programı yine üretilir; sonuç olarak iyileştirilmiş hâli kıyaslamaya girer. Hızlıdır, ancak kısıt çözücü kadar derin aramaz.',
+  },
+]
 
 export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
   const { message } = App.useApp()
@@ -288,11 +309,25 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
                 rules={[{ required: true, message: 'En az bir algoritma seçin' }]}
               >
                 <Checkbox.Group
-                  options={[
-                    { value: 'cpsat', label: 'Kısıt çözücü' },
-                    { value: 'greedy', label: 'Sıkışık ders önce' },
-                    { value: 'local', label: 'Yerel iyileştirme' },
-                  ]}
+                  options={ALGORITHM_INFO.map((a) => ({
+                    value: a.value,
+                    label: (
+                      <Space size={4}>
+                        {a.label}
+                        <Tooltip title={a.help} styles={{ root: { maxWidth: 360 } }}>
+                          <Typography.Text
+                            type="secondary"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                            }}
+                          >
+                            <QuestionCircleOutlined />
+                          </Typography.Text>
+                        </Tooltip>
+                      </Space>
+                    ),
+                  }))}
                 />
               </Form.Item>
               <Form.Item name="workers" label="Kaç işlemci kullanılsın">
@@ -320,77 +355,73 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
         <Col xs={24} lg={12}>
           <Card title="Neyi daha çok önemseyelim?" size="small" style={{ marginBottom: 16 }}>
             <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-              Sayılar önem puanıdır, birimi yoktur: birbirine göre kıyaslanır. Puanı 60 olan istek, puanı 6 olandan
-              10 kat daha önemli sayılır. 0 kuralı kapatır. Öğretmen ve şube çakışmaması ile haftalık saatler her
-              zaman korunur.
+              İşaretçiyi az ile çok arasında kaydırın. Çubuklar birbirine göre kıyaslanır: sağa çektiğiniz istek,
+              solda kalan istekten daha önemli sayılır. Kapalı o kuralı tamamen devre dışı bırakır. Öğretmen ve şube
+              çakışmaması ile haftalık saatler her zaman korunur.
             </Typography.Paragraph>
             {(Object.keys(WEIGHT_LABELS) as Array<keyof TimetableWeights>)
-              .filter((k) => k !== 'block_flex' && k !== 'teacher_day_off')
+              .filter((k) => k !== 'block_flex' && k !== 'teacher_day_off' && k !== 'class_compact')
               .map((k) => (
               <Form.Item
                 key={k}
                 name={['weights', k]}
                 label={WEIGHT_LABELS[k]}
                 tooltip={WEIGHT_HELP[k]}
-                layout="horizontal"
-                labelCol={{ flex: 'auto' }}
-                wrapperCol={{ flex: '150px' }}
-                labelAlign="left"
                 colon={false}
-                style={{ marginBottom: 8 }}
+                style={{ marginBottom: 4 }}
               >
-                <InputNumber min={0} max={1000} addonAfter="puan" style={{ width: '100%' }} />
+                <ImportanceSlider />
               </Form.Item>
             ))}
           </Card>
+          <Card title="Blok ve öğretmen kuralları" size="small" style={{ marginBottom: 16 }}>
+            <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+              Bu ayarlar çözücüye gider. Atamada bölme veya birleştirme kapatılmışsa o ders bu kutuların dışında kalır. Meslek ve atölye blokları kendiliğinden bölünmez.
+              Öğretmene özel değerler Öğretmene ders atama sekmesinden girilir. 0, sınır yok demektir.
+            </Typography.Paragraph>
+            <Typography.Text strong>Blok dağıtılamazsa</Typography.Text>
+            <Form.Item name="split_double" valuePropName="checked" style={{ marginBottom: 4 }}>
+              <Checkbox>2 saatlik ders blokları 1+1 şeklinde bölünebilsin</Checkbox>
+            </Form.Item>
+            <Form.Item name="merge_singles" valuePropName="checked" style={{ marginBottom: 4 }}>
+              <Checkbox>1+1 şeklindeki ders blokları birleştirilebilsin</Checkbox>
+            </Form.Item>
+            <Form.Item name="merge_two_one" valuePropName="checked" style={{ marginBottom: 12 }}>
+              <Checkbox>2+1 şeklindeki ders blokları 3 saatlik tek blok olabilsin</Checkbox>
+            </Form.Item>
+            <Form.Item name="eliminate_gaps" valuePropName="checked" style={{ marginBottom: 4 }}>
+              <Checkbox>Karnıyarık sayısını yok etmeye çalış</Checkbox>
+            </Form.Item>
+            <Form.Item name="free_day" valuePropName="checked" style={{ marginBottom: 4 }}>
+              <Checkbox>Öğretmenlere boş gün vermeye çalış</Checkbox>
+            </Form.Item>
+            <Form.Item name="prioritize_difficulty" valuePropName="checked" style={{ marginBottom: 8 }}>
+              <Checkbox>Ders havuzundaki zor derslere öncelik verilsin</Checkbox>
+            </Form.Item>
+            <Form.Item
+              name="same_class_subjects"
+              label="Öğretmenin aynı sınıfa verdiği farklı dersler"
+              extra="Sığmazsa ders boş bırakılmaz. Kesin seçenekte program çıkmazsa çelişen kural yazılır."
+            >
+              <Select
+                options={[
+                  { value: 'off', label: 'Aynı güne gelebilir' },
+                  { value: 'soft', label: 'Aynı güne gelmesin; sığmazsa aynı güne koy' },
+                  { value: 'hard', label: 'Aynı güne gelmesin; sığmazsa çözücü durur' },
+                ]}
+              />
+            </Form.Item>
+            <Space size="large" wrap>
+              <Form.Item name="max_daily_hours" label="Öğretmene 1 günde en fazla kaç saat" extra="0 = sınır yok">
+                <InputNumber min={0} max={12} addonAfter="saat" />
+              </Form.Item>
+              <Form.Item name="max_windows" label="Haftalık programda en fazla pencere" extra="0 = sınır yok">
+                <InputNumber min={0} max={40} addonAfter="pencere" />
+              </Form.Item>
+            </Space>
+          </Card>
         </Col>
       </Row>
-      <Card title="Blok ve öğretmen kuralları" size="small" style={{ marginBottom: 16 }}>
-        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-          Bu ayarlar çözücüye gider. Atamada bölme veya birleştirme kapatılmışsa o ders bu kutuların dışında kalır. Meslek ve atölye blokları kendiliğinden bölünmez.
-          Öğretmene özel değerler Öğretmene ders atama sekmesinden girilir. 0, sınır yok demektir.
-        </Typography.Paragraph>
-        <Typography.Text strong>Blok dağıtılamazsa</Typography.Text>
-        <Form.Item name="split_double" valuePropName="checked" style={{ marginBottom: 4 }}>
-          <Checkbox>2 saatlik ders blokları 1+1 şeklinde bölünebilsin</Checkbox>
-        </Form.Item>
-        <Form.Item name="merge_singles" valuePropName="checked" style={{ marginBottom: 4 }}>
-          <Checkbox>1+1 şeklindeki ders blokları birleştirilebilsin</Checkbox>
-        </Form.Item>
-        <Form.Item name="merge_two_one" valuePropName="checked" style={{ marginBottom: 12 }}>
-          <Checkbox>2+1 şeklindeki ders blokları 3 saatlik tek blok olabilsin</Checkbox>
-        </Form.Item>
-        <Form.Item name="eliminate_gaps" valuePropName="checked" style={{ marginBottom: 4 }}>
-          <Checkbox>Karnıyarık sayısını yok etmeye çalış</Checkbox>
-        </Form.Item>
-        <Form.Item name="free_day" valuePropName="checked" style={{ marginBottom: 4 }}>
-          <Checkbox>Öğretmenlere boş gün vermeye çalış</Checkbox>
-        </Form.Item>
-        <Form.Item name="prioritize_difficulty" valuePropName="checked" style={{ marginBottom: 8 }}>
-          <Checkbox>Ders havuzundaki zor derslere öncelik verilsin</Checkbox>
-        </Form.Item>
-        <Form.Item
-          name="same_class_subjects"
-          label="Öğretmenin aynı sınıfa verdiği farklı dersler"
-          extra="Sığmazsa ders boş bırakılmaz. Kesin seçenekte program çıkmazsa çelişen kural yazılır."
-        >
-          <Select
-            options={[
-              { value: 'off', label: 'Aynı güne gelebilir' },
-              { value: 'soft', label: 'Aynı güne gelmesin; sığmazsa aynı güne koy' },
-              { value: 'hard', label: 'Aynı güne gelmesin; sığmazsa çözücü durur' },
-            ]}
-          />
-        </Form.Item>
-        <Space size="large" wrap>
-          <Form.Item name="max_daily_hours" label="Öğretmene 1 günde en fazla kaç saat" extra="0 = sınır yok">
-            <InputNumber min={0} max={12} addonAfter="saat" />
-          </Form.Item>
-          <Form.Item name="max_windows" label="Haftalık programda en fazla pencere" extra="0 = sınır yok">
-            <InputNumber min={0} max={40} addonAfter="pencere" />
-          </Form.Item>
-        </Space>
-      </Card>
       {ctx.canUpdate && (
         <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving}>
           Kaydet

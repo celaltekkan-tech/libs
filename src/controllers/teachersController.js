@@ -279,6 +279,10 @@ function daysBetweenIso(fromIso, toIso) {
   return Math.round((end.getTime() - start.getTime()) / 86400000);
 }
 
+// Kaçırılan yıl dönümünün üstünden bu kadar gün geçtiyse terfi başka yerde verilmiş
+// sayılır ve satır gecikme yerine sıradaki yıl dönümünü gösterir.
+const OVERDUE_GRACE_DAYS = 90;
+
 /** Bugün veya daha önceki son yıl dönümü. Taban tarihten önceyse yok sayılır. */
 function lastAnniversary(baseIso, todayIso) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(baseIso || '');
@@ -600,7 +604,7 @@ module.exports = {
           const nextIso = nextAnniversary(promotionBase, today);
           const missed = lastAnniversary(promotionBase, todayIso);
           const overdueDays = missed && missed > promotionBase ? daysBetweenIso(missed, todayIso) : 0;
-          if (overdueDays > 0) {
+          if (overdueDays > 0 && overdueDays <= OVERDUE_GRACE_DAYS) {
             daysRemaining = -overdueDays;
             nextDate = new Date(`${missed}T00:00:00`);
           } else if (nextIso) {

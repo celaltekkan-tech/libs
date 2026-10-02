@@ -6,17 +6,19 @@ const {
   TimetableLesson,
   TimetableAssignment,
   TimetableRoom,
-  TimetableAvailability,
   TimetableElectiveChoice,
   Classroom,
+  District,
+  Province,
   Subject,
   Teacher,
   Student,
   School,
 } = require('../models');
 const { classroomLabel, teacherName, assignmentTeacherIds } = require('./timetableBuildService');
+const { resolvePrincipalName } = require('./schoolPrincipalService');
 
-const VIEWS = ['classroom', 'teacher', 'student', 'room'];
+const VIEWS = ['classroom', 'teacher', 'teacher_detail', 'student', 'room'];
 const DAY_NAMES = {
   1: 'Pazartesi',
   2: 'Salı',
@@ -26,15 +28,26 @@ const DAY_NAMES = {
   6: 'Cumartesi',
   7: 'Pazar',
 };
+const DAY_SHORT = {
+  1: 'PZT',
+  2: 'SALI',
+  3: 'ÇAR.',
+  4: 'PRŞ',
+  5: 'CUMA',
+  6: 'C.TESİ',
+  7: 'PAZAR',
+};
 const STATUS_LABEL = { taslak: 'Taslak', yayinda: 'Yayında', arsiv: 'Arşiv' };
 const FILE_BASE = {
   classroom: ['ders-programi-sube', 'ders-programi-subeler'],
   teacher: ['ders-programi-ogretmen', 'ders-programi-ogretmenler'],
+  teacher_detail: ['ayrintili-program-ogretmen', 'ayrintili-program-ogretmenler'],
   student: ['ders-programi-ogrenci', 'ders-programi-ogrenciler'],
   room: ['ders-programi-mekan', 'ders-programi-mekanlar'],
 };
-const FILLS = ['E8F5E9', 'E3F2FD', 'FFF3E0', 'F3E5F5', 'E0F7FA', 'FFF8E1', 'FCE4EC', 'E8EAF6', 'F1F8E9', 'EDE7F6'];
-const THIN = { style: 'thin', color: { argb: 'FFD0D7DE' } };
+// Çıktılar siyah beyaz basılır; zemin rengi kullanılmaz, ayrım kalınlık ve çizgiyle yapılır.
+const INK = 'FF000000';
+const THIN = { style: 'thin', color: { argb: INK } };
 const BORDER = { top: THIN, left: THIN, bottom: THIN, right: THIN };
 
 function httpError(status, message) {
@@ -137,18 +150,6 @@ function describeLesson(lesson, view, teachersById, roomsById) {
   return { title: subject, lines: lines.filter(Boolean), fillId: assignment.subject_id || 0 };
 }
 
-function cellState(availability, entityType, entityId) {
-  const out = {};
-  for (const row of availability) {
-    const match = row.entity_type === 'school' || (row.entity_type === entityType && row.entity_id === entityId);
-    if (!match) continue;
-    for (const [key, value] of Object.entries(row.cells || {})) {
-      if (out[key] !== 'closed') out[key] = value;
-    }
-  }
-  return out;
-}
-
 function choiceIndex(choiceRows) {
   const byAssignment = new Map();
   const classesWithChoices = new Set();
@@ -230,13 +231,13 @@ function lunchAfterFor(project, classroomId) {
 function richLesson(items, timeNote) {
   const rich = [];
   if (timeNote) {
-    rich.push({ font: { name: 'Calibri', size: 8, color: { argb: 'FF8C8C8C' } }, text: `${timeNote}\n` });
+    rich.push({ font: { name: 'Calibri', size: 8, color: { argb: INK } }, text: `${timeNote}\n` });
   }
   items.forEach((item, index) => {
-    if (index > 0) rich.push({ font: { name: 'Calibri', size: 8, color: { argb: 'FFBFBFBF' } }, text: '\n—\n' });
-    rich.push({ font: { name: 'Calibri', bold: true, size: 10, color: { argb: 'FF1F1F1F' } }, text: item.title });
+    if (index > 0) rich.push({ font: { name: 'Calibri', size: 8, color: { argb: INK } }, text: '\n—\n' });
+    rich.push({ font: { name: 'Calibri', bold: true, size: 10, color: { argb: INK } }, text: item.title });
     if (item.lines.length) {
-      rich.push({ font: { name: 'Calibri', size: 9, color: { argb: 'FF595959' } }, text: `\n${item.lines.join('\n')}` });
+      rich.push({ font: { name: 'Calibri', size: 9, color: { argb: INK } }, text: `\n${item.lines.join('\n')}` });
     }
   });
   return { richText: rich };
@@ -257,8 +258,6 @@ function addGridSheet(workbook, usedNames, spec) {
     bell,
     lunchAfter,
     slots,
-    closed,
-    avoid,
   } = spec;
   const ws = workbook.addWorksheet(sheetName(sheet, usedNames), {
     pageSetup: {
@@ -276,13 +275,11 @@ function addGridSheet(workbook, usedNames, spec) {
   ws.mergeCells(2, 1, 2, cols);
   const titleCell = ws.getCell(1, 1);
   titleCell.value = title;
-  titleCell.font = { name: 'Calibri', bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
-  titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F4E79' } };
+  titleCell.font = { name: 'Calibri', bold: true, size: 14, color: { argb: INK } };
   titleCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
   const subCell = ws.getCell(2, 1);
   subCell.value = subtitle;
-  subCell.font = { name: 'Calibri', size: 11, color: { argb: 'FF1F4E79' } };
-  subCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD6E3F0' } };
+  subCell.font = { name: 'Calibri', size: 11, color: { argb: INK } };
   subCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
   ws.getRow(1).height = 24;
   ws.getRow(2).height = 20;
@@ -293,8 +290,7 @@ function addGridSheet(workbook, usedNames, spec) {
   headers.forEach((text, index) => {
     const cell = header.getCell(index + 1);
     cell.value = text;
-    cell.font = { name: 'Calibri', bold: true, size: 11, color: { argb: 'FFFFFFFF' } };
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E75B6' } };
+    cell.font = { name: 'Calibri', bold: true, size: 11, color: { argb: INK } };
     cell.alignment = { vertical: 'middle', horizontal: 'center' };
     cell.border = BORDER;
   });
@@ -306,8 +302,7 @@ function addGridSheet(workbook, usedNames, spec) {
       ws.mergeCells(rowNo, 1, rowNo, cols);
       const lunch = ws.getCell(rowNo, 1);
       lunch.value = 'Öğle arası';
-      lunch.font = { name: 'Calibri', italic: true, size: 10, color: { argb: 'FF595959' } };
-      lunch.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } };
+      lunch.font = { name: 'Calibri', italic: true, size: 10, color: { argb: INK } };
       lunch.alignment = { vertical: 'middle', horizontal: 'center' };
       ws.getRow(rowNo).height = 16;
       rowNo += 1;
@@ -317,8 +312,7 @@ function addGridSheet(workbook, usedNames, spec) {
     const baseRange = periodRange(bell, refDay, period, lunchAfter);
     const hour = row.getCell(1);
     hour.value = `${period}\n${baseRange}`;
-    hour.font = { name: 'Calibri', bold: true, size: 10 };
-    hour.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF7F9FB' } };
+    hour.font = { name: 'Calibri', bold: true, size: 10, color: { argb: INK } };
     hour.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
     hour.border = BORDER;
 
@@ -329,27 +323,11 @@ function addGridSheet(workbook, usedNames, spec) {
       cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
       const key = `${day}:${period}`;
       const items = slots.get(key) || [];
-      const stateKey = `${day}-${period}`;
-      if (items.length) {
-        const range = periodRange(bell, day, period, lunchAfter);
-        const timeNote = range === baseRange ? '' : range;
-        cell.value = richLesson(items, timeNote);
-        if (items.length === 1) {
-          const color = FILLS[(items[0].fillId || 0) % FILLS.length];
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${color}` } };
-        }
-        maxLines = Math.max(maxLines, lineCount(items) + (timeNote ? 1 : 0));
-        return;
-      }
-      if (closed[stateKey] === 'closed') {
-        cell.value = 'Kapalı';
-        cell.font = { name: 'Calibri', italic: true, size: 9, color: { argb: 'FF8C8C8C' } };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E7EB' } };
-        return;
-      }
-      if (avoid[stateKey] === 'avoid') {
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF8E1' } };
-      }
+      if (!items.length) return;
+      const range = periodRange(bell, day, period, lunchAfter);
+      const timeNote = range === baseRange ? '' : range;
+      cell.value = richLesson(items, timeNote);
+      maxLines = Math.max(maxLines, lineCount(items) + (timeNote ? 1 : 0));
     });
     row.height = Math.min(96, Math.max(36, maxLines * 15));
     rowNo += 1;
@@ -359,7 +337,7 @@ function addGridSheet(workbook, usedNames, spec) {
     ws.mergeCells(rowNo, 1, rowNo, cols);
     const note = ws.getCell(rowNo, 1);
     note.value = footnote;
-    note.font = { name: 'Calibri', italic: true, size: 9, color: { argb: 'FF595959' } };
+    note.font = { name: 'Calibri', italic: true, size: 9, color: { argb: INK } };
     note.alignment = { vertical: 'middle', wrapText: true };
     ws.getRow(rowNo).height = 32;
   }
@@ -369,6 +347,244 @@ function addGridSheet(workbook, usedNames, spec) {
   ws.pageSetup.printTitlesRow = '1:3';
   ws.headerFooter.oddFooter = `&L${title}&RSayfa &P / &N`;
   ws.pageSetup.margins = { left: 0.4, right: 0.4, top: 0.5, bottom: 0.55, header: 0.2, footer: 0.25 };
+}
+
+/** Resmi yazı başlığı: T.C. / kaymakamlık ya da valilik / okul müdürlüğü. */
+function organizationLines(school) {
+  const upper = (value) => String(value || '').toLocaleUpperCase('tr-TR');
+  const district = school?.District?.name ? `${upper(school.District.name)} KAYMAKAMLIĞI` : '';
+  const province = school?.Province?.name ? `${upper(school.Province.name)} VALİLİĞİ` : '';
+  const name = school?.name ? `${upper(school.name)} MÜDÜRLÜĞÜ` : '';
+  return ['T.C.', district || province, name].filter(Boolean);
+}
+
+function dateText(value) {
+  const d = value instanceof Date ? value : new Date();
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+function labelCell(ws, row, from, to, text, bold = false) {
+  if (to > from) ws.mergeCells(row, from, row, to);
+  const cell = ws.getCell(row, from);
+  cell.value = text;
+  cell.font = { name: 'Calibri', size: 10, bold, color: { argb: INK } };
+  cell.alignment = { vertical: 'middle', horizontal: 'left' };
+  return cell;
+}
+
+/** Ders saatlerini (classroom, subject) kırılımında güne göre sayar. */
+function detailRows(lessons, roomsById) {
+  const map = new Map();
+  for (const lesson of lessons) {
+    const assignment = lesson.Assignment;
+    const key = `${assignment.classroom_id}|${assignment.subject_id}`;
+    let row = map.get(key);
+    if (!row) {
+      const roomId = lessonRoomId(lesson);
+      row = {
+        room: roomId ? roomsById.get(roomId)?.name || assignment.Room?.name || '' : '',
+        classroom: classroomLabel(assignment.Classroom),
+        code: assignment.Subject?.code || '',
+        subject: assignment.Subject?.name || 'Ders',
+        byDay: new Map(),
+        total: 0,
+      };
+      map.set(key, row);
+    }
+    row.byDay.set(lesson.day_of_week, (row.byDay.get(lesson.day_of_week) || 0) + 1);
+    row.total += 1;
+  }
+  return [...map.values()].sort((a, b) => trSort(a.classroom, b.classroom) || trSort(a.subject, b.subject));
+}
+
+/**
+ * MEB'de "ayrıntılı program" denen öğretmen el programı: günler satır, ders saatleri
+ * sütun; altında imza bloğu ve derslerin gün gün saat dökümü.
+ */
+function addTeacherDetailSheet(workbook, usedNames, spec) {
+  const { sheet, orgLines, teacherLabel, days, periods, bell, lunchAfter, lessons, roomsById, principalName } = spec;
+  const gridCols = 1 + periods.length;
+  const summaryCols = 5 + days.length + 1;
+  const cols = Math.max(gridCols, summaryCols);
+  const ws = workbook.addWorksheet(sheetName(sheet, usedNames), {
+    pageSetup: {
+      orientation: 'landscape',
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 1,
+      paperSize: 9,
+      horizontalCentered: true,
+    },
+  });
+
+  let rowNo = 1;
+  for (const line of orgLines) {
+    ws.mergeCells(rowNo, 1, rowNo, cols);
+    const cell = ws.getCell(rowNo, 1);
+    cell.value = line;
+    cell.font = { name: 'Calibri', bold: true, size: line === 'T.C.' ? 10 : 11, color: { argb: INK } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    rowNo += 1;
+  }
+  rowNo += 1;
+
+  const third = Math.max(2, Math.floor(cols / 3));
+  labelCell(ws, rowNo, 1, third, 'Sayı :');
+  labelCell(ws, rowNo, third + 1, third * 2, 'Sınıf Öğretmenliği :');
+  labelCell(ws, rowNo, third * 2 + 1, cols, 'Nöbet Günü ve Yeri :');
+  rowNo += 1;
+  labelCell(ws, rowNo, 1, third, `Adı Soyadı : ${teacherLabel}`, true);
+  labelCell(ws, rowNo, third + 1, cols, 'Eğitici Kolu (Kulüp) :');
+  rowNo += 2;
+
+  const refDay = days[0] || 1;
+  const headRow = ws.getRow(rowNo);
+  headRow.height = 18;
+  const corner = headRow.getCell(1);
+  corner.value = 'Ders\\Gün';
+  corner.font = { name: 'Calibri', bold: true, size: 9, color: { argb: INK } };
+  corner.alignment = { vertical: 'middle', horizontal: 'center' };
+  corner.border = BORDER;
+  periods.forEach((period, index) => {
+    const cell = headRow.getCell(index + 2);
+    cell.value = `(${period})`;
+    cell.font = { name: 'Calibri', bold: true, size: 9, color: { argb: INK } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.border = BORDER;
+  });
+  rowNo += 1;
+
+  const clockRow = ws.getRow(rowNo);
+  clockRow.height = 26;
+  const clockHead = clockRow.getCell(1);
+  clockHead.value = 'Saat';
+  clockHead.font = { name: 'Calibri', bold: true, size: 9, color: { argb: INK } };
+  clockHead.alignment = { vertical: 'middle', horizontal: 'center' };
+  clockHead.border = BORDER;
+  periods.forEach((period, index) => {
+    const start = periodStart(bell, refDay, period, lunchAfter);
+    const cell = clockRow.getCell(index + 2);
+    cell.value = `${formatMinutes(start)}\n${formatMinutes(start + bell.lesson_minutes)}`;
+    cell.font = { name: 'Calibri', size: 8, color: { argb: INK } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    cell.border = BORDER;
+  });
+  rowNo += 1;
+
+  const bySlot = new Map();
+  for (const lesson of lessons) {
+    const key = `${lesson.day_of_week}:${lesson.period_no}`;
+    const bucket = bySlot.get(key) || [];
+    bucket.push(lesson);
+    bySlot.set(key, bucket);
+  }
+
+  for (const day of days) {
+    const row = ws.getRow(rowNo);
+    row.height = 30;
+    const name = row.getCell(1);
+    name.value = DAY_NAMES[day] || String(day);
+    name.font = { name: 'Calibri', bold: true, size: 9, color: { argb: INK } };
+    name.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+    name.border = BORDER;
+    periods.forEach((period, index) => {
+      const cell = row.getCell(index + 2);
+      cell.border = BORDER;
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      const bucket = bySlot.get(`${day}:${period}`) || [];
+      if (!bucket.length) return;
+      cell.value = bucket
+        .map((lesson) => `${classroomLabel(lesson.Assignment.Classroom)}\n${lesson.Assignment.Subject?.name || 'Ders'}`)
+        .join('\n');
+      cell.font = { name: 'Calibri', size: 8, color: { argb: INK } };
+    });
+    rowNo += 1;
+  }
+  rowNo += 1;
+
+  const today = dateText(new Date());
+  labelCell(
+    ws,
+    rowNo,
+    1,
+    Math.max(1, cols - 2),
+    `Yukarıdaki dersler ${today} tarihinde şahsınıza verilmiştir. Bilgilerinizi rica ederim.`,
+  );
+  labelCell(ws, rowNo, Math.max(2, cols - 1), cols, today).alignment = { horizontal: 'center' };
+  rowNo += 1;
+  labelCell(ws, rowNo, 1, Math.max(1, cols - 2), `Ders Programı Başlangıç Tarihi : ${today}`);
+  labelCell(ws, rowNo, Math.max(2, cols - 1), cols, principalName || '').alignment = { horizontal: 'center' };
+  rowNo += 1;
+  labelCell(ws, rowNo, 1, Math.max(1, cols - 2), 'Aslını aldım.');
+  labelCell(ws, rowNo, Math.max(2, cols - 1), cols, 'MÜDÜR', true).alignment = { horizontal: 'center' };
+  rowNo += 2;
+
+  const summaryHead = ['S. No', 'Yer Adı', 'Sınıflar', 'Ders', 'Ders Adı', ...days.map((d) => DAY_SHORT[d] || String(d)), 'HS'];
+  const headerRow = ws.getRow(rowNo);
+  headerRow.height = 18;
+  summaryHead.forEach((text, index) => {
+    const cell = headerRow.getCell(index + 1);
+    cell.value = text;
+    cell.font = { name: 'Calibri', bold: true, size: 9, color: { argb: INK } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.border = BORDER;
+  });
+  rowNo += 1;
+
+  const rows = detailRows(lessons, roomsById);
+  const dayTotals = new Map();
+  rows.forEach((item, index) => {
+    const row = ws.getRow(rowNo);
+    const values = [index + 1, item.room, item.classroom, item.code, item.subject];
+    values.forEach((value, col) => {
+      const cell = row.getCell(col + 1);
+      cell.value = value;
+      cell.font = { name: 'Calibri', size: 9, color: { argb: INK } };
+      cell.alignment = { vertical: 'middle', horizontal: col === 4 || col === 1 ? 'left' : 'center' };
+      cell.border = BORDER;
+    });
+    days.forEach((day, col) => {
+      const hours = item.byDay.get(day) || 0;
+      if (hours) dayTotals.set(day, (dayTotals.get(day) || 0) + hours);
+      const cell = row.getCell(6 + col);
+      cell.value = hours || null;
+      cell.font = { name: 'Calibri', size: 9, color: { argb: INK } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.border = BORDER;
+    });
+    const total = row.getCell(6 + days.length);
+    total.value = item.total;
+    total.font = { name: 'Calibri', size: 9, color: { argb: INK } };
+    total.alignment = { vertical: 'middle', horizontal: 'center' };
+    total.border = BORDER;
+    rowNo += 1;
+  });
+
+  const totalRow = ws.getRow(rowNo);
+  const totalLabel = totalRow.getCell(5);
+  totalLabel.value = 'Toplamlar';
+  totalLabel.font = { name: 'Calibri', bold: true, size: 9, color: { argb: INK } };
+  totalLabel.alignment = { vertical: 'middle', horizontal: 'left' };
+  totalLabel.border = BORDER;
+  for (let col = 1; col <= 4; col += 1) totalRow.getCell(col).border = BORDER;
+  days.forEach((day, col) => {
+    const cell = totalRow.getCell(6 + col);
+    cell.value = dayTotals.get(day) || null;
+    cell.font = { name: 'Calibri', bold: true, size: 9, color: { argb: INK } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.border = BORDER;
+  });
+  const grand = totalRow.getCell(6 + days.length);
+  grand.value = lessons.length;
+  grand.font = { name: 'Calibri', bold: true, size: 9, color: { argb: INK } };
+  grand.alignment = { vertical: 'middle', horizontal: 'center' };
+  grand.border = BORDER;
+
+  ws.getColumn(1).width = 14;
+  for (let i = 2; i <= cols; i += 1) ws.getColumn(i).width = 12;
+  ws.getColumn(2).width = 16;
+  ws.getColumn(5).width = 26;
+  ws.pageSetup.margins = { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 };
 }
 
 /**
@@ -385,10 +601,15 @@ function buildTimetableWorkbook({
   roomsById,
   students,
   choiceRows,
-  availability,
+  orgLines,
+  principalName,
 }) {
   const usable = lessons.filter((l) => l.Assignment);
   if (!usable.length) throw httpError(400, 'Henüz taslak program yok');
+
+  // Ayrıntılı program öğretmen listesini kullanır, yalnız sayfa düzeni farklıdır.
+  const detailed = view === 'teacher_detail';
+  const baseView = detailed ? 'teacher' : view;
 
   const classLabels = new Map();
   for (const lesson of usable) {
@@ -396,12 +617,12 @@ function buildTimetableWorkbook({
     if (assignment.Classroom) classLabels.set(assignment.classroom_id, classroomLabel(assignment.Classroom));
   }
   const choiceCtx = choiceIndex(choiceRows || []);
-  let entities = entitiesOf(view, usable, students || [], teachersById, roomsById, classLabels);
+  let entities = entitiesOf(baseView, usable, students || [], teachersById, roomsById, classLabels);
   if (entityId != null) entities = entities.filter((entity) => entity.key === Number(entityId));
   if (!entities.length) {
     if (entityId != null) throw httpError(400, 'Seçilen kayıt için hazır program yok');
-    if (view === 'room') throw httpError(400, 'Programda mekan atanmış ders yok');
-    if (view === 'student') throw httpError(400, 'Bu şubelerde kayıtlı öğrenci yok');
+    if (baseView === 'room') throw httpError(400, 'Programda mekan atanmış ders yok');
+    if (baseView === 'student') throw httpError(400, 'Bu şubelerde kayıtlı öğrenci yok');
     throw httpError(400, 'Hazır program bulunamadı');
   }
 
@@ -417,33 +638,41 @@ function buildTimetableWorkbook({
   const usedNames = new Set();
 
   for (const entity of entities) {
-    const owner = view === 'student' ? entity.id : null;
-    const list = lessonsFor(view, view === 'student' ? owner : entity.id, usable, choiceCtx);
+    const owner = baseView === 'student' ? entity.id : null;
+    const list = lessonsFor(baseView, baseView === 'student' ? owner : entity.id, usable, choiceCtx);
+
+    if (detailed) {
+      addTeacherDetailSheet(workbook, usedNames, {
+        sheet: entity.sheet,
+        orgLines,
+        teacherLabel: entity.label,
+        days,
+        periods,
+        bell,
+        lunchAfter: project.lunch_after || null,
+        lessons: list,
+        roomsById,
+        principalName,
+      });
+      continue;
+    }
+
     const slots = new Map();
     for (const lesson of list) {
       const key = `${lesson.day_of_week}:${lesson.period_no}`;
       const bucket = slots.get(key) || [];
-      bucket.push(describeLesson(lesson, view, teachersById, roomsById));
+      bucket.push(describeLesson(lesson, baseView, teachersById, roomsById));
       slots.set(key, bucket);
     }
     for (const bucket of slots.values()) bucket.sort((a, b) => trSort(a.title, b.title));
 
-    const availType = view === 'student' ? 'classroom' : view;
-    const availId = view === 'student' ? owner.classroom_id : entity.id;
-    const states = cellState(availability, availType, availId);
-    const closed = {};
-    const avoid = {};
-    for (const [key, value] of Object.entries(states)) {
-      if (value === 'closed') closed[key] = 'closed';
-      if (value === 'avoid') avoid[key] = 'avoid';
-    }
-
-    const lunchClassroom = view === 'classroom' ? entity.id : view === 'student' ? owner.classroom_id : null;
-    const kind = view === 'classroom' ? 'Şube' : view === 'teacher' ? 'Öğretmen' : view === 'student' ? 'Öğrenci' : 'Mekan';
+    const lunchClassroom = baseView === 'classroom' ? entity.id : baseView === 'student' ? owner.classroom_id : null;
+    const kind =
+      baseView === 'classroom' ? 'Şube' : baseView === 'teacher' ? 'Öğretmen' : baseView === 'student' ? 'Öğrenci' : 'Mekan';
     const bits = [`${kind}: ${entity.label}`, year, status, `${list.length} ders saati`].filter(Boolean);
     let footnote = '';
-    if (view === 'classroom') footnote = 'Aynı saatteki seçmeli dersler birlikte yazılır.';
-    if (view === 'student') {
+    if (baseView === 'classroom') footnote = 'Aynı saatteki seçmeli dersler birlikte yazılır.';
+    if (baseView === 'student') {
       const classHas = choiceCtx.classesWithChoices.has(owner.classroom_id);
       const picked = choiceCtx.countByStudent.get(owner.id) || 0;
       footnote = classHas && !picked
@@ -461,8 +690,6 @@ function buildTimetableWorkbook({
       bell,
       lunchAfter: lunchAfterFor(project, lunchClassroom),
       slots,
-      closed,
-      avoid,
     });
   }
 
@@ -486,7 +713,7 @@ async function writeLessonsExport(res, project, query) {
         as: 'Assignment',
         include: [
           { model: Classroom, attributes: ['id', 'class_level', 'section'] },
-          { model: Subject, attributes: ['id', 'name'] },
+          { model: Subject, attributes: ['id', 'name', 'code'] },
           { model: Teacher, as: 'Teacher', attributes: ['id', 'first_name', 'last_name'] },
           { model: TimetableRoom, as: 'Room', attributes: ['id', 'name'] },
         ],
@@ -505,7 +732,7 @@ async function writeLessonsExport(res, project, query) {
     for (const id of assignmentTeacherIds(lesson.Assignment)) teacherIds.add(id);
   }
 
-  const [teacherRows, roomRows, school, availabilityRows, choiceRows, studentRows] = await Promise.all([
+  const [teacherRows, roomRows, school, principalName, choiceRows, studentRows] = await Promise.all([
     teacherIds.size
       ? Teacher.findAll({ where: { id: [...teacherIds] }, attributes: ['id', 'first_name', 'last_name'] })
       : [],
@@ -513,8 +740,14 @@ async function writeLessonsExport(res, project, query) {
       where: { tenant_id: project.tenant_id, school_id: project.school_id },
       attributes: ['id', 'name'],
     }),
-    School.findByPk(project.school_id, { attributes: ['name'] }),
-    TimetableAvailability.findAll({ where: { project_id: project.id }, attributes: ['entity_type', 'entity_id', 'cells'] }),
+    School.findByPk(project.school_id, {
+      attributes: ['name'],
+      include: [
+        { model: District, attributes: ['name'] },
+        { model: Province, attributes: ['name'] },
+      ],
+    }),
+    view === 'teacher_detail' ? resolvePrincipalName(project.tenant_id, project.school_id) : '',
     view === 'student'
       ? TimetableElectiveChoice.findAll({
           where: { project_id: project.id },
@@ -551,7 +784,8 @@ async function writeLessonsExport(res, project, query) {
     roomsById,
     students: studentRows.map((row) => row.toJSON()),
     choiceRows: choices,
-    availability: availabilityRows.map((row) => row.toJSON()),
+    orgLines: organizationLines(school),
+    principalName,
   });
 
   const base = FILE_BASE[view][entityId ? 0 : 1];

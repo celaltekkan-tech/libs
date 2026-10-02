@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, App, Button, Dropdown, Empty, Popconfirm, Segmented, Select, Space, Tag, Tooltip, Typography, theme } from 'antd'
 import {
   CloseOutlined,
@@ -10,19 +10,23 @@ import {
   LockFilled,
   LockOutlined,
   RightOutlined,
+  ThunderboltOutlined,
   UnlockOutlined,
   UploadOutlined,
 } from '@ant-design/icons'
 import {
+  applyTimetableRun,
   clearPublishedSchedule,
   clearTimetableLessons,
   exportTimetableLessons,
+  getTimetableRun,
   listAvailability,
   listTimetableLessons,
   lockTimetableLessons,
   moveTimetableLesson,
   publishTimetable,
   setTimetableLessonLock,
+  startTimetableRun,
   type TimetableExportView,
 } from '../../api/timetable'
 import { TypedPhraseConfirmModal } from '../TypedPhraseConfirmModal'
@@ -61,6 +65,15 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
   const [availability, setAvailability] = useState<TimetableAvailability[]>([])
   const [wipe, setWipe] = useState<WipeScope | null>(null)
   const [wiping, setWiping] = useState(false)
+  const [distributing, setDistributing] = useState(false)
+  const distributeTimer = useRef<number | null>(null)
+
+  useEffect(
+    () => () => {
+      if (distributeTimer.current) window.clearTimeout(distributeTimer.current)
+    },
+    [],
+  )
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -244,13 +257,15 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
     }
   }
 
+  // "<görünüm>:current" yalnız seçili kaydı, düz anahtar tüm listeyi indirir.
   const onExport = async (key: string) => {
-    const current = key === 'current'
-    const view = (current ? mode : key) as TimetableExportView
+    const current = key.endsWith(':current')
+    const view = (current ? key.slice(0, -':current'.length) : key) as TimetableExportView
     if (current && !entityId) return
     const names: Record<TimetableExportView, [string, string]> = {
       classroom: ['ders-programi-sube', 'ders-programi-subeler'],
       teacher: ['ders-programi-ogretmen', 'ders-programi-ogretmenler'],
+      teacher_detail: ['ayrintili-program-ogretmen', 'ayrintili-program-ogretmenler'],
       student: ['ders-programi-ogrenci', 'ders-programi-ogrenciler'],
       room: ['ders-programi-mekan', 'ders-programi-mekanlar'],
     }
@@ -276,6 +291,49 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
 
   const viewLabel = pickerOptions.find((e) => e.value === entityId)?.label || ''
   const viewNoun = mode === 'classroom' ? 'şubenin' : mode === 'teacher' ? 'öğretmenin' : 'mekanın'
+
+  // Yalnız görünen kaydı yeniden dağıtır; diğer dersler bulundukları saatte kalır.
+  const onDistributeView = async () => {
+    if (!entityId) return
+    setDistributing(true)
+    const scope =
+      mode === 'classroom' ? { classroom_id: entityId } : mode === 'teacher' ? { teacher_id: entityId } : { room_id: entityId }
+    const waitFor = (runId: number) => {
+      distributeTimer.current = window.setTimeout(async () => {
+        try {
+          const run = await getTimetableRun(runId)
+          if (run.status === 'kuyrukta' || run.status === 'calisiyor') {
+            waitFor(runId)
+            return
+          }
+          if (run.status === 'tamamlandi') {
+            if (!run.applied_at) await applyTimetableRun(run.id)
+            message.success(`${viewLabel} yeniden dağıtıldı`)
+            await load()
+            await ctx.reloadProject()
+          } else {
+            message.error(run.error || `${viewLabel} için uygun dağıtım bulunamadı; diğer dersler yerinde kaldı`)
+          }
+        } catch (err) {
+          message.error(getErrorMessage(err))
+        } finally {
+          setDistributing(false)
+        }
+      }, 2000)
+    }
+    try {
+      const run = await startTimetableRun(
+        project.id,
+        project.settings.distribution?.place_seconds || project.settings.time_limit,
+        scope,
+      )
+      message.info(`${viewLabel} dağıtılıyor. Diğer dersler yerinde tutuluyor.`)
+      waitFor(run.id)
+    } catch (err) {
+      message.error(getErrorMessage(err))
+      setDistributing(false)
+    }
+  }
 
   const afterClear = async (text: string) => {
     message.success(text)
@@ -595,13 +653,39 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
               İçe aktar
             </Button>
           )}
+          {ctx.canCreate && (
+            <Popconfirm
+              title={`${viewLabel || 'Görünen kayıt'} yeniden dağıtılsın mı?`}
+              description={
+                <div style={{ maxWidth: 320 }}>
+                  Yalnız bu {viewNoun} dersleri yeniden yerleştirilir. Programın geri kalanı bulunduğu saatte kalır,
+                  kilitli dersler yerinden oynamaz.
+                </div>
+              }
+              okText="Dağıt"
+              cancelText="Vazgeç"
+              onConfirm={onDistributeView}
+            >
+              <Button
+                icon={<ThunderboltOutlined />}
+                loading={distributing}
+                disabled={!entityId || !ctx.meta.solver_available}
+              >
+                {mode === 'classroom'
+                  ? 'Şubenin dağıtımını yap'
+                  : mode === 'teacher'
+                    ? 'Öğretmenin dağıtımını yap'
+                    : 'Mekanın dağıtımını yap'}
+              </Button>
+            </Popconfirm>
+          )}
           <EokulExtensionButton projectId={project.id} hasLessons={lessons.length > 0} />
           <Dropdown
             disabled={exporting || lessons.length === 0}
             menu={{
               items: [
                 {
-                  key: 'current',
+                  key: `${mode}:current`,
                   label:
                     mode === 'classroom'
                       ? 'Bu şubenin programı'
@@ -610,9 +694,13 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
                         : 'Bu mekanın programı',
                   disabled: !entityId,
                 },
-                { type: 'divider' },
+                ...(mode === 'teacher'
+                  ? [{ key: 'teacher_detail:current', label: 'Bu öğretmenin ayrıntılı programı', disabled: !entityId }]
+                  : []),
+                { type: 'divider' as const },
                 { key: 'classroom', label: 'Tüm şubeler' },
                 { key: 'teacher', label: 'Tüm öğretmenler' },
+                { key: 'teacher_detail', label: 'Tüm öğretmenler (ayrıntılı program)' },
                 { key: 'student', label: 'Tüm öğrenciler' },
                 { key: 'room', label: 'Tüm mekanlar' },
               ],

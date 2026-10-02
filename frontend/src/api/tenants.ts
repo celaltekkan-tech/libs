@@ -82,6 +82,16 @@ export async function resetTenantUserSmsLogin(
   return data.data
 }
 
+export async function unlockTenantUserLogin(
+  tenantId: number,
+  userId: number,
+): Promise<{ user_id: number; login_failed_count: number; login_locked_until: string | null }> {
+  const { data } = await client.post<
+    Envelope<{ user_id: number; login_failed_count: number; login_locked_until: string | null }>
+  >(`/api/tenants/${tenantId}/users/${userId}/unlock-login`)
+  return data.data
+}
+
 export async function resetTenantUserPassword(
   tenantId: number,
   userId: number,

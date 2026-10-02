@@ -10,7 +10,7 @@ const pollers = new Map();
 
 const ACTIVE_STATUSES = ['kuyrukta', 'calisiyor'];
 
-async function startRun(project, { userId, timeLimit }) {
+async function startRun(project, { userId, timeLimit, scope }) {
   const active = await TimetableRun.findOne({
     where: { project_id: project.id, status: { [Op.in]: ACTIVE_STATUSES } },
   });
@@ -20,7 +20,7 @@ async function startRun(project, { userId, timeLimit }) {
     throw err;
   }
 
-  const payload = await buildPayload(project, { timeLimit });
+  const payload = await buildPayload(project, { timeLimit, scope });
   const algos = algorithmsOf(payload.distribution);
   const gap = Number(payload.distribution?.gap_seconds || 0);
   let budget = 0;

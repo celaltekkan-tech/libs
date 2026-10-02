@@ -424,6 +424,37 @@ module.exports = {
     }
   },
 
+  async unlockUserLogin(req, res, next) {
+    try {
+      const tenant = await Tenant.findByPk(req.params.id);
+      if (!tenant) {
+        return res.status(404).json({ success: false, message: 'Hesap bulunamadı' });
+      }
+
+      const user = await User.findOne({
+        where: { id: req.params.userId, tenant_id: tenant.id },
+      });
+      if (!user || user.is_platform_admin) {
+        return res.status(404).json({ success: false, message: 'Kullanıcı bulunamadı' });
+      }
+
+      const loginLockout = require('../services/loginLockoutService');
+      await loginLockout.clearFailures(user);
+
+      res.json({
+        success: true,
+        message: `Giriş kilidi kaldırıldı: ${user.full_name}`,
+        data: {
+          user_id: user.id,
+          login_failed_count: 0,
+          login_locked_until: null,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async resetUserPassword(req, res, next) {
     try {
       const tenant = await Tenant.findByPk(req.params.id);

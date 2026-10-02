@@ -311,8 +311,8 @@ export const SCORE_LABELS: Record<string, string> = {
 export const WEIGHT_LABELS: Record<keyof TimetableWeights, string> = {
   teacher_gaps: 'Öğretmen boş saati (pencere)',
   class_compact: 'Şube gününde boşluk / geç başlama',
-  teacher_single_hour_day: 'Öğretmenin okula tek ders için gelmesi',
-  hard_subject_late: 'Zor dersin son saatlere düşmesi',
+  teacher_single_hour_day: 'Öğretmenin okula tek ders için gelmemesi',
+  hard_subject_late: 'Zor dersin son saatlere düşmemesi',
   soft_constraint: 'Esnek kısıt varsayılan ağırlığı',
   availability_avoid: 'Zaman tablosunda "istenmiyor" saate ders',
   block_flex: 'Blok esnekliği',
