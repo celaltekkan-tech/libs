@@ -331,11 +331,18 @@ export async function importProgram(
   return data.data
 }
 
-export type TimetableExportView = 'classroom' | 'teacher' | 'teacher_detail' | 'student' | 'room'
+export type TimetableExportView =
+  | 'classroom'
+  | 'teacher'
+  | 'teacher_detail'
+  | 'classroom_detail'
+  | 'student'
+  | 'room'
+  | 'carsaf'
 
 export async function exportTimetableLessons(
   projectId: number,
-  params: { view: TimetableExportView; entity_id?: number },
+  params: { view: TimetableExportView; entity_id?: number; format?: 'xlsx' | 'pdf' },
 ): Promise<Blob> {
   const { data } = await client.get(`${BASE}/projects/${projectId}/lessons/export`, {
     params,

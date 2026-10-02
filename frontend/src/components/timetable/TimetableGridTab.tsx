@@ -6,6 +6,7 @@ import {
   DeleteOutlined,
   DownOutlined,
   FileExcelOutlined,
+  FilePdfOutlined,
   LeftOutlined,
   LockFilled,
   LockOutlined,
@@ -258,7 +259,7 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
   }
 
   // "<görünüm>:current" yalnız seçili kaydı, düz anahtar tüm listeyi indirir.
-  const onExport = async (key: string) => {
+  const onExport = async (key: string, format: 'xlsx' | 'pdf') => {
     const current = key.endsWith(':current')
     const view = (current ? key.slice(0, -':current'.length) : key) as TimetableExportView
     if (current && !entityId) return
@@ -266,22 +267,55 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
       classroom: ['ders-programi-sube', 'ders-programi-subeler'],
       teacher: ['ders-programi-ogretmen', 'ders-programi-ogretmenler'],
       teacher_detail: ['ayrintili-program-ogretmen', 'ayrintili-program-ogretmenler'],
+      classroom_detail: ['ayrintili-program-sube', 'ayrintili-program-subeler'],
       student: ['ders-programi-ogrenci', 'ders-programi-ogrenciler'],
       room: ['ders-programi-mekan', 'ders-programi-mekanlar'],
+      carsaf: ['carsaf-program', 'carsaf-program'],
     }
     setExporting(true)
     try {
       const blob = await exportTimetableLessons(project.id, {
         view,
+        format,
         ...(current && entityId ? { entity_id: entityId } : {}),
       })
-      downloadBlob(blob, `${names[view][current ? 0 : 1]}.xlsx`)
+      downloadBlob(blob, `${names[view][current ? 0 : 1]}.${format === 'pdf' ? 'pdf' : 'xlsx'}`)
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
       setExporting(false)
     }
   }
+
+  const exportMenu = (format: 'xlsx' | 'pdf') => ({
+    items: [
+      {
+        key: `${mode}:current`,
+        label:
+          mode === 'classroom'
+            ? 'Bu şubenin programı'
+            : mode === 'teacher'
+              ? 'Bu öğretmenin programı'
+              : 'Bu mekanın programı',
+        disabled: !entityId,
+      },
+      ...(mode === 'teacher'
+        ? [{ key: 'teacher_detail:current', label: 'Bu öğretmenin ayrıntılı programı', disabled: !entityId }]
+        : []),
+      ...(mode === 'classroom'
+        ? [{ key: 'classroom_detail:current', label: 'Bu şubenin ayrıntılı programı', disabled: !entityId }]
+        : []),
+      { type: 'divider' as const },
+      { key: 'classroom', label: 'Tüm şubeler' },
+      { key: 'classroom_detail', label: 'Tüm şubeler (ayrıntılı program)' },
+      { key: 'teacher', label: 'Tüm öğretmenler' },
+      { key: 'teacher_detail', label: 'Tüm öğretmenler (ayrıntılı program)' },
+      { key: 'carsaf', label: 'Çarşaf liste (tek sayfa, A3)' },
+      { key: 'student', label: 'Tüm öğrenciler' },
+      { key: 'room', label: 'Tüm mekanlar' },
+    ],
+    onClick: ({ key }: { key: string }) => void onExport(key, format),
+  })
 
   const step = (dir: 1 | -1) => {
     const idx = pickerOptions.findIndex((e) => e.value === entityId)
@@ -680,35 +714,14 @@ export function TimetableGridTab({ ctx }: { ctx: TimetableCtx }) {
             </Popconfirm>
           )}
           <EokulExtensionButton projectId={project.id} hasLessons={lessons.length > 0} />
-          <Dropdown
-            disabled={exporting || lessons.length === 0}
-            menu={{
-              items: [
-                {
-                  key: `${mode}:current`,
-                  label:
-                    mode === 'classroom'
-                      ? 'Bu şubenin programı'
-                      : mode === 'teacher'
-                        ? 'Bu öğretmenin programı'
-                        : 'Bu mekanın programı',
-                  disabled: !entityId,
-                },
-                ...(mode === 'teacher'
-                  ? [{ key: 'teacher_detail:current', label: 'Bu öğretmenin ayrıntılı programı', disabled: !entityId }]
-                  : []),
-                { type: 'divider' as const },
-                { key: 'classroom', label: 'Tüm şubeler' },
-                { key: 'teacher', label: 'Tüm öğretmenler' },
-                { key: 'teacher_detail', label: 'Tüm öğretmenler (ayrıntılı program)' },
-                { key: 'student', label: 'Tüm öğrenciler' },
-                { key: 'room', label: 'Tüm mekanlar' },
-              ],
-              onClick: ({ key }) => void onExport(key),
-            }}
-          >
+          <Dropdown disabled={exporting || lessons.length === 0} menu={exportMenu('xlsx')}>
             <Button icon={<FileExcelOutlined />} loading={exporting}>
               Excel <DownOutlined />
+            </Button>
+          </Dropdown>
+          <Dropdown disabled={exporting || lessons.length === 0} menu={exportMenu('pdf')}>
+            <Button icon={<FilePdfOutlined />} loading={exporting}>
+              PDF <DownOutlined />
             </Button>
           </Dropdown>
           {editable && mode !== 'room' && (

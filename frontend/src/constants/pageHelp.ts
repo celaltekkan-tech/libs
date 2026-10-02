@@ -543,7 +543,7 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       },
       {
         title: 'Detay',
-        body: 'Hesap satırından detaya giderek kullanıcı, lisans ve okul özetini görürsünüz. Kullanıcı satırındaki Şifre sıfırla ile yeni şifre belirlersiniz; giriş kilidi de kalkar. Yanlış şifre yüzünden kilitlenen kullanıcıda Giriş kilidi kolonu kırmızı görünür; Kilidi kaldır ile şifreyi değiştirmeden hatalı deneme sayacını sıfırlayıp hemen giriş yapmasını sağlarsınız.',
+        body: 'Hesap satırından detaya giderek kullanıcı, lisans ve okul özetini görürsünüz. Okul adını düzenle ile okul adını değiştirirsiniz; hesap adı aynıysa o da güncellenir. Kullanıcı satırındaki Şifre sıfırla ile yeni şifre belirlersiniz; giriş kilidi de kalkar. Yanlış şifre yüzünden kilitlenen kullanıcıda Giriş kilidi kolonu kırmızı görünür; Kilidi kaldır ile şifreyi değiştirmeden hatalı deneme sayacını sıfırlayıp hemen giriş yapmasını sağlarsınız.',
       },
     ],
   },

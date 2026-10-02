@@ -1,6 +1,7 @@
 'use strict';
 
 const ExcelJS = require('exceljs');
+const PDFDocument = require('pdfkit');
 const { Op } = require('sequelize');
 const {
   TimetableLesson,
@@ -17,8 +18,9 @@ const {
 } = require('../models');
 const { classroomLabel, teacherName, assignmentTeacherIds } = require('./timetableBuildService');
 const { resolvePrincipalName } = require('./schoolPrincipalService');
+const { registerUnicodeFonts } = require('../utils/pdfFonts');
 
-const VIEWS = ['classroom', 'teacher', 'teacher_detail', 'student', 'room'];
+const VIEWS = ['classroom', 'teacher', 'teacher_detail', 'classroom_detail', 'student', 'room', 'carsaf'];
 const DAY_NAMES = {
   1: 'Pazartesi',
   2: 'Salı',
@@ -42,9 +44,12 @@ const FILE_BASE = {
   classroom: ['ders-programi-sube', 'ders-programi-subeler'],
   teacher: ['ders-programi-ogretmen', 'ders-programi-ogretmenler'],
   teacher_detail: ['ayrintili-program-ogretmen', 'ayrintili-program-ogretmenler'],
+  classroom_detail: ['ayrintili-program-sube', 'ayrintili-program-subeler'],
   student: ['ders-programi-ogrenci', 'ders-programi-ogrenciler'],
   room: ['ders-programi-mekan', 'ders-programi-mekanlar'],
+  carsaf: ['carsaf-program', 'carsaf-program'],
 };
+const DETAIL_KIND = { teacher_detail: 'teacher', classroom_detail: 'classroom' };
 // Çıktılar siyah beyaz basılır; zemin rengi kullanılmaz, ayrım kalınlık ve çizgiyle yapılır.
 const INK = 'FF000000';
 const THIN = { style: 'thin', color: { argb: INK } };
@@ -372,18 +377,33 @@ function labelCell(ws, row, from, to, text, bold = false) {
   return cell;
 }
 
-/** Ders saatlerini (classroom, subject) kırılımında güne göre sayar. */
-function detailRows(lessons, roomsById) {
+function surnameOf(full) {
+  const parts = String(full || '').trim().split(/\s+/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : '';
+}
+
+function shortSubject(subject) {
+  const name = String(subject?.name || 'Ders').trim();
+  const word = name.split(/\s+/)[0] || name;
+  if (word.length <= 6) return word;
+  return `${word.slice(0, 5)}.`;
+}
+
+/** Ders saatlerini güne göre sayar. Şube ayrıntısında satır öğretmen+derstir. */
+function detailRows(lessons, roomsById, options = {}) {
+  const kind = options.kind || 'teacher';
+  const teachersById = options.teachersById || new Map();
   const map = new Map();
   for (const lesson of lessons) {
     const assignment = lesson.Assignment;
-    const key = `${assignment.classroom_id}|${assignment.subject_id}`;
+    const who = kind === 'classroom' ? teacherLine(assignment, teachersById) : classroomLabel(assignment.Classroom);
+    const key = kind === 'classroom' ? `${who}|${assignment.subject_id}` : `${assignment.classroom_id}|${assignment.subject_id}`;
     let row = map.get(key);
     if (!row) {
       const roomId = lessonRoomId(lesson);
       row = {
         room: roomId ? roomsById.get(roomId)?.name || assignment.Room?.name || '' : '',
-        classroom: classroomLabel(assignment.Classroom),
+        classroom: who,
         code: assignment.Subject?.code || '',
         subject: assignment.Subject?.name || 'Ders',
         byDay: new Map(),
@@ -397,12 +417,29 @@ function detailRows(lessons, roomsById) {
   return [...map.values()].sort((a, b) => trSort(a.classroom, b.classroom) || trSort(a.subject, b.subject));
 }
 
+function carsafCell(bucket, mode, teachersById) {
+  return bucket
+    .map((lesson) => {
+      const subject = shortSubject(lesson.Assignment?.Subject);
+      if (mode === 'classroom') {
+        const who = surnameOf(teacherLine(lesson.Assignment, teachersById));
+        return [subject, who].filter(Boolean).join(' ');
+      }
+      const cls = classroomLabel(lesson.Assignment?.Classroom);
+      return [cls, subject].filter(Boolean).join(' ');
+    })
+    .filter(Boolean)
+    .join(' / ');
+}
+
 /**
  * MEB'de "ayrıntılı program" denen öğretmen el programı: günler satır, ders saatleri
  * sütun; altında imza bloğu ve derslerin gün gün saat dökümü.
  */
 function addTeacherDetailSheet(workbook, usedNames, spec) {
-  const { sheet, orgLines, teacherLabel, days, periods, bell, lunchAfter, lessons, roomsById, principalName } = spec;
+  const { sheet, orgLines, days, periods, bell, lunchAfter, lessons, roomsById, principalName, teachersById } = spec;
+  const kind = spec.kind || 'teacher';
+  const ownerLabel = spec.ownerLabel || spec.teacherLabel || '';
   const gridCols = 1 + periods.length;
   const summaryCols = 5 + days.length + 1;
   const cols = Math.max(gridCols, summaryCols);
@@ -433,7 +470,7 @@ function addTeacherDetailSheet(workbook, usedNames, spec) {
   labelCell(ws, rowNo, third + 1, third * 2, 'Sınıf Öğretmenliği :');
   labelCell(ws, rowNo, third * 2 + 1, cols, 'Nöbet Günü ve Yeri :');
   rowNo += 1;
-  labelCell(ws, rowNo, 1, third, `Adı Soyadı : ${teacherLabel}`, true);
+  labelCell(ws, rowNo, 1, third, kind === 'classroom' ? `Sınıf : ${ownerLabel}` : `Adı Soyadı : ${ownerLabel}`, true);
   labelCell(ws, rowNo, third + 1, cols, 'Eğitici Kolu (Kulüp) :');
   rowNo += 2;
 
@@ -494,7 +531,14 @@ function addTeacherDetailSheet(workbook, usedNames, spec) {
       const bucket = bySlot.get(`${day}:${period}`) || [];
       if (!bucket.length) return;
       cell.value = bucket
-        .map((lesson) => `${classroomLabel(lesson.Assignment.Classroom)}\n${lesson.Assignment.Subject?.name || 'Ders'}`)
+        .map((lesson) => {
+          const subject = lesson.Assignment.Subject?.name || 'Ders';
+          if (kind === 'classroom') {
+            const who = teacherLine(lesson.Assignment, teachersById || new Map());
+            return who ? `${who}\n${subject}` : subject;
+          }
+          return `${classroomLabel(lesson.Assignment.Classroom)}\n${subject}`;
+        })
         .join('\n');
       cell.font = { name: 'Calibri', size: 8, color: { argb: INK } };
     });
@@ -508,7 +552,9 @@ function addTeacherDetailSheet(workbook, usedNames, spec) {
     rowNo,
     1,
     Math.max(1, cols - 2),
-    `Yukarıdaki dersler ${today} tarihinde şahsınıza verilmiştir. Bilgilerinizi rica ederim.`,
+    kind === 'classroom'
+      ? `Yukarıdaki ders programı ${today} tarihinde düzenlenmiştir.`
+      : `Yukarıdaki dersler ${today} tarihinde şahsınıza verilmiştir. Bilgilerinizi rica ederim.`,
   );
   labelCell(ws, rowNo, Math.max(2, cols - 1), cols, today).alignment = { horizontal: 'center' };
   rowNo += 1;
@@ -519,7 +565,7 @@ function addTeacherDetailSheet(workbook, usedNames, spec) {
   labelCell(ws, rowNo, Math.max(2, cols - 1), cols, 'MÜDÜR', true).alignment = { horizontal: 'center' };
   rowNo += 2;
 
-  const summaryHead = ['S. No', 'Yer Adı', 'Sınıflar', 'Ders', 'Ders Adı', ...days.map((d) => DAY_SHORT[d] || String(d)), 'HS'];
+  const summaryHead = ['S. No', 'Yer Adı', kind === 'classroom' ? 'Öğretmen' : 'Sınıflar', 'Ders', 'Ders Adı', ...days.map((d) => DAY_SHORT[d] || String(d)), 'HS'];
   const headerRow = ws.getRow(rowNo);
   headerRow.height = 18;
   summaryHead.forEach((text, index) => {
@@ -531,7 +577,7 @@ function addTeacherDetailSheet(workbook, usedNames, spec) {
   });
   rowNo += 1;
 
-  const rows = detailRows(lessons, roomsById);
+  const rows = detailRows(lessons, roomsById, { kind, teachersById });
   const dayTotals = new Map();
   rows.forEach((item, index) => {
     const row = ws.getRow(rowNo);
@@ -587,11 +633,123 @@ function addTeacherDetailSheet(workbook, usedNames, spec) {
   ws.pageSetup.margins = { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 };
 }
 
+function paintInk(cell, { bold = false, size = 8, align = 'center' } = {}) {
+  cell.font = { name: 'Calibri', bold, size, color: { argb: INK } };
+  cell.alignment = { vertical: 'middle', horizontal: align, wrapText: true };
+  cell.border = BORDER;
+}
+
+/** Çarşaf listenin bir bölümü: satır şube ya da öğretmen, sütun günün ders saatleri. */
+function writeCarsafSection(ws, rowNo, heading, entities, mode, days, periods, lessons, teachersById, cols) {
+  ws.mergeCells(rowNo, 1, rowNo, cols);
+  const title = ws.getCell(rowNo, 1);
+  title.value = heading;
+  title.font = { name: 'Calibri', bold: true, size: 12, color: { argb: INK } };
+  title.alignment = { vertical: 'middle', horizontal: 'left' };
+  rowNo += 1;
+
+  const dayRowNo = rowNo;
+  const periodRowNo = rowNo + 1;
+  paintInk(ws.getCell(dayRowNo, 1), { bold: true, size: 8 });
+  paintInk(ws.getCell(periodRowNo, 1), { bold: true, size: 7 });
+  ws.getCell(dayRowNo, 1).value = mode === 'classroom' ? 'Şube' : 'Öğretmen';
+  let col = 2;
+  for (const day of days) {
+    const start = col;
+    for (const period of periods) {
+      const cell = ws.getCell(periodRowNo, col);
+      cell.value = period;
+      paintInk(cell, { bold: true, size: 7 });
+      col += 1;
+    }
+    if (col > start) {
+      if (col - 1 > start) ws.mergeCells(dayRowNo, start, dayRowNo, col - 1);
+      const dayCell = ws.getCell(dayRowNo, start);
+      dayCell.value = DAY_SHORT[day] || DAY_NAMES[day] || String(day);
+      paintInk(dayCell, { bold: true, size: 8 });
+    }
+  }
+  ws.getRow(dayRowNo).height = 16;
+  ws.getRow(periodRowNo).height = 14;
+  rowNo += 2;
+
+  for (const entity of entities) {
+    const list = lessonsFor(mode, entity.id, lessons, null);
+    const slots = new Map();
+    for (const lesson of list) {
+      const key = `${lesson.day_of_week}:${lesson.period_no}`;
+      const bucket = slots.get(key) || [];
+      bucket.push(lesson);
+      slots.set(key, bucket);
+    }
+    const row = ws.getRow(rowNo);
+    const name = row.getCell(1);
+    name.value = entity.label;
+    paintInk(name, { bold: true, size: 7, align: 'left' });
+    let cursor = 2;
+    for (const day of days) {
+      for (const period of periods) {
+        const cell = row.getCell(cursor);
+        cell.value = carsafCell(slots.get(`${day}:${period}`) || [], mode, teachersById) || null;
+        paintInk(cell, { size: 7 });
+        cursor += 1;
+      }
+    }
+    row.height = 16;
+    rowNo += 1;
+  }
+  return rowNo;
+}
+
+/** Bütün şubeler ve bütün öğretmenler, tek A3 sayfaya sığacak çarşaf. */
+function addCarsafSheet(workbook, usedNames, spec) {
+  const { title, subtitle, days, periods, lessons, teachersById } = spec;
+  const classLabels = new Map();
+  for (const lesson of lessons) {
+    if (lesson.Assignment?.Classroom) {
+      classLabels.set(lesson.Assignment.classroom_id, classroomLabel(lesson.Assignment.Classroom));
+    }
+  }
+  const classes = entitiesOf('classroom', lessons, [], teachersById, new Map(), classLabels);
+  const teachers = entitiesOf('teacher', lessons, [], teachersById, new Map(), classLabels);
+  const cols = 1 + days.length * periods.length;
+  const ws = workbook.addWorksheet(sheetName('Çarşaf liste', usedNames), {
+    pageSetup: {
+      paperSize: 8,
+      orientation: 'landscape',
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 1,
+      horizontalCentered: true,
+    },
+  });
+  ws.mergeCells(1, 1, 1, cols);
+  ws.mergeCells(2, 1, 2, cols);
+  const titleCell = ws.getCell(1, 1);
+  titleCell.value = title;
+  titleCell.font = { name: 'Calibri', bold: true, size: 14, color: { argb: INK } };
+  titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+  const subCell = ws.getCell(2, 1);
+  subCell.value = subtitle;
+  subCell.font = { name: 'Calibri', size: 10, color: { argb: INK } };
+  subCell.alignment = { vertical: 'middle', horizontal: 'center' };
+  ws.getRow(1).height = 22;
+  ws.getRow(2).height = 16;
+
+  let rowNo = writeCarsafSection(ws, 4, 'Şubeler', classes, 'classroom', days, periods, lessons, teachersById, cols);
+  writeCarsafSection(ws, rowNo + 1, 'Öğretmenler', teachers, 'teacher', days, periods, lessons, teachersById, cols);
+
+  ws.getColumn(1).width = 22;
+  for (let i = 2; i <= cols; i += 1) ws.getColumn(i).width = 8;
+  ws.pageSetup.margins = { left: 0.25, right: 0.25, top: 0.35, bottom: 0.35, header: 0.15, footer: 0.15 };
+}
+
 /**
  * Hazır ders programını şube, öğretmen, öğrenci veya mekân ızgarası olarak xlsx yazar.
  * Öğrenci sayfasında seçmeli ders, şubede seçim varsa yalnız o öğrencinin seçtikleridir.
+ * Çarşaf liste bütün şubeleri ve öğretmenleri tek sayfada toplar.
  */
-function buildTimetableWorkbook({
+function exportPlans({
   project,
   schoolName,
   view,
@@ -607,9 +765,29 @@ function buildTimetableWorkbook({
   const usable = lessons.filter((l) => l.Assignment);
   if (!usable.length) throw httpError(400, 'Henüz taslak program yok');
 
-  // Ayrıntılı program öğretmen listesini kullanır, yalnız sayfa düzeni farklıdır.
-  const detailed = view === 'teacher_detail';
-  const baseView = detailed ? 'teacher' : view;
+  const days = [...(project.days || [])].sort((a, b) => a - b);
+  const periods = Array.from({ length: project.periods_per_day || 0 }, (_, i) => i + 1);
+  const bell = bellOf(project.settings);
+  const year = project.academic_year ? String(project.academic_year) : '';
+  const status = STATUS_LABEL[project.status] || '';
+  const head = [schoolName, project.name].filter(Boolean).join(' — ');
+
+  if (view === 'carsaf') {
+    if (!days.length || !periods.length) throw httpError(400, 'Okul saatleri tanımlı değil');
+    return [{
+      type: 'carsaf',
+      title: head || 'Ders programı',
+      subtitle: [year, status, 'Tüm şubeler ve tüm öğretmenler'].filter(Boolean).join('  ·  '),
+      days,
+      periods,
+      lessons: usable,
+      teachersById,
+    }];
+  }
+
+  // Ayrıntılı program ilgili listenin sayfa düzenidir.
+  const detailedKind = DETAIL_KIND[view] || null;
+  const baseView = detailedKind || view;
 
   const classLabels = new Map();
   for (const lesson of usable) {
@@ -626,32 +804,26 @@ function buildTimetableWorkbook({
     throw httpError(400, 'Hazır program bulunamadı');
   }
 
-  const days = [...(project.days || [])].sort((a, b) => a - b);
-  const periods = Array.from({ length: project.periods_per_day || 0 }, (_, i) => i + 1);
-  const bell = bellOf(project.settings);
-  const year = project.academic_year ? String(project.academic_year) : '';
-  const status = STATUS_LABEL[project.status] || '';
-  const head = [schoolName, project.name].filter(Boolean).join(' — ');
-  const workbook = new ExcelJS.Workbook();
-  workbook.creator = 'Libs';
-  workbook.created = new Date();
-  const usedNames = new Set();
-
+  const plans = [];
   for (const entity of entities) {
     const owner = baseView === 'student' ? entity.id : null;
     const list = lessonsFor(baseView, baseView === 'student' ? owner : entity.id, usable, choiceCtx);
 
-    if (detailed) {
-      addTeacherDetailSheet(workbook, usedNames, {
+    if (detailedKind) {
+      plans.push({
+        type: 'detail',
         sheet: entity.sheet,
         orgLines,
+        kind: detailedKind,
+        ownerLabel: entity.label,
         teacherLabel: entity.label,
         days,
         periods,
         bell,
-        lunchAfter: project.lunch_after || null,
+        lunchAfter: detailedKind === 'classroom' ? lunchAfterFor(project, entity.id) : project.lunch_after || null,
         lessons: list,
         roomsById,
+        teachersById,
         principalName,
       });
       continue;
@@ -680,7 +852,8 @@ function buildTimetableWorkbook({
         : 'Seçmeli dersler öğrencinin kayıtlı seçimine göredir. Seçim girilmemiş şubede seçmeliler birlikte gösterilir.';
     }
 
-    addGridSheet(workbook, usedNames, {
+    plans.push({
+      type: 'grid',
       sheet: entity.sheet,
       title: head || 'Ders programı',
       subtitle: bits.join('  ·  '),
@@ -693,12 +866,304 @@ function buildTimetableWorkbook({
     });
   }
 
+  return plans;
+}
+
+function buildTimetableWorkbook(args) {
+  const plans = exportPlans(args);
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Libs';
+  workbook.created = new Date();
+  const usedNames = new Set();
+  for (const plan of plans) {
+    if (plan.type === 'carsaf') addCarsafSheet(workbook, usedNames, plan);
+    else if (plan.type === 'detail') addTeacherDetailSheet(workbook, usedNames, plan);
+    else addGridSheet(workbook, usedNames, plan);
+  }
   return workbook;
+}
+
+function pdfRow(doc, fonts, x, y, widths, cells, { bold = false, size = 8, height = 16, lineBreak = true } = {}) {
+  let cursor = x;
+  const font = bold ? fonts.bold : fonts.regular;
+  cells.forEach((text, index) => {
+    const w = widths[index] ?? widths[widths.length - 1];
+    doc.lineWidth(0.4).strokeColor('#000000').rect(cursor, y, w, height).stroke();
+    doc.font(font).fontSize(size).fillColor('#000000');
+    doc.text(text == null ? '' : String(text), cursor + 1, y + 1, {
+      width: Math.max(1, w - 2),
+      height: Math.max(1, height - 2),
+      align: 'center',
+      lineBreak,
+      ellipsis: !lineBreak,
+    });
+    cursor += w;
+  });
+  return y + height;
+}
+
+function slotPlain(items) {
+  return items.map((item) => [item.title, ...(item.lines || [])].filter(Boolean).join('\n')).join('\n');
+}
+
+function paintGridPdf(doc, fonts, spec) {
+  const left = doc.page.margins.left;
+  const width = doc.page.width - left - doc.page.margins.right;
+  const bottom = doc.page.height - doc.page.margins.bottom;
+  doc.font(fonts.bold).fontSize(12).fillColor('#000000').text(spec.title || 'Ders programı', left, doc.page.margins.top, { width });
+  doc.font(fonts.regular).fontSize(8).text(spec.subtitle || '', left, doc.y + 2, { width });
+  let y = doc.y + 8;
+  const firstW = 64;
+  const rest = (width - firstW) / Math.max(spec.days.length, 1);
+  const widths = [firstW, ...spec.days.map(() => rest)];
+  const headers = ['Saat', ...spec.days.map((day) => DAY_NAMES[day] || String(day))];
+  if (y + 16 > bottom) {
+    doc.addPage();
+    y = doc.page.margins.top;
+  }
+  y = pdfRow(doc, fonts, left, y, widths, headers, { bold: true, size: 8, height: 16 });
+  const refDay = spec.days[0] || 1;
+  for (const period of spec.periods) {
+    if (spec.lunchAfter && period === spec.lunchAfter + 1) {
+      if (y + 12 > bottom) {
+        doc.addPage();
+        y = doc.page.margins.top;
+      }
+      y = pdfRow(doc, fonts, left, y, [width], ['Öğle arası'], { size: 8, height: 12 });
+    }
+    const cells = [`${period}\n${periodRange(spec.bell, refDay, period, spec.lunchAfter)}`];
+    let lines = 2;
+    for (const day of spec.days) {
+      const text = slotPlain(spec.slots.get(`${day}:${period}`) || []);
+      lines = Math.max(lines, text ? text.split('\n').length : 1);
+      cells.push(text);
+    }
+    const height = Math.min(70, Math.max(20, lines * 8));
+    if (y + height > bottom) {
+      doc.addPage();
+      y = doc.page.margins.top;
+    }
+    y = pdfRow(doc, fonts, left, y, widths, cells, { size: 7, height });
+  }
+  if (spec.footnote) {
+    doc.font(fonts.regular).fontSize(8).fillColor('#000000').text(spec.footnote, left, y + 6, { width });
+  }
+}
+
+function paintDetailPdf(doc, fonts, spec) {
+  const left = doc.page.margins.left;
+  const width = doc.page.width - left - doc.page.margins.right;
+  const bottom = () => doc.page.height - doc.page.margins.bottom;
+  const kind = spec.kind || 'teacher';
+  const owner = spec.ownerLabel || spec.teacherLabel || '';
+  let y = doc.page.margins.top;
+  for (const line of spec.orgLines || []) {
+    doc.font(fonts.bold).fontSize(10).fillColor('#000000').text(line, left, y, { width, align: 'center' });
+    y = doc.y + 1;
+  }
+  y += 6;
+  doc.font(fonts.bold).fontSize(9).text(kind === 'classroom' ? `Sınıf : ${owner}` : `Adı Soyadı : ${owner}`, left, y, { width });
+  y = doc.y + 8;
+
+  const labelW = 72;
+  const cellW = (width - labelW) / Math.max(spec.periods.length, 1);
+  const widths = [labelW, ...spec.periods.map(() => cellW)];
+  y = pdfRow(doc, fonts, left, y, widths, ['Ders\\Gün', ...spec.periods.map((period) => `(${period})`)], { bold: true, size: 7, height: 14 });
+  const refDay = spec.days[0] || 1;
+  y = pdfRow(
+    doc,
+    fonts,
+    left,
+    y,
+    widths,
+    ['Saat', ...spec.periods.map((period) => {
+      const start = periodStart(spec.bell, refDay, period, spec.lunchAfter);
+      return `${formatMinutes(start)}–${formatMinutes(start + spec.bell.lesson_minutes)}`;
+    })],
+    { size: 6, height: 16 },
+  );
+
+  const bySlot = new Map();
+  for (const lesson of spec.lessons) {
+    const key = `${lesson.day_of_week}:${lesson.period_no}`;
+    const bucket = bySlot.get(key) || [];
+    bucket.push(lesson);
+    bySlot.set(key, bucket);
+  }
+  for (const day of spec.days) {
+    const cells = [DAY_NAMES[day] || String(day)];
+    let lines = 1;
+    for (const period of spec.periods) {
+      const text = (bySlot.get(`${day}:${period}`) || [])
+        .map((lesson) => {
+          const subject = lesson.Assignment.Subject?.name || 'Ders';
+          if (kind === 'classroom') {
+            const who = teacherLine(lesson.Assignment, spec.teachersById || new Map());
+            return who ? `${who}\n${subject}` : subject;
+          }
+          return `${classroomLabel(lesson.Assignment.Classroom)}\n${subject}`;
+        })
+        .join('\n');
+      lines = Math.max(lines, text ? text.split('\n').length : 1);
+      cells.push(text);
+    }
+    const height = Math.min(46, Math.max(16, lines * 8));
+    if (y + height > bottom()) {
+      doc.addPage();
+      y = doc.page.margins.top;
+    }
+    y = pdfRow(doc, fonts, left, y, widths, cells, { size: 6, height });
+  }
+
+  y += 8;
+  const today = dateText(new Date());
+  const letter = kind === 'classroom'
+    ? `Yukarıdaki ders programı ${today} tarihinde düzenlenmiştir.`
+    : `Yukarıdaki dersler ${today} tarihinde şahsınıza verilmiştir. Bilgilerinizi rica ederim.`;
+  if (y + 40 > bottom()) {
+    doc.addPage();
+    y = doc.page.margins.top;
+  }
+  doc.font(fonts.regular).fontSize(8).fillColor('#000000').text(letter, left, y, { width: width * 0.68 });
+  doc.font(fonts.regular).fontSize(8).text(today, left + width * 0.7, y, { width: width * 0.3, align: 'center' });
+  doc.font(fonts.regular).fontSize(8).text(spec.principalName || '', left + width * 0.7, doc.y + 2, { width: width * 0.3, align: 'center' });
+  doc.font(fonts.bold).fontSize(8).text('MÜDÜR', left + width * 0.7, doc.y + 1, { width: width * 0.3, align: 'center' });
+  y = doc.y + 10;
+
+  const rows = detailRows(spec.lessons, spec.roomsById, { kind, teachersById: spec.teachersById });
+  const summaryHead = ['S.No', 'Yer', kind === 'classroom' ? 'Öğretmen' : 'Sınıflar', 'Ders', ...spec.days.map((day) => DAY_SHORT[day] || String(day)), 'HS'];
+  const summaryW = width / summaryHead.length;
+  const sw = summaryHead.map(() => summaryW);
+  if (y + 14 > bottom()) {
+    doc.addPage();
+    y = doc.page.margins.top;
+  }
+  y = pdfRow(doc, fonts, left, y, sw, summaryHead, { bold: true, size: 6, height: 14 });
+  rows.forEach((item, index) => {
+    const values = [
+      String(index + 1),
+      item.room,
+      item.classroom,
+      item.subject,
+      ...spec.days.map((day) => String(item.byDay.get(day) || '')),
+      String(item.total),
+    ];
+    if (y + 12 > bottom()) {
+      doc.addPage();
+      y = doc.page.margins.top;
+    }
+    y = pdfRow(doc, fonts, left, y, sw, values, { size: 6, height: 12 });
+  });
+}
+
+function paintCarsafPdf(doc, fonts, spec) {
+  const { title, subtitle, days, periods, lessons, teachersById } = spec;
+  const classLabels = new Map();
+  for (const lesson of lessons) {
+    if (lesson.Assignment?.Classroom) classLabels.set(lesson.Assignment.classroom_id, classroomLabel(lesson.Assignment.Classroom));
+  }
+  const classes = entitiesOf('classroom', lessons, [], teachersById, new Map(), classLabels);
+  const teachers = entitiesOf('teacher', lessons, [], teachersById, new Map(), classLabels);
+  const left = 12;
+  const width = doc.page.width - 24;
+  const height = doc.page.height - 24;
+  const colCount = 1 + days.length * periods.length;
+  const nameW = Math.min(86, width * 0.16);
+  const cellW = (width - nameW) / Math.max(colCount - 1, 1);
+  const widths = [nameW, ...Array.from({ length: colCount - 1 }, () => cellW)];
+  const sections = [
+    ['Şubeler', classes, 'classroom'],
+    ['Öğretmenler', teachers, 'teacher'],
+  ];
+  const rowCount = 2 + sections.reduce((sum, [, entities]) => sum + 4 + entities.length, 0);
+  const rowH = Math.max(6, Math.min(13, (height - 8) / Math.max(rowCount, 1)));
+  const fontSize = Math.max(4, Math.min(7, rowH - 1.5));
+  let y = 12;
+  doc.font(fonts.bold).fontSize(Math.min(11, rowH + 3)).fillColor('#000000').text(title || 'Ders programı', left, y, {
+    width,
+    align: 'center',
+    lineBreak: false,
+  });
+  y += rowH + 3;
+  doc.font(fonts.regular).fontSize(Math.min(8, fontSize + 1)).text(subtitle || '', left, y, { width, align: 'center', lineBreak: false });
+  y += rowH + 4;
+
+  const drawSection = (heading, entities, mode) => {
+    doc.font(fonts.bold).fontSize(Math.min(9, fontSize + 2)).fillColor('#000000').text(heading, left, y, { width, lineBreak: false });
+    y += rowH;
+    let x = left + nameW;
+    doc.lineWidth(0.4).strokeColor('#000000').rect(left, y, nameW, rowH).stroke();
+    doc.font(fonts.bold).fontSize(fontSize).text(mode === 'classroom' ? 'Şube' : 'Öğretmen', left + 1, y + 1, {
+      width: nameW - 2,
+      height: rowH - 1,
+      align: 'center',
+      lineBreak: false,
+      ellipsis: true,
+    });
+    for (const day of days) {
+      const span = cellW * periods.length;
+      doc.rect(x, y, span, rowH).stroke();
+      doc.font(fonts.bold).fontSize(fontSize).text(DAY_SHORT[day] || String(day), x, y + 1, {
+        width: span,
+        height: rowH - 1,
+        align: 'center',
+        lineBreak: false,
+      });
+      x += span;
+    }
+    y += rowH;
+    y = pdfRow(doc, fonts, left, y, widths, ['', ...days.flatMap(() => periods.map((period) => String(period)))], {
+      bold: true,
+      size: fontSize,
+      height: rowH,
+      lineBreak: false,
+    });
+    for (const entity of entities) {
+      const list = lessonsFor(mode, entity.id, lessons, null);
+      const slots = new Map();
+      for (const lesson of list) {
+        const key = `${lesson.day_of_week}:${lesson.period_no}`;
+        const bucket = slots.get(key) || [];
+        bucket.push(lesson);
+        slots.set(key, bucket);
+      }
+      const cells = [entity.label];
+      for (const day of days) {
+        for (const period of periods) cells.push(carsafCell(slots.get(`${day}:${period}`) || [], mode, teachersById));
+      }
+      y = pdfRow(doc, fonts, left, y, widths, cells, { size: fontSize, height: rowH, lineBreak: false });
+    }
+    y += Math.max(4, rowH / 2);
+  };
+
+  for (const [heading, entities, mode] of sections) drawSection(heading, entities, mode);
+}
+
+function renderLessonsPdf(args) {
+  const plans = exportPlans(args);
+  const page = args.view === 'carsaf' ? 'A3' : 'A4';
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 18, size: page, layout: 'landscape' });
+    const fonts = registerUnicodeFonts(doc);
+    const chunks = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+    plans.forEach((plan, index) => {
+      if (index > 0) doc.addPage();
+      if (plan.type === 'carsaf') paintCarsafPdf(doc, fonts, plan);
+      else if (plan.type === 'detail') paintDetailPdf(doc, fonts, plan);
+      else paintGridPdf(doc, fonts, plan);
+    });
+    doc.end();
+  });
 }
 
 async function writeLessonsExport(res, project, query) {
   const view = String(query.view || '');
-  if (!VIEWS.includes(view)) throw httpError(400, 'Çıktı türü şube, öğretmen, öğrenci veya mekan olmalı');
+  const format = String(query.format || 'xlsx').toLowerCase();
+  if (!['xlsx', 'pdf'].includes(format)) throw httpError(400, 'Dosya biçimi Excel veya PDF olmalı');
+  if (!VIEWS.includes(view)) throw httpError(400, 'Çıktı türü şube, öğretmen, öğrenci, mekan veya çarşaf liste olmalı');
   let entityId = null;
   if (query.entity_id != null && query.entity_id !== '') {
     entityId = Number(query.entity_id);
@@ -747,7 +1212,9 @@ async function writeLessonsExport(res, project, query) {
         { model: Province, attributes: ['name'] },
       ],
     }),
-    view === 'teacher_detail' ? resolvePrincipalName(project.tenant_id, project.school_id) : '',
+    view === 'teacher_detail' || view === 'classroom_detail'
+      ? resolvePrincipalName(project.tenant_id, project.school_id)
+      : '',
     view === 'student'
       ? TimetableElectiveChoice.findAll({
           where: { project_id: project.id },
@@ -774,7 +1241,7 @@ async function writeLessonsExport(res, project, query) {
     classroom_id: row.TimetableAssignment?.classroom_id || null,
   }));
 
-  const workbook = buildTimetableWorkbook({
+  const pack = {
     project,
     schoolName: school?.name || '',
     view,
@@ -786,13 +1253,19 @@ async function writeLessonsExport(res, project, query) {
     choiceRows: choices,
     orgLines: organizationLines(school),
     principalName,
-  });
-
-  const base = FILE_BASE[view][entityId ? 0 : 1];
+  };
+  const base = FILE_BASE[view][entityId && view !== 'carsaf' ? 0 : 1];
+  if (format === 'pdf') {
+    const buffer = await renderLessonsPdf(pack);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${base}.pdf"`);
+    return res.end(buffer);
+  }
+  const workbook = buildTimetableWorkbook(pack);
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${base}.xlsx"`);
   await workbook.xlsx.write(res);
   return res.end();
 }
 
-module.exports = { buildTimetableWorkbook, writeLessonsExport, VIEWS };
+module.exports = { buildTimetableWorkbook, renderLessonsPdf, writeLessonsExport, VIEWS };
