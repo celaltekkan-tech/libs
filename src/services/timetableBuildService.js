@@ -12,8 +12,36 @@ const {
   Teacher,
 } = require('../models');
 
+const DEFAULT_DISTRIBUTION = {
+  place_seconds: 90,
+  gap_seconds: 90,
+  split_double: true,
+  merge_singles: true,
+  merge_two_one: true,
+  eliminate_gaps: true,
+  free_day: false,
+  same_class_subjects: 'off',
+  prioritize_difficulty: false,
+  max_daily_hours: 0,
+  max_windows: 25,
+  workers: 4,
+  methods: 'all',
+  algorithms: ['cpsat', 'greedy', 'local'],
+};
+
+const ALGORITHM_IDS = ['cpsat', 'greedy', 'local'];
+
+function algorithmsOf(dist) {
+  if (Array.isArray(dist?.algorithms) && dist.algorithms.length) {
+    const list = [...new Set(dist.algorithms.filter((id) => ALGORITHM_IDS.includes(id)))];
+    if (list.length) return list;
+  }
+  if (dist?.methods === 'single') return ['cpsat'];
+  return ['cpsat', 'greedy', 'local'];
+}
+
 const DEFAULT_SETTINGS = {
-  time_limit: 60,
+  time_limit: 90,
   max_subject_daily: 2,
   max_culture_daily: 2,
   max_vocational_daily: 8,
@@ -25,11 +53,14 @@ const DEFAULT_SETTINGS = {
     soft_constraint: 20,
     availability_avoid: 15,
     block_flex: 8,
+    teacher_day_off: 12,
   },
   // Bloklar öğle arasını aşabilir mi (false: hiçbir blok bölünmez)
   block_across_lunch: false,
   // Şubeye özel öğle arası: { [classroom_id]: kaçıncı saatten sonra }
   class_lunch: {},
+  distribution: DEFAULT_DISTRIBUTION,
+  teacher_overrides: {},
 };
 
 const AVAILABILITY_TYPES = ['school', 'teacher', 'classroom', 'room', 'subject'];
@@ -43,7 +74,19 @@ function projectSettings(project) {
     max_culture_daily: s.max_culture_daily ?? s.max_subject_daily ?? DEFAULT_SETTINGS.max_culture_daily,
     max_vocational_daily: s.max_vocational_daily ?? DEFAULT_SETTINGS.max_vocational_daily,
     weights: { ...DEFAULT_SETTINGS.weights, ...(s.weights || {}) },
+    distribution: {
+      ...DEFAULT_DISTRIBUTION,
+      ...(s.distribution || {}),
+      algorithms: algorithmsOf(s.distribution || {}),
+    },
+    teacher_overrides: s.teacher_overrides || {},
   };
+}
+
+/** Atamadaki açık seçim, yoksa ders havuzu, o da yoksa çalışmanın dağıtım ayarı. */
+function resolveFlex(explicit, subjectOn, globalOn) {
+  if (explicit === true || explicit === false) return explicit;
+  return Boolean(subjectOn) || Boolean(globalOn);
 }
 
 function parseBlockPattern(pattern) {
@@ -170,7 +213,10 @@ async function buildPayload(project, { timeLimit } = {}) {
     days: project.days || [1, 2, 3, 4, 5],
     periods: project.periods_per_day || 8,
     lunch_after: project.lunch_after || null,
-    time_limit: timeLimit || settings.time_limit,
+    time_limit: timeLimit || settings.distribution.place_seconds || settings.time_limit,
+    workers: settings.distribution.workers || 4,
+    distribution: settings.distribution,
+    teacher_overrides: settings.teacher_overrides || {},
     max_subject_daily: settings.max_culture_daily,
     max_culture_daily: settings.max_culture_daily,
     max_vocational_daily: settings.max_vocational_daily,
@@ -181,7 +227,21 @@ async function buildPayload(project, { timeLimit } = {}) {
     teachers: [...teachers.values()],
     subjects: [...subjects.values()],
     rooms: rooms.filter((r) => r.is_active).map((r) => ({ id: r.id, name: r.name, capacity: r.capacity || 1 })),
-    assignments: assignments.map((a) => ({
+    assignments: assignments.map((a) => {
+      const vocational = a.Subject?.course_kind === 'meslek';
+      const dist = settings.distribution;
+      const split = vocational
+        ? a.allow_split === true
+        : resolveFlex(a.allow_split, a.Subject?.allow_split, dist.split_double);
+      const merge = vocational
+        ? a.allow_merge === true
+        : resolveFlex(a.allow_merge, a.Subject?.allow_merge, dist.merge_singles);
+      const merge21 = vocational
+        ? false
+        : a.allow_merge === false
+          ? false
+          : Boolean(dist.merge_two_one) || a.allow_merge === true || Boolean(a.Subject?.allow_merge);
+      return {
       id: a.id,
       classroom_id: a.classroom_id,
       subject_id: a.subject_id,
@@ -189,13 +249,15 @@ async function buildPayload(project, { timeLimit } = {}) {
       teacher_ids: assignmentTeacherIds(a).filter((id) => id !== a.teacher_id),
       hours: a.weekly_hours,
       blocks: parseBlockPattern(a.block_pattern),
-      vocational: a.Subject?.course_kind === 'meslek',
-      allow_split: a.allow_split ?? Boolean(a.Subject?.allow_split),
-      allow_merge: a.allow_merge ?? Boolean(a.Subject?.allow_merge),
+      vocational,
+      allow_split: split,
+      allow_merge: merge,
+      allow_merge_21: merge21,
       room_id: a.room_id && activeRoomIds.has(a.room_id) ? a.room_id : null,
       sync_group: a.sync_group || null,
       elective_group: a.elective_group || null,
-    })),
+    };
+    }),
     elective_profiles: electiveProfiles(assignments, choices),
     constraints: constraints
       .filter((c) => c.is_active)
@@ -213,6 +275,10 @@ async function buildPayload(project, { timeLimit } = {}) {
 
 module.exports = {
   DEFAULT_SETTINGS,
+  DEFAULT_DISTRIBUTION,
+  ALGORITHM_IDS,
+  algorithmsOf,
+  resolveFlex,
   AVAILABILITY_TYPES,
   CELL_STATES,
   assignmentTeacherIds,

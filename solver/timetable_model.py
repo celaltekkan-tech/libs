@@ -35,7 +35,46 @@ DEFAULT_WEIGHTS = {
     'soft_constraint': 20,
     'availability_avoid': 15,
     'block_flex': 8,
+    'teacher_day_off': 12,
 }
+
+# Bilsa dağıtım penceresindeki çalışma ayarları. 0 = sınır yok.
+# methods=all: ilk arama program bulamazsa (süre biterse) diğer arama yöntemleri denenir.
+DEFAULT_DISTRIBUTION = {
+    'place_seconds': 90,
+    'gap_seconds': 90,
+    'split_double': True,
+    'merge_singles': True,
+    'merge_two_one': True,
+    'eliminate_gaps': True,
+    'free_day': False,
+    'same_class_subjects': 'off',  # off | soft | hard
+    'prioritize_difficulty': False,
+    'max_daily_hours': 0,
+    'max_windows': 25,
+    'workers': 4,
+    'methods': 'all',
+}
+
+# timetableRunService bütçe hesabı bu listeyle aynı uzunlukta olmalı.
+SEARCH_STRATEGIES = (
+    ('varsayilan', 'Varsayılan arama', {}),
+    ('hizli', 'Hızlı yeniden başlatma', {
+        'search_branching_name': 'PORTFOLIO_WITH_QUICK_RESTART_SEARCH',
+        'random_seed': 1,
+        'randomize_search': True,
+    }),
+    ('dogrusal', 'Doğrusal gevşetme', {
+        'search_branching_name': 'LP_SEARCH',
+        'random_seed': 2,
+        'linearization_level': 2,
+    }),
+    ('maliyet', 'Maliyet tabanlı arama', {
+        'search_branching_name': 'PSEUDO_COST_SEARCH',
+        'random_seed': 3,
+        'randomize_search': True,
+    }),
+)
 
 AVAIL_TYPES = ('school', 'teacher', 'classroom', 'room', 'subject')
 
@@ -59,6 +98,15 @@ class Ctx:
         la = data.get('lunch_after')
         self.lunch = int(la) if la and 0 < int(la) < self.P else None
         self.weights = {**DEFAULT_WEIGHTS, **(data.get('weights') or {})}
+        raw_dist = data.get('distribution')
+        self.use_distribution = isinstance(raw_dist, dict)
+        self.distribution = {**DEFAULT_DISTRIBUTION, **(raw_dist or {})}
+        self.teacher_overrides = data.get('teacher_overrides') or {}
+        if self.use_distribution:
+            if not self.distribution.get('eliminate_gaps'):
+                self.weights['teacher_gaps'] = 0
+            if not self.distribution.get('prioritize_difficulty'):
+                self.weights['hard_subject_late'] = 0
         culture = data.get('max_culture_daily')
         if culture in (None, ''):
             culture = data.get('max_subject_daily') or 2
@@ -211,6 +259,56 @@ class Ctx:
     def closed(self, t, eid):
         return (self.avail.get((t, eid)) or {}).get('closed', set())
 
+    def _override(self, tid):
+        ov = self.teacher_overrides.get(str(tid))
+        if ov is None:
+            ov = self.teacher_overrides.get(tid)
+        return ov or {}
+
+    def _teacher_number(self, tid, key, global_key):
+        """Öğretmene özel sayı. Yoksa genel ayar. 0 = sınır yok."""
+        if not self.use_distribution:
+            return 0
+        ov = self._override(tid)
+        if key in ov and ov[key] is not None and ov[key] != '':
+            try:
+                return int(ov[key])
+            except (TypeError, ValueError):
+                return 0
+        try:
+            return int(self.distribution.get(global_key) or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def teacher_daily_cap(self, tid):
+        return self._teacher_number(tid, 'max_daily_hours', 'max_daily_hours')
+
+    def teacher_window_cap(self, tid):
+        return self._teacher_number(tid, 'max_windows', 'max_windows')
+
+    def teacher_wants_day_off(self, tid):
+        if not self.use_distribution:
+            return False
+        ov = self._override(tid)
+        if ov.get('free_day') is True or ov.get('free_day') is False:
+            return bool(ov['free_day'])
+        return bool(self.distribution.get('free_day'))
+
+    def teacher_same_class_mode(self, tid):
+        """off | soft | hard. Öğretmende 'on' genel kipi kullanır; genel kapalıysa yumuşak."""
+        if not self.use_distribution:
+            return 'off'
+        ov = self._override(tid)
+        choice = ov.get('same_class_subjects')
+        global_mode = self.distribution.get('same_class_subjects') or 'off'
+        if global_mode not in ('off', 'soft', 'hard'):
+            global_mode = 'off'
+        if choice in ('off', 'on'):
+            if choice == 'off':
+                return 'off'
+            return global_mode if global_mode in ('soft', 'hard') else 'soft'
+        return global_mode
+
     def blocks_of(self, a):
         blocks = [int(b) for b in (a.get('blocks') or []) if int(b) > 0]
         if blocks:
@@ -220,25 +318,42 @@ class Ctx:
         return default_blocks(int(a['hours']))
 
     def block_variants(self, a):
-        """[(değişiklik sayısı, bloklar)]. B1: ikili blok 1+1 olabilir; B2: iki tekli 2'lik blok olabilir."""
+        """[(değişiklik sayısı, bloklar)].
+
+        Bölme: ikili blok 1+1 olabilir. Birleştirme: iki tekli 2'lik blok olabilir.
+        2+1 birleştirme: bir ikili ile bir tekli 3 saatlik tek blok olabilir.
+        Gün sayısından fazla bloğa bölünen düzen de tutulur; o düzen aynı güne birden
+        fazla blok koyabilir. Diğer düzenlerde bloklar farklı günlere dağılır.
+        """
         base = self.blocks_of(a)
         out = [(0, base)]
         seen = {tuple(sorted(base))}
         twos = base.count(2)
         ones = base.count(1)
         rest = [b for b in base if b not in (1, 2)]
+        span = bool(a.get('vocational'))
+        longest = self.max_block_len(a.get('classroom_id'), span_lunch=span)
+
+        def add(changes, blocks):
+            key = tuple(sorted(blocks))
+            if key in seen or not blocks:
+                return
+            if max(blocks) > longest:
+                return
+            seen.add(key)
+            out.append((changes, blocks))
+
         if a.get('allow_split'):
             for j in range(1, twos + 1):
-                v = sorted(rest + [2] * (twos - j) + [1] * (ones + 2 * j), reverse=True)
-                if tuple(sorted(v)) not in seen and len(v) <= len(self.days):
-                    seen.add(tuple(sorted(v)))
-                    out.append((j, v))
+                add(j, sorted(rest + [2] * (twos - j) + [1] * (ones + 2 * j), reverse=True))
         if a.get('allow_merge'):
             for j in range(1, ones // 2 + 1):
-                v = sorted(rest + [2] * (twos + j) + [1] * (ones - 2 * j), reverse=True)
-                if tuple(sorted(v)) not in seen and max(v) <= self.max_block_len(a.get('classroom_id')):
-                    seen.add(tuple(sorted(v)))
-                    out.append((j, v))
+                add(j, sorted(rest + [2] * (twos + j) + [1] * (ones - 2 * j), reverse=True))
+        if a.get('allow_merge_21') and twos and ones:
+            threes = rest.count(3)
+            bare = [b for b in rest if b != 3]
+            for j in range(1, min(twos, ones) + 1):
+                add(j, sorted(bare + [3] * (threes + j) + [2] * (twos - j) + [1] * (ones - j), reverse=True))
         return out
 
     def lunch_for(self, cid=None):
@@ -442,6 +557,10 @@ def check(data):
                 teacher_id=tid)
         elif h > avail * 0.9:
             add('warning', f'{ctx.label_teacher(tid)}: {h} saat ders / {avail} müsait saat; çok sıkışık, çözüm zorlaşabilir.',
+                teacher_id=tid)
+        cap = ctx.teacher_daily_cap(tid)
+        if cap > 0 and h > cap * n_days:
+            add('error', f'{ctx.label_teacher(tid)}: haftalık {h} saat ders var ama günde en fazla {cap} saat ile {n_days} günde sığmaz.',
                 teacher_id=tid)
     for rid, h in room_hours.items():
         cap = int((ctx.rooms.get(rid) or {}).get('capacity') or 1)
@@ -898,6 +1017,39 @@ def build(ctx, with_assumptions=False):
             if vars_:
                 zero(sum(vars_))
 
+    # --- Dağıtım parametreleri: günlük tavan ve aynı sınıfta farklı ders ---
+    if ctx.use_distribution:
+        for tid in teacher_canon:
+            cap = ctx.teacher_daily_cap(tid)
+            if cap > 0:
+                lit = enforce_lit(f'{ctx.label_teacher(tid)}: günde en fazla {cap} saat')
+                for d in days:
+                    m.Add(sum(t_busy[(tid, d, pp)] for pp in periods) <= cap).OnlyEnforceIf(lit)
+
+        tc_subjects = defaultdict(set)
+        for a in ctx.assignments:
+            for tid in ctx.teachers_of(a):
+                tc_subjects[(tid, a['classroom_id'])].add(a['subject_id'])
+        same_hard = None
+        w_same = int(ctx.weights['soft_constraint'])
+        for (tid, cid), sids in sorted(tc_subjects.items()):
+            mode = ctx.teacher_same_class_mode(tid)
+            if mode == 'off' or len(sids) < 2:
+                continue
+            present_sids = [s for s in sids if cs_canon.get((cid, s))]
+            if len(present_sids) < 2:
+                continue
+            for d in days:
+                present = sum(day_present(cid, s, d) for s in present_sids)
+                if mode == 'hard':
+                    if same_hard is None:
+                        same_hard = enforce_lit('Öğretmenin aynı sınıfa verdiği farklı dersler aynı güne gelmesin')
+                    m.Add(present <= 1).OnlyEnforceIf(same_hard)
+                elif w_same:
+                    ex = m.NewIntVar(0, len(present_sids), f'scs_{tid}_{cid}_{d}')
+                    m.Add(ex >= present - 1)
+                    b.terms['soft_constraints'].append((w_same, ex))
+
     # --- Esnek genel kurallar ---
     def prefix_or(seq, name):
         """seq[i] için: önceki elemanlardan herhangi biri 1 mi."""
@@ -919,11 +1071,16 @@ def build(ctx, with_assumptions=False):
 
     wg = int(ctx.weights['teacher_gaps'])
     ws = int(ctx.weights['teacher_single_hour_day'])
-    if wg or ws:
+    w_off = int(ctx.weights.get('teacher_day_off') or 0)
+    need_gaps = bool(wg) or any(ctx.teacher_window_cap(tid) > 0 for tid in teacher_canon)
+    need_off = bool(w_off) and any(ctx.teacher_wants_day_off(tid) for tid in teacher_canon)
+    gap_vars = defaultdict(list)
+    if need_gaps or ws or need_off:
         for tid in teacher_canon:
+            offs = []
             for d in days:
                 seq = [t_busy[(tid, d, pp)] for pp in periods]
-                if wg:
+                if need_gaps:
                     for s, e in ctx.segments():
                         sub = seq[s - 1:e]
                         before = prefix_or(sub, f'tgb_{tid}_{d}_{s}')
@@ -933,7 +1090,9 @@ def build(ctx, with_assumptions=False):
                                 continue
                             g = m.NewBoolVar(f'tg_{tid}_{d}_{s}_{i}')
                             m.Add(g >= before[i] + after[i] - v - 1)
-                            b.terms['teacher_gaps'].append((wg, g))
+                            gap_vars[tid].append(g)
+                            if wg:
+                                b.terms['teacher_gaps'].append((wg, g))
                 if ws:
                     tot = sum(seq)
                     used = m.NewBoolVar(f'tu_{tid}_{d}')
@@ -942,6 +1101,24 @@ def build(ctx, with_assumptions=False):
                     single = m.NewBoolVar(f'ts_{tid}_{d}')
                     m.Add(single >= 2 * used - tot)
                     b.terms['teacher_single_hour_day'].append((ws, single))
+                if need_off and ctx.teacher_wants_day_off(tid):
+                    off = m.NewBoolVar(f'toffd_{tid}_{d}')
+                    tot = sum(seq)
+                    m.Add(tot == 0).OnlyEnforceIf(off)
+                    m.Add(tot >= 1).OnlyEnforceIf(off.Not())
+                    offs.append(off)
+            if offs:
+                hours = sum(int(ctx.by_id[cn]['hours']) for cn in teacher_canon[tid])
+                if hours <= (len(days) - 1) * ctx.P:
+                    missing = m.NewBoolVar(f'toff_{tid}')
+                    m.Add(sum(offs) == 0).OnlyEnforceIf(missing)
+                    m.Add(sum(offs) >= 1).OnlyEnforceIf(missing.Not())
+                    b.terms['teacher_day_off'].append((w_off, missing))
+        for tid, gs in gap_vars.items():
+            cap = ctx.teacher_window_cap(tid)
+            if cap > 0 and gs:
+                lit = enforce_lit(f'{ctx.label_teacher(tid)}: en fazla {cap} pencere')
+                m.Add(sum(gs) <= cap).OnlyEnforceIf(lit)
 
     wc = int(ctx.weights['class_compact'])
     if wc:
@@ -1022,6 +1199,25 @@ def _diagnose(ctx, time_limit=20):
     return out
 
 
+def _strategies_for(ctx):
+    # CP-SAT işçileri portföy aramasını zaten birlikte yürütür.
+    # Ayrı algoritmalar (kurucu ve yerel arama) bunun dışında kıyaslanır.
+    return SEARCH_STRATEGIES[:1]
+
+
+def _apply_search(solver, extra, data):
+    branching = extra.get('search_branching_name')
+    if branching:
+        value = getattr(cp_model, branching, None)
+        if value is not None and hasattr(solver.parameters, 'search_branching'):
+            solver.parameters.search_branching = value
+    for key in ('random_seed', 'randomize_search', 'linearization_level'):
+        if key in extra and hasattr(solver.parameters, key):
+            setattr(solver.parameters, key, extra[key])
+    if data.get('seed') is not None and 'random_seed' not in extra:
+        solver.parameters.random_seed = int(data['seed'])
+
+
 def solve(data, on_progress=None, should_stop=None):
     pre = check(data)
     if not pre['ok']:
@@ -1029,36 +1225,146 @@ def solve(data, on_progress=None, should_stop=None):
 
     ctx = Ctx(data)
     t0 = time.time()
-    b = build(ctx)
-    time_limit = float(data.get('time_limit') or 60)
-    workers = int(data.get('workers') or 4)
+    from timetable_heuristics import (
+        ALGORITHMS,
+        cells_of,
+        comparison_note,
+        finish_comparison,
+        penalty_of,
+        run_heuristics,
+        selected_algorithms,
+    )
 
-    def make_solver(limit):
+    chosen = selected_algorithms(ctx)
+    comparisons = []
+    heuristic_pack = None
+    if any(name in chosen for name in ('greedy', 'local')):
+        pack, rows = run_heuristics(ctx, chosen, should_stop=should_stop, on_progress=on_progress)
+        comparisons.extend(rows)
+        if pack and pack[0]:
+            quality = penalty_of(ctx, cells_of(ctx, pack[0]))
+            if quality['ok']:
+                heuristic_pack = (pack[0], pack[1], quality)
+
+    if 'cpsat' not in chosen:
+        diagnostics = [i for i in pre['issues'] if i['level'] == 'warning']
+        finish_comparison(comparisons)
+        note = comparison_note(comparisons)
+        if note:
+            diagnostics.insert(0, {'level': 'warning', 'message': note})
+        if not heuristic_pack:
+            diagnostics.insert(0, {
+                'level': 'error',
+                'message': 'Seçilen algoritmalar program çıkaramadı.',
+            })
+            return {'status': 'INFEASIBLE', 'lessons': [], 'score': {}, 'violations': [],
+                    'diagnostics': diagnostics, 'comparisons': comparisons, 'comparison_note': note,
+                    'wall_time': round(time.time() - t0, 1)}
+        lessons, name, quality = heuristic_pack
+        label = dict(ALGORITHMS).get(name, name)
+        return {
+            'status': 'FEASIBLE',
+            'objective': quality['penalty'],
+            'best_bound': quality['penalty'],
+            'wall_time': round(time.time() - t0, 1),
+            'solutions': 1,
+            'strategy': name,
+            'strategy_label': label,
+            'lessons': lessons,
+            'score': quality['score'],
+            'violations': [],
+            'diagnostics': diagnostics,
+            'comparisons': comparisons,
+            'comparison_note': note,
+        }
+
+    b = build(ctx)
+    time_limit = float(data.get('time_limit') or ctx.distribution.get('place_seconds') or 60)
+    workers = int(data.get('workers') or (ctx.distribution.get('workers') if ctx.use_distribution else None) or 4)
+    if ctx.use_distribution:
+        gap_budget = float(ctx.distribution.get('gap_seconds') or 0)
+    else:
+        gap_budget = None
+
+    def make_solver(limit, extra=None):
         s = cp_model.CpSolver()
         s.parameters.max_time_in_seconds = max(1.0, limit)
         s.parameters.num_workers = workers
-        if data.get('seed') is not None:
-            s.parameters.random_seed = int(data['seed'])
+        _apply_search(s, extra or {}, data)
         return s
 
-    # 1. aşama: amaçsız yalnız geçerli bir program. Sıkı (boşluksuz dolu) şubelerde
-    # ceza terimleri aramayı boğup ilk çözümü bile engelleyebiliyor.
-    feas = b.model.Clone()
-    feas.ClearObjective()
-    solver = make_solver(time_limit)
-    cb = _Callback(on_progress, should_stop)
-    st = solver.Solve(feas, cb)
+    def emit(name, label, message, solutions=0):
+        if not on_progress:
+            return
+        on_progress({
+            'strategy': name,
+            'strategy_label': label,
+            'message': message,
+            'solutions': solutions,
+            'elapsed': round(time.time() - t0, 1),
+        })
 
-    # 2. aşama: bulunan program ipucu verilerek iyileştirilir; süre biterse 1. aşama geçerli.
-    if st in (cp_model.OPTIMAL, cp_model.FEASIBLE) and b.terms:
-        hint = list(solver.ResponseProto().solution)
+    def progress_for(name, label, message):
+        if not on_progress:
+            return None
+
+        def inner(p):
+            payload = dict(p)
+            payload['strategy'] = name
+            payload['strategy_label'] = label
+            payload['message'] = message
+            payload['elapsed'] = round(time.time() - t0, 1)
+            on_progress(payload)
+
+        return inner
+
+    # 1. aşama: amaçsız geçerli bir program. Bulunamazsa (süre biterse) başka arama
+    # yöntemi denenir. Modelin kendisi çözümsüzse yöntem değiştirmek sonucu değiştirmez.
+    found = None
+    last_status = None
+    tried = []
+    stopped = False
+    solutions = 0
+    cpsat_started = time.time()
+    for name, label, extra in _strategies_for(ctx):
+        if should_stop and should_stop():
+            stopped = True
+            break
+        tried.append(label)
+        emit(name, label, f'{label} deneniyor')
+        feas = b.model.Clone()
+        feas.ClearObjective()
+        solver = make_solver(time_limit, extra)
+        cb = _Callback(progress_for(name, label, f'{label} deneniyor'), should_stop)
+        st = solver.Solve(feas, cb)
+        solutions += cb.count
+        last_status = st
+        if st in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            found = (name, label, solver)
+            break
+        if st == cp_model.INFEASIBLE:
+            break
+        if should_stop and should_stop():
+            stopped = True
+            break
+
+    strategy_name, strategy_label = (found[0], found[1]) if found else (None, None)
+
+    # 2. aşama: bulunan program ipucu verilerek iyileştirilir (pencere, boş gün, şube sıkışıklığı).
+    if found and b.terms:
+        name, label, feas_solver = found
+        hint = list(feas_solver.ResponseProto().solution)
         proto = b.model.Proto()
         proto.solution_hint.vars.extend(range(len(hint)))
         proto.solution_hint.values.extend(hint)
-        remaining = time_limit - (time.time() - t0)
-        if remaining >= 2 and not (should_stop and should_stop()):
-            solver = make_solver(remaining)
+        improve_for = gap_budget if gap_budget is not None else time_limit - (time.time() - t0)
+        improve_msg = 'Pencereler azaltılıyor' if int(ctx.weights.get('teacher_gaps') or 0) else 'Program iyileştiriliyor'
+        if improve_for >= 2 and not (should_stop and should_stop()):
+            emit(name, label, improve_msg, solutions)
+            solver = make_solver(improve_for)
+            cb = _Callback(progress_for(name, label, improve_msg), should_stop)
             st = solver.Solve(b.model, cb)
+            solutions += cb.count
         else:
             st = cp_model.UNKNOWN
         if st not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
@@ -1067,18 +1373,34 @@ def solve(data, on_progress=None, should_stop=None):
             st = solver.Solve(b.model)
             if st == cp_model.OPTIMAL:
                 st = cp_model.FEASIBLE
-    status = STATUS_NAMES.get(st, str(st))
+    elif found:
+        name, label, feas_solver = found
+        hint = list(feas_solver.ResponseProto().solution)
+        proto = b.model.Proto()
+        proto.solution_hint.vars.extend(range(len(hint)))
+        proto.solution_hint.values.extend(hint)
+        solver = make_solver(10)
+        solver.parameters.fix_variables_to_their_hinted_value = True
+        st = solver.Solve(b.model)
+        if st == cp_model.OPTIMAL:
+            st = cp_model.FEASIBLE
+    else:
+        st = last_status if last_status is not None else cp_model.UNKNOWN
+        solver = None
 
+    status = STATUS_NAMES.get(st, str(st))
     diagnostics = [i for i in pre['issues'] if i['level'] == 'warning']
 
     if st not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        if st == cp_model.INFEASIBLE:
+        if stopped or (should_stop and should_stop()):
+            status = 'CANCELLED'
+        elif st == cp_model.INFEASIBLE:
             core = _diagnose(ctx)
             if core:
                 diagnostics.insert(0, {
                     'level': 'error',
                     'message': 'Bu kesin kurallar birlikte sağlanamıyor: ' + '; '.join(c['label'] for c in core)
-                               + '. Birini esnek yapın veya kaldırın.',
+                               + '. Birini esnek yapın veya kaldırın. Arama yöntemini değiştirmek bu çelişkiyi çözmez.',
                     'constraint_ids': [c['constraint_id'] for c in core if c['constraint_id']],
                 })
             else:
@@ -1086,15 +1408,43 @@ def solve(data, on_progress=None, should_stop=None):
                     'level': 'error',
                     'message': 'Öğretmen/şube/mekan çakışmaları nedeniyle çözüm yok. Öğretmen yüklerini ve mekan kapasitelerini kontrol edin.',
                 })
-        elif should_stop and should_stop():
-            status = 'CANCELLED'
         else:
             diagnostics.insert(0, {
                 'level': 'error',
-                'message': 'Süre içinde geçerli bir program bulunamadı. Süreyi artırın veya kısıtları gevşetin.',
+                'message': 'Denenen yöntemler süre içinde program bulamadı: '
+                           + ', '.join(tried)
+                           + '. Dağıtım süresini uzatın veya blokların bölünüp birleşmesine izin verin.',
             })
+        if heuristic_pack:
+            lessons, name, quality = heuristic_pack
+            label = dict(ALGORITHMS).get(name, name)
+            finish_comparison(comparisons)
+            note = comparison_note(comparisons)
+            if note:
+                diagnostics.insert(0, {'level': 'warning', 'message': note})
+            diagnostics.insert(0, {
+                'level': 'warning',
+                'message': f'Kısıt çözücü program çıkaramadı. {label} sonucu kullanıldı.',
+            })
+            return {
+                'status': 'FEASIBLE',
+                'objective': quality['penalty'],
+                'best_bound': quality['penalty'],
+                'wall_time': round(time.time() - t0, 1),
+                'solutions': solutions,
+                'strategy': name,
+                'strategy_label': label,
+                'lessons': lessons,
+                'score': quality['score'],
+                'violations': [],
+                'diagnostics': diagnostics,
+                'comparisons': comparisons,
+                'comparison_note': note,
+            }
+        finish_comparison(comparisons)
         return {'status': status, 'lessons': [], 'score': {}, 'violations': [], 'diagnostics': diagnostics,
-                'wall_time': round(time.time() - t0, 1)}
+                'comparisons': comparisons, 'comparison_note': comparison_note(comparisons),
+                'wall_time': round(time.time() - t0, 1), 'strategy': strategy_name, 'strategy_label': strategy_label}
 
     lessons = []
     for a in ctx.assignments:
@@ -1114,14 +1464,65 @@ def solve(data, on_progress=None, should_stop=None):
                   for cid, exprs in b.violations.items()]
     violations = [v for v in violations if v['count'] > 0]
 
+    cpsat_quality = penalty_of(ctx, cells_of(ctx, lessons))
+    if cpsat_quality['ok']:
+        comparisons.append({
+            'algorithm': 'cpsat',
+            'label': 'Kısıt çözücü',
+            'ok': True,
+            'penalty': cpsat_quality['penalty'],
+            'gaps': cpsat_quality['gaps'],
+            'seconds': round(time.time() - cpsat_started, 1),
+            'delta': None,
+            'winner': False,
+            'note': None,
+        })
+    else:
+        comparisons.append({
+            'algorithm': 'cpsat',
+            'label': 'Kısıt çözücü',
+            'ok': True,
+            'penalty': int(solver.ObjectiveValue() if b.terms else 0),
+            'gaps': score.get('teacher_gaps'),
+            'seconds': round(time.time() - cpsat_started, 1),
+            'delta': None,
+            'winner': False,
+            'note': 'Ortak ceza ölçeğine tam oturmadı; kendi cezası yazıldı',
+        })
+    winner = finish_comparison(comparisons)
+    if not cpsat_quality['ok']:
+        for row in comparisons:
+            row['winner'] = row['algorithm'] == 'cpsat'
+            row['delta'] = 0 if row['algorithm'] == 'cpsat' else None
+        winner = next((row for row in comparisons if row['algorithm'] == 'cpsat'), winner)
+        note = 'Kurucu algoritmanın cezası kısıt çözücüyle aynı ölçeğe oturmadı. Kısıt çözücünün programı kullanıldı.'
+    else:
+        note = comparison_note(comparisons)
+    if note:
+        diagnostics.insert(0, {'level': 'warning', 'message': note})
+    if cpsat_quality['ok'] and winner and winner['algorithm'] != 'cpsat' and heuristic_pack and winner['algorithm'] == heuristic_pack[1]:
+        lessons = heuristic_pack[0]
+        score = heuristic_pack[2]['score']
+        strategy_name = heuristic_pack[1]
+        strategy_label = dict(ALGORITHMS).get(strategy_name, strategy_name)
+        status = 'FEASIBLE'
+        objective = heuristic_pack[2]['penalty']
+        violations = []
+    else:
+        objective = solver.ObjectiveValue() if b.terms else 0
+
     return {
         'status': status,
-        'objective': solver.ObjectiveValue() if b.terms else 0,
+        'objective': objective,
         'best_bound': solver.BestObjectiveBound() if b.terms else 0,
         'wall_time': round(time.time() - t0, 1),
-        'solutions': cb.count,
+        'solutions': solutions,
+        'strategy': strategy_name,
+        'strategy_label': strategy_label,
         'lessons': lessons,
         'score': score,
         'violations': violations,
         'diagnostics': diagnostics,
+        'comparisons': comparisons,
+        'comparison_note': note,
     }

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { App, Button, Card, Col, Empty, Input, Row, Select, Space, Table, Tabs, Tag, Tooltip, Typography, theme } from 'antd'
+import { App, Button, Card, Col, Empty, Input, InputNumber, Row, Select, Space, Table, Tabs, Tag, Tooltip, Typography, theme } from 'antd'
 import { CloseOutlined, PlusOutlined, UsergroupAddOutlined } from '@ant-design/icons'
-import { getLessonPool, listTimetableAssignments, updateTimetableAssignment } from '../../api/timetable'
+import { getLessonPool, listTimetableAssignments, updateTimetableAssignment, updateTimetableProject } from '../../api/timetable'
 import { getErrorMessage } from '../../api/client'
-import type { LessonPool, TimetableAssignment, TimetableAssignmentPayload } from '../../types/timetable'
+import type { LessonPool, TeacherDistributionOverride, TimetableAssignment, TimetableAssignmentPayload } from '../../types/timetable'
 import type { Teacher } from '../../types/teacher'
 import { useActiveSchool } from '../../auth/ActiveSchoolContext'
 import {
@@ -19,6 +19,100 @@ import {
 } from './shared'
 
 const MAX_TEACHERS = 5
+
+function TeacherDistributionCard({ ctx, teacherId, teacherName }: { ctx: TimetableCtx; teacherId: number | null; teacherName: string }) {
+  const { message } = App.useApp()
+  const saved = teacherId ? ctx.project.settings.teacher_overrides?.[String(teacherId)] : undefined
+  const [daily, setDaily] = useState<number | null>(saved?.max_daily_hours ?? null)
+  const [windows, setWindows] = useState<number | null>(saved?.max_windows ?? null)
+  const [freeDay, setFreeDay] = useState<'inherit' | 'on' | 'off'>(
+    saved?.free_day === true ? 'on' : saved?.free_day === false ? 'off' : 'inherit',
+  )
+  const [sameDay, setSameDay] = useState<'inherit' | 'on' | 'off'>(
+    saved?.same_class_subjects === 'on' || saved?.same_class_subjects === 'off' ? saved.same_class_subjects : 'inherit',
+  )
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    setDaily(saved?.max_daily_hours ?? null)
+    setWindows(saved?.max_windows ?? null)
+    setFreeDay(saved?.free_day === true ? 'on' : saved?.free_day === false ? 'off' : 'inherit')
+    setSameDay(saved?.same_class_subjects === 'on' || saved?.same_class_subjects === 'off' ? saved.same_class_subjects : 'inherit')
+  }, [teacherId, saved?.max_daily_hours, saved?.max_windows, saved?.free_day, saved?.same_class_subjects])
+
+  if (!teacherId) return null
+
+  const save = async () => {
+    const next: TeacherDistributionOverride = {}
+    if (daily != null) next.max_daily_hours = daily
+    if (windows != null) next.max_windows = windows
+    if (freeDay === 'on') next.free_day = true
+    if (freeDay === 'off') next.free_day = false
+    if (sameDay === 'on' || sameDay === 'off') next.same_class_subjects = sameDay
+    const overrides = { ...(ctx.project.settings.teacher_overrides || {}) }
+    if (Object.keys(next).length) overrides[String(teacherId)] = next
+    else delete overrides[String(teacherId)]
+    setSaving(true)
+    try {
+      await updateTimetableProject(ctx.project.id, { settings: { teacher_overrides: overrides } })
+      message.success('Öğretmen parametreleri kaydedildi')
+      await ctx.reloadProject()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card size="small" title={`${teacherName} için dağıtım`} style={{ marginTop: 12 }}>
+      <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+        Boş bırakılan alan çalışma genelindeki ayarı kullanır. 0 sınır yok demektir.
+      </Typography.Paragraph>
+      <Space direction="vertical" style={{ width: '100%' }} size="small">
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>1 günde en fazla kaç saat</div>
+          <InputNumber min={0} max={12} value={daily ?? undefined} placeholder="Genel ayar" onChange={(v) => setDaily(v ?? null)} style={{ width: '100%' }} />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>En fazla kaç pencere</div>
+          <InputNumber min={0} max={40} value={windows ?? undefined} placeholder="Genel ayar" onChange={(v) => setWindows(v ?? null)} style={{ width: '100%' }} />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Boş gün vermeye çalış</div>
+          <Select
+            style={{ width: '100%' }}
+            value={freeDay}
+            onChange={setFreeDay}
+            options={[
+              { value: 'inherit', label: 'Genel ayar' },
+              { value: 'on', label: 'Evet' },
+              { value: 'off', label: 'Hayır' },
+            ]}
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Aynı sınıfa farklı dersler aynı güne gelmesin</div>
+          <Select
+            style={{ width: '100%' }}
+            value={sameDay}
+            onChange={setSameDay}
+            options={[
+              { value: 'inherit', label: 'Genel ayar' },
+              { value: 'on', label: 'Evet' },
+              { value: 'off', label: 'Hayır' },
+            ]}
+          />
+        </div>
+        {ctx.canUpdate && (
+          <Button type="primary" onClick={() => void save()} loading={saving}>
+            Bu öğretmeni kaydet
+          </Button>
+        )}
+      </Space>
+    </Card>
+  )
+}
 
 export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
   const { message } = App.useApp()
@@ -366,6 +460,11 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
               />
             )}
           </Card>
+          <TeacherDistributionCard
+            ctx={ctx}
+            teacherId={teacher?.id ?? null}
+            teacherName={teacher ? teacherFullName(teacher) : ''}
+          />
         </Col>
 
         <Col xs={24} xl={15}>

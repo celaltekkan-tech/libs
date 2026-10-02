@@ -154,5 +154,74 @@ data = elective_case(['SEC', 'SEC'], profiles=[[10]])
 chk = timetable_model.check(data)
 expect(any('seçen öğrenci' in i['message'] for i in chk['issues']), 'seçeni olmayan seçmeli uyarısı')
 
+# 7) 2+1 birleşmesi: tek günde yalnız 3 ardışık saat açık. 2+1 iki gün ister; 3'lük blok sığar.
+data = {
+    'days': [1, 2, 3, 4, 5], 'periods': 6, 'lunch_after': None, 'max_subject_daily': 3,
+    'classrooms': [{'id': 1, 'label': '9/A'}], 'teachers': [{'id': 1, 'name': 'T'}],
+    'rooms': [], 'subjects': [{'id': 1, 'name': 'Mat'}],
+    'assignments': [{'id': 1, 'classroom_id': 1, 'subject_id': 1, 'teacher_id': 1, 'hours': 3,
+                     'blocks': [2, 1], 'allow_split': False, 'allow_merge': False, 'allow_merge_21': True}],
+    'constraints': [], 'locked': [],
+    'weights': {'class_compact': 0, 'teacher_gaps': 0, 'teacher_single_hour_day': 0, 'block_flex': 1},
+    'distribution': {'methods': 'single', 'gap_seconds': 0, 'eliminate_gaps': False, 'max_windows': 0,
+                     'max_daily_hours': 0, 'same_class_subjects': 'off', 'free_day': False,
+                     'prioritize_difficulty': False},
+    'availability': [{'type': 'teacher', 'id': 1,
+                      'closed': [[d, p] for d in range(2, 6) for p in range(1, 7)] + [[1, p] for p in (4, 5, 6)]}],
+}
+r = solve(data, limit=15)
+expect(len(r['lessons']) == 3 and {p for _, p in [(l['day'], l['period']) for l in r['lessons']]} == {1, 2, 3}
+       and all(l['day'] == 1 for l in r['lessons']),
+       f"2+1 üç saatlik bloğa birleşti ({r['lessons']})")
+data['assignments'][0]['allow_merge_21'] = False
+r2 = timetable_model.solve({**data, 'time_limit': 10})
+expect(r2['status'] in ('INFEASIBLE', 'INVALID'), f"2+1 kapalıyken çözümsüz ({r2['status']})")
+
+# 8) Günlük tavan: 6 saat, günde en fazla 2, 3 gün. Öğretmen 0 yazarsa sınır kalkar.
+data = {
+    'days': [1, 2, 3], 'periods': 4, 'lunch_after': None, 'max_subject_daily': 2,
+    'classrooms': [{'id': 1, 'label': '9/A'}], 'teachers': [{'id': 1, 'name': 'T'}],
+    'rooms': [], 'subjects': [{'id': 1, 'name': 'Mat'}],
+    'assignments': [{'id': 1, 'classroom_id': 1, 'subject_id': 1, 'teacher_id': 1, 'hours': 6, 'blocks': [2, 2, 2]}],
+    'constraints': [], 'locked': [],
+    'weights': {'class_compact': 0, 'teacher_gaps': 0, 'teacher_single_hour_day': 0},
+    'distribution': {'methods': 'single', 'gap_seconds': 0, 'eliminate_gaps': False, 'max_windows': 0,
+                     'max_daily_hours': 2, 'same_class_subjects': 'off', 'free_day': False,
+                     'prioritize_difficulty': False},
+}
+r = solve(data, limit=15)
+by_day = Counter(l['day'] for l in r['lessons'])
+expect(all(n <= 2 for n in by_day.values()), f"günde en fazla 2 saat ({dict(by_day)})")
+tight = {**data, 'distribution': {**data['distribution'], 'max_daily_hours': 1}}
+chk = timetable_model.check(tight)
+expect(not chk['ok'], 'günde 1 saat ile 6 saat sığmıyor')
+loose = {**data, 'teacher_overrides': {'1': {'max_daily_hours': 0}}}
+expect(timetable_model.check(loose)['ok'], 'öğretmen 0 yazınca genel tavan kalkar')
+
+# 9) CP-SAT dışı algoritmalar aynı cezayla kıyaslanır; kazananın farkı 0'dır.
+data = {
+    'days': [1, 2, 3, 4, 5], 'periods': 6, 'lunch_after': None, 'max_subject_daily': 2,
+    'classrooms': [{'id': 1, 'label': '9/A'}], 'teachers': [{'id': 1, 'name': 'T'}],
+    'rooms': [], 'subjects': [{'id': 1, 'name': 'Mat', 'hard': True}],
+    'assignments': [{'id': 1, 'classroom_id': 1, 'subject_id': 1, 'teacher_id': 1, 'hours': 4, 'blocks': [2, 2]}],
+    'constraints': [], 'locked': [],
+    'weights': {'class_compact': 10, 'teacher_gaps': 10, 'teacher_single_hour_day': 0,
+                'hard_subject_late': 0, 'block_flex': 1, 'availability_avoid': 0, 'soft_constraint': 0,
+                'teacher_day_off': 0},
+    'distribution': {'algorithms': ['greedy', 'local'], 'gap_seconds': 0, 'eliminate_gaps': True,
+                     'max_windows': 0, 'max_daily_hours': 0, 'same_class_subjects': 'off',
+                     'free_day': False, 'prioritize_difficulty': False},
+}
+r = solve(data, limit=5)
+expect(len(r['lessons']) == 4, f"kurucu/yerel 4 saat ({len(r.get('lessons') or [])}) {r.get('diagnostics', [])[:1]}")
+rows = r.get('comparisons') or []
+expect(any(c.get('ok') for c in rows), 'kıyas satırı var')
+winners = [c for c in rows if c.get('winner')]
+expect(len(winners) == 1 and winners[0]['delta'] == 0, f"kazanan farkı 0 ({winners})")
+data['distribution'] = {**data['distribution'], 'algorithms': ['cpsat', 'greedy', 'local']}
+r = solve(data, limit=8)
+expect(r['status'] in ('OPTIMAL', 'FEASIBLE') and len(r['lessons']) == 4, f"üç algoritma birlikte ({r['status']})")
+expect(len(r.get('comparisons') or []) >= 2, f"rapor en az iki satır ({[c.get('label') for c in r.get('comparisons') or []]})")
+
 print('\n' + ('TÜMÜ GEÇTİ' if not FAILED else f'{len(FAILED)} HATA'))
 sys.exit(1 if FAILED else 0)

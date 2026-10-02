@@ -10,6 +10,29 @@ const weights = Joi.object({
   soft_constraint: Joi.number().integer().min(0).max(1000),
   availability_avoid: Joi.number().integer().min(0).max(1000),
   block_flex: Joi.number().integer().min(0).max(1000),
+  teacher_day_off: Joi.number().integer().min(0).max(1000),
+});
+const distribution = Joi.object({
+  place_seconds: Joi.number().integer().min(10).max(600),
+  gap_seconds: Joi.number().integer().min(0).max(600),
+  split_double: Joi.boolean(),
+  merge_singles: Joi.boolean(),
+  merge_two_one: Joi.boolean(),
+  eliminate_gaps: Joi.boolean(),
+  free_day: Joi.boolean(),
+  same_class_subjects: Joi.string().valid('off', 'soft', 'hard'),
+  prioritize_difficulty: Joi.boolean(),
+  max_daily_hours: Joi.number().integer().min(0).max(12),
+  max_windows: Joi.number().integer().min(0).max(40),
+  workers: Joi.number().integer().min(1).max(8),
+  methods: Joi.string().valid('all', 'single'),
+  algorithms: Joi.array().items(Joi.string().valid('cpsat', 'greedy', 'local')).min(1).unique(),
+});
+const teacherOverride = Joi.object({
+  max_daily_hours: Joi.number().integer().min(0).max(12).allow(null),
+  max_windows: Joi.number().integer().min(0).max(40).allow(null),
+  free_day: Joi.boolean().allow(null),
+  same_class_subjects: Joi.string().valid('inherit', 'off', 'on').allow(null),
 });
 const dayBreak = Joi.object({
   day: Joi.number().integer().min(1).max(7).required(),
@@ -32,6 +55,8 @@ const settings = Joi.object({
   bell,
   block_across_lunch: Joi.boolean(),
   class_lunch: Joi.object().pattern(/^\d+$/, Joi.number().integer().min(1).max(11)),
+  distribution,
+  teacher_overrides: Joi.object().pattern(/^\d+$/, teacherOverride),
 });
 
 const projectBase = {
