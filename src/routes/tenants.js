@@ -32,6 +32,7 @@ router.post(
   platformAdmin,
   ctrl.resetUserSmsLoginRequests
 );
+router.post('/:id/users/:userId/unlock-login', auth, platformAdmin, ctrl.unlockUserLogin);
 router.post(
   '/:id/users/:userId/reset-password',
   auth,
