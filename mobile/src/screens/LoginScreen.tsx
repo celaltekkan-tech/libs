@@ -11,15 +11,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Image } from 'expo-image';
+import { SvgXml } from 'react-native-svg';
 import * as SecureStore from 'expo-secure-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
-import { useServerConfig } from '../context/ServerConfigContext';
 import { useTheme } from '../context/ThemeContext';
 import { fetchCaptcha } from '../api/auth';
-import { getApiBaseUrl, getErrorMessage } from '../api/client';
+import { getErrorMessage } from '../api/client';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { getAppVersionLabel } from '../update/appVersion';
 import type { AuthStackParamList } from '../navigation/types';
@@ -44,7 +43,6 @@ async function readRememberedLogin(): Promise<{ email: string; password: string 
 // Kayıtlı kullanıcı e-posta + şifre ile girer. Yeni kayıt T.C. ve soyad eşleşmesiyle açılır.
 export function LoginScreen({ navigation }: Props) {
   const { login } = useAuth();
-  const { resetApiBaseUrl } = useServerConfig();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -153,10 +151,10 @@ export function LoginScreen({ navigation }: Props) {
       <View style={styles.captchaRow}>
         <View style={[styles.captchaImage, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
           {captchaSvg ? (
-            <Image
-              source={{ uri: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(captchaSvg)}` }}
-              style={styles.captchaImg}
-              contentFit="contain"
+            <SvgXml
+              xml={captchaSvg}
+              width="100%"
+              height="100%"
               accessibilityLabel="Görsel doğrulama kodu"
             />
           ) : (
@@ -198,10 +196,6 @@ export function LoginScreen({ navigation }: Props) {
         <Text style={styles.registerLinkText}>Hesabım yok, öğretmen kaydı oluştur</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.serverLink} onPress={() => void resetApiBaseUrl()}>
-        <Text style={styles.serverLinkText}>Sunucu: {getApiBaseUrl()}  (değiştir)</Text>
-      </TouchableOpacity>
-
       <Text style={styles.versionText}>Sürüm {getAppVersionLabel()}</Text>
     </KeyboardAvoidingView>
   );
@@ -233,7 +227,6 @@ function makeStyles(colors: ThemeColors) {
       justifyContent: 'center',
       overflow: 'hidden',
     },
-    captchaImg: { width: 112, height: 40 },
     captchaInput: { flex: 1, marginBottom: 0 },
     refreshButton: {
       borderRadius: 6,
@@ -253,7 +246,6 @@ function makeStyles(colors: ThemeColors) {
     buttonText: { color: colors.primaryText, fontSize: 16, fontWeight: '600' },
     error: { color: colors.danger, marginBottom: 12, textAlign: 'center' },
     serverLink: { marginTop: 20, alignItems: 'center' },
-    serverLinkText: { color: colors.textMuted, fontSize: 12 },
     versionText: { marginTop: 12, color: colors.textMuted, fontSize: 11, textAlign: 'center' },
     registerLinkText: { color: colors.headerLink, fontSize: 15, fontWeight: '600' },
   });

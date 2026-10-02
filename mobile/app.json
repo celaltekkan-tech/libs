@@ -2,18 +2,16 @@
   "expo": {
     "name": "OIDS",
     "slug": "lise-idari-mobile",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "tr.com.oids.mobil",
-      "buildNumber": "1"
+      "bundleIdentifier": "tr.com.oids.mobil"
     },
     "android": {
       "package": "tr.com.oids.mobil",
-      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#000000",
         "foregroundImage": "./assets/android-icon-foreground.png",

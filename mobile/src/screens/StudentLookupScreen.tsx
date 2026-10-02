@@ -100,7 +100,7 @@ export function StudentLookupScreen({ navigation }: Props) {
           <View style={styles.card}>
             {student.photo_url ? (
               <Image
-                source={{ uri: `${getApiBaseUrl() ?? ''}${student.photo_url}`, headers: photoHeaders }}
+                source={{ uri: `${getApiBaseUrl()}${student.photo_url}`, headers: photoHeaders }}
                 style={styles.photo}
                 contentFit="cover"
               />
