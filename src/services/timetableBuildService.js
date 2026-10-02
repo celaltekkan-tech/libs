@@ -178,10 +178,29 @@ async function loadProjectData(project) {
   return { assignments, constraints, rooms, lessons, availability, choices };
 }
 
+/**
+ * Yalnız bir şubeyi, öğretmeni ya da mekanı yeniden dağıtırken kapsama giren atamaların
+ * kimlikleri. Mekanda ders kaydındaki mekan da, atamadaki sabit mekan da sayılır.
+ */
+function scopedAssignmentIds(scope, assignments, lessons) {
+  if (!scope) return null;
+  const ids = new Set();
+  if (scope.classroom_id) {
+    for (const a of assignments) if (a.classroom_id === scope.classroom_id) ids.add(a.id);
+  } else if (scope.teacher_id) {
+    for (const a of assignments) if (assignmentTeacherIds(a).includes(scope.teacher_id)) ids.add(a.id);
+  } else if (scope.room_id) {
+    for (const a of assignments) if (a.room_id === scope.room_id) ids.add(a.id);
+    for (const l of lessons) if (l.room_id === scope.room_id) ids.add(l.assignment_id);
+  }
+  return ids;
+}
+
 /** Çözücüye gönderilecek JSON'u üretir (solver/timetable_model.py girdisi). */
-async function buildPayload(project, { timeLimit } = {}) {
+async function buildPayload(project, { timeLimit, scope } = {}) {
   const settings = projectSettings(project);
   const { assignments, constraints, rooms, lessons, availability, choices } = await loadProjectData(project);
+  const scoped = scopedAssignmentIds(scope, assignments, lessons);
 
   const classrooms = new Map();
   const teachers = new Map();
@@ -215,7 +234,8 @@ async function buildPayload(project, { timeLimit } = {}) {
     lunch_after: project.lunch_after || null,
     time_limit: timeLimit || settings.distribution.place_seconds || settings.time_limit,
     workers: settings.distribution.workers || 4,
-    distribution: settings.distribution,
+    // Sezgisel algoritmalar kilitli ders varken çalışmadığından kapsamlı dağıtımda yalnız kısıt çözücü kalır.
+    distribution: scoped ? { ...settings.distribution, algorithms: ['cpsat'], methods: 'single' } : settings.distribution,
     teacher_overrides: settings.teacher_overrides || {},
     max_subject_daily: settings.max_culture_daily,
     max_culture_daily: settings.max_culture_daily,
@@ -267,8 +287,9 @@ async function buildPayload(project, { timeLimit } = {}) {
       id: row.entity_id,
       ...cellsToLists(row.cells),
     })),
+    // Kapsam verildiyse kapsam dışındaki yerleşmiş dersler de yerinde tutulur.
     locked: lessons
-      .filter((l) => l.is_locked)
+      .filter((l) => l.is_locked || (scoped && !scoped.has(l.assignment_id)))
       .map((l) => ({ assignment_id: l.assignment_id, day: l.day_of_week, period: l.period_no })),
   };
 }
@@ -287,5 +308,6 @@ module.exports = {
   classroomLabel,
   teacherName,
   loadProjectData,
+  scopedAssignmentIds,
   buildPayload,
 };

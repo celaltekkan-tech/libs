@@ -955,15 +955,26 @@ module.exports = {
   async startRun(req, res, next) {
     try {
       const project = await loadProject(req);
+      const { classroom_id: classroomId, teacher_id: teacherId, room_id: roomId } = req.validatedBody;
+      const scope = classroomId
+        ? { classroom_id: classroomId }
+        : teacherId
+          ? { teacher_id: teacherId }
+          : roomId
+            ? { room_id: roomId }
+            : null;
       const run = await runService.startRun(project, {
         userId: req.user.user_id,
         timeLimit: req.validatedBody.time_limit,
+        scope,
       });
       await audit.log(req, {
         action: 'create',
         entityType: 'timetable_run',
         entityId: run.id,
-        summary: `Otomatik ders programı oluşturma başlatıldı (${project.name}, ${run.time_limit} sn)`,
+        summary: scope
+          ? `Ders programı kısmi dağıtımı başlatıldı (${project.name}, ${Object.keys(scope)[0]}=${Object.values(scope)[0]}, ${run.time_limit} sn)`
+          : `Otomatik ders programı oluşturma başlatıldı (${project.name}, ${run.time_limit} sn)`,
       });
       res.status(202).json({ success: true, data: run });
     } catch (err) {

@@ -195,7 +195,13 @@ const updateConstraintSchema = Joi.object({
 }).min(1);
 const aiParseSchema = Joi.object({ text: Joi.string().trim().min(3).max(2000).required() });
 
-const startRunSchema = Joi.object({ time_limit: Joi.number().integer().min(10).max(600) });
+// Kapsam verilirse yalnız o şube/öğretmen/mekan yeniden dağıtılır, kalanı yerinde kalır.
+const startRunSchema = Joi.object({
+  time_limit: Joi.number().integer().min(10).max(600),
+  classroom_id: id,
+  teacher_id: id,
+  room_id: id,
+}).oxor('classroom_id', 'teacher_id', 'room_id');
 const moveLessonSchema = Joi.object({
   day_of_week: Joi.number().integer().min(1).max(7).required(),
   period_no: Joi.number().integer().min(1).max(12).required(),

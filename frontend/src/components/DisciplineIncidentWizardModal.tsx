@@ -18,10 +18,19 @@ import type { DisciplineIncident, DisciplineIncidentPayload, DisciplineParticipa
 import type { SchoolAssignment } from '../types/auth'
 import type { Student } from '../types/student'
 
+/** Öğretmen bildirimi gibi hazır bir kayıttan başlatıldığında alanları doldurur. */
+export interface DisciplineIncidentPrefill {
+  title?: string
+  incident_date?: string
+  summary?: string
+  student_id?: number
+}
+
 interface DisciplineIncidentWizardModalProps {
   open: boolean
   schools: SchoolAssignment[]
   defaultSchoolId: number | null
+  prefill?: DisciplineIncidentPrefill | null
   onCancel: () => void
   onFinished: (incident: DisciplineIncident) => void
 }
@@ -30,7 +39,14 @@ function studentLabel(p: DisciplineParticipant): string {
   return p.Student ? `${p.Student.first_name} ${p.Student.last_name}` : `#${p.id}`
 }
 
-export function DisciplineIncidentWizardModal({ open, schools, defaultSchoolId, onCancel, onFinished }: DisciplineIncidentWizardModalProps) {
+export function DisciplineIncidentWizardModal({
+  open,
+  schools,
+  defaultSchoolId,
+  prefill,
+  onCancel,
+  onFinished,
+}: DisciplineIncidentWizardModalProps) {
   const { message } = App.useApp()
   const [step, setStep] = useState(0)
   const [incidentForm] = Form.useForm<DisciplineIncidentPayload>()
@@ -50,11 +66,16 @@ export function DisciplineIncidentWizardModal({ open, schools, defaultSchoolId, 
       setIncident(null)
       setParticipants([])
       incidentForm.resetFields()
-      incidentForm.setFieldsValue({ school_id: defaultSchoolId ?? schools[0]?.id })
+      incidentForm.setFieldsValue({
+        school_id: defaultSchoolId ?? schools[0]?.id,
+        ...(prefill?.title ? { title: prefill.title } : {}),
+        ...(prefill?.incident_date ? { incident_date: prefill.incident_date } : {}),
+        ...(prefill?.summary ? { summary: prefill.summary } : {}),
+      })
       void listStudents().then(setStudents).catch(() => undefined)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, defaultSchoolId, schools])
+  }, [open, defaultSchoolId, schools, prefill])
 
   const handleClose = () => {
     if (incident) onFinished({ ...incident, Participants: participants })
@@ -197,7 +218,7 @@ export function DisciplineIncidentWizardModal({ open, schools, defaultSchoolId, 
             ekleyebilirsiniz.
           </Typography.Paragraph>
           <Form form={participantForm} layout="inline" onFinish={onAddParticipant} style={{ marginBottom: 16 }}>
-            <Form.Item name="student_id" rules={[{ required: true, message: 'Öğrenci seçiniz' }]}>
+            <Form.Item name="student_id" rules={[{ required: true, message: 'Öğrenci seçiniz' }]} initialValue={prefill?.student_id}>
               <Select
                 showSearch
                 optionFilterProp="label"

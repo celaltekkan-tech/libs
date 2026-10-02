@@ -192,9 +192,21 @@ export async function checkTimetable(projectId: number): Promise<CheckResult> {
   return data.data
 }
 
-export async function startTimetableRun(projectId: number, timeLimit?: number): Promise<TimetableRun> {
+// Kapsam verilirse yalnız o şube/öğretmen/mekan yeniden dağıtılır, kalan dersler yerinde kalır.
+export interface TimetableRunScope {
+  classroom_id?: number
+  teacher_id?: number
+  room_id?: number
+}
+
+export async function startTimetableRun(
+  projectId: number,
+  timeLimit?: number,
+  scope?: TimetableRunScope,
+): Promise<TimetableRun> {
   const { data } = await client.post<Envelope<TimetableRun>>(`${BASE}/projects/${projectId}/runs`, {
     time_limit: timeLimit,
+    ...(scope || {}),
   })
   return data.data
 }
@@ -319,7 +331,7 @@ export async function importProgram(
   return data.data
 }
 
-export type TimetableExportView = 'classroom' | 'teacher' | 'student' | 'room'
+export type TimetableExportView = 'classroom' | 'teacher' | 'teacher_detail' | 'student' | 'room'
 
 export async function exportTimetableLessons(
   projectId: number,
