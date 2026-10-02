@@ -29,6 +29,22 @@ export async function listTenantSchools(id: number): Promise<TenantSchool[]> {
   return data.data
 }
 
+export async function updateTenantSchoolName(
+  tenantId: number,
+  schoolId: number,
+  name: string,
+): Promise<{ school: TenantSchool; tenantName: string | null }> {
+  const { data } = await client.put<{
+    success: true
+    data: TenantSchool
+    meta?: { tenant_name?: string | null }
+  }>(`/api/tenants/${tenantId}/schools/${schoolId}`, { name })
+  return {
+    school: data.data,
+    tenantName: data.meta?.tenant_name ?? null,
+  }
+}
+
 export async function listTenantUsers(id: number): Promise<TenantUser[]> {
   const { data } = await client.get<Envelope<TenantUser[]>>(`/api/tenants/${id}/users`)
   return data.data

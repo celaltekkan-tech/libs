@@ -1071,7 +1071,7 @@ module.exports = {
     }
   },
 
-  // Şube, öğretmen, öğrenci veya mekân ızgarasını Excel dosyası olarak indirir.
+  // Şube, öğretmen, öğrenci, mekân veya çarşaf listeyi Excel ya da PDF olarak indirir.
   async exportLessons(req, res, next) {
     try {
       const project = await loadProject(req);

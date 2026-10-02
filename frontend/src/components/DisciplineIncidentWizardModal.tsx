@@ -24,6 +24,8 @@ export interface DisciplineIncidentPrefill {
   incident_date?: string
   summary?: string
   student_id?: number
+  complainant_name?: string
+  complaint_ref_date?: string
 }
 
 interface DisciplineIncidentWizardModalProps {
@@ -71,6 +73,8 @@ export function DisciplineIncidentWizardModal({
         ...(prefill?.title ? { title: prefill.title } : {}),
         ...(prefill?.incident_date ? { incident_date: prefill.incident_date } : {}),
         ...(prefill?.summary ? { summary: prefill.summary } : {}),
+        ...(prefill?.complainant_name ? { complainant_name: prefill.complainant_name } : {}),
+        ...(prefill?.complaint_ref_date ? { complaint_ref_date: prefill.complaint_ref_date } : {}),
       })
       void listStudents().then(setStudents).catch(() => undefined)
     }

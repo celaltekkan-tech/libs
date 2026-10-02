@@ -353,12 +353,18 @@ export function DisciplinePage() {
   // Öğretmen bildirimini sihirbaza taşıyıp olay kaydına çevirir.
   const startIncidentFromNote = (row: TeacherNote) => {
     const studentName = row.Student ? `${row.Student.first_name} ${row.Student.last_name}` : 'Öğrenci'
-    const reasons = [...row.tags, row.note].filter(Boolean).join(', ')
+    const topics = (row.tags || []).map((tag) => tag.trim()).filter(Boolean)
+    const topicText = topics.length ? topics.join(', ') : row.note?.trim() || 'Öğretmen bildirimi'
+    const reasons = [...topics, row.note].filter(Boolean).join(', ')
+    const noteDate = row.created_at.slice(0, 10)
+    const teacherName = row.Teacher?.full_name?.trim() || ''
     setWizardPrefill({
-      title: reasons ? `${studentName} — ${row.tags[0] || 'Öğretmen bildirimi'}` : `${studentName} — Öğretmen bildirimi`,
-      incident_date: row.created_at.slice(0, 10),
-      summary: `${row.Teacher?.full_name || 'Öğretmen'} bildirimi: ${reasons || '—'}`,
+      title: `${studentName} — ${topicText}`,
+      incident_date: noteDate,
+      summary: `${teacherName || 'Öğretmen'} bildirimi: ${reasons || '—'}`,
       student_id: row.student_id,
+      complainant_name: teacherName,
+      complaint_ref_date: noteDate,
     })
     setWizardOpen(true)
   }

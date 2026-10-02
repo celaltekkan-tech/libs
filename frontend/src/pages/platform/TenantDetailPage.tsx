@@ -16,6 +16,7 @@ import {
   resetTenantUserSmsLogin,
   unlockTenantUserLogin,
   updateTenant,
+  updateTenantSchoolName,
   updateTenantUser,
 } from '../../api/tenants'
 import { listLicenses } from '../../api/licenses'
@@ -38,6 +39,10 @@ interface ResetPasswordForm {
 
 interface TenantContactForm {
   phone?: string
+}
+
+interface SchoolNameForm {
+  name: string
 }
 
 function isLoginLocked(user: TenantUser) {
@@ -73,9 +78,12 @@ export function TenantDetailPage() {
   const [savingUser, setSavingUser] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
   const [savingPhone, setSavingPhone] = useState(false)
+  const [editingSchool, setEditingSchool] = useState<TenantSchool | null>(null)
+  const [savingSchoolName, setSavingSchoolName] = useState(false)
   const [editForm] = Form.useForm<EditUserForm>()
   const [passwordForm] = Form.useForm<ResetPasswordForm>()
   const [contactForm] = Form.useForm<TenantContactForm>()
+  const [schoolNameForm] = Form.useForm<SchoolNameForm>()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -299,6 +307,37 @@ export function TenantDetailPage() {
     }
   }
 
+  function openEditSchool(school: TenantSchool) {
+    setEditingSchool(school)
+    schoolNameForm.setFieldsValue({ name: school.name })
+  }
+
+  function closeEditSchool() {
+    setEditingSchool(null)
+    schoolNameForm.resetFields()
+  }
+
+  async function handleSaveSchoolName(values: SchoolNameForm) {
+    if (!editingSchool) return
+    const name = values.name.trim()
+    setSavingSchoolName(true)
+    try {
+      const { school, tenantName } = await updateTenantSchoolName(tenantId, editingSchool.id, name)
+      setSchools((prev) =>
+        prev.map((item) => (item.id === editingSchool.id ? { ...item, name: school.name } : item)),
+      )
+      if (tenantName) {
+        setTenant((prev) => (prev ? { ...prev, name: tenantName } : prev))
+      }
+      message.success('Okul adı kaydedildi')
+      closeEditSchool()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSavingSchoolName(false)
+    }
+  }
+
   function openEditUser(user: TenantUser) {
     setEditingUser(user)
     editForm.setFieldsValue({
@@ -364,6 +403,15 @@ export function TenantDetailPage() {
                   <Card loading={loading} title={tenant?.name || 'Hesap'}>
                     {tenant && (
                       <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                        {schools.length === 1 && (
+                          <Button
+                            size="small"
+                            icon={<EditOutlined />}
+                            onClick={() => openEditSchool(schools[0])}
+                          >
+                            Okul adını düzenle
+                          </Button>
+                        )}
                         <Descriptions column={1} size="small">
                           <Descriptions.Item label="Plan">
                             {activeLicense?.plan || 'Aktif lisans yok'}
@@ -594,6 +642,19 @@ export function TenantDetailPage() {
                       columns={[
                         { title: 'Ad', dataIndex: 'name' },
                         { title: 'Kod', dataIndex: 'code' },
+                        {
+                          title: 'İşlem',
+                          key: 'actions',
+                          render: (_: unknown, record: TenantSchool) => (
+                            <Button
+                              size="small"
+                              icon={<EditOutlined />}
+                              onClick={() => openEditSchool(record)}
+                            >
+                              Okul adını düzenle
+                            </Button>
+                          ),
+                        },
                       ]}
                     />
                   </Card>
@@ -739,6 +800,46 @@ export function TenantDetailPage() {
           />
         </Space>
       </div>
+
+      <Modal
+        title="Okul adını düzenle"
+        open={Boolean(editingSchool)}
+        onCancel={closeEditSchool}
+        onOk={() => schoolNameForm.submit()}
+        confirmLoading={savingSchoolName}
+        okText="Kaydet"
+        cancelText="Vazgeç"
+        destroyOnClose
+      >
+        <Form
+          form={schoolNameForm}
+          layout="vertical"
+          onFinish={(values) => void handleSaveSchoolName(values)}
+        >
+          <Form.Item
+            name="name"
+            label="Okul adı"
+            extra={
+              editingSchool && tenant?.name === editingSchool.name
+                ? 'Hesap adı da bu adla aynı; kayıtta o da güncellenir.'
+                : undefined
+            }
+            rules={[
+              {
+                validator: (_, value) => {
+                  const name = String(value || '').trim()
+                  if (!name) return Promise.reject(new Error('Okul adı zorunludur'))
+                  if (name.length < 2) return Promise.reject(new Error('En az 2 karakter'))
+                  if (name.length > 200) return Promise.reject(new Error('En fazla 200 karakter'))
+                  return Promise.resolve()
+                },
+              },
+            ]}
+          >
+            <Input maxLength={200} />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal
         title="Kullanıcı bilgilerini düzenle"

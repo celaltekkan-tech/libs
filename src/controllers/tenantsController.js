@@ -111,6 +111,40 @@ module.exports = {
     }
   },
 
+  async updateSchool(req, res, next) {
+    try {
+      const tenant = await Tenant.findByPk(req.params.id);
+      if (!tenant) {
+        return res.status(404).json({ success: false, message: 'Hesap bulunamadı' });
+      }
+
+      const school = await School.findOne({
+        where: { id: req.params.schoolId, tenant_id: tenant.id },
+      });
+      if (!school) {
+        return res.status(404).json({ success: false, message: 'Okul bulunamadı' });
+      }
+
+      const name = String((req.validatedBody || req.body).name || '').trim();
+      const previousName = school.name;
+      await school.update({ name });
+
+      let tenantName = null;
+      if (tenant.name === previousName && previousName !== name) {
+        await tenant.update({ name });
+        tenantName = tenant.name;
+      }
+
+      res.json({
+        success: true,
+        data: school,
+        meta: { tenant_name: tenantName },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async listUsers(req, res, next) {
     try {
       const tenant = await Tenant.findByPk(req.params.id);
