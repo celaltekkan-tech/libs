@@ -594,9 +594,9 @@ npm run build:frontend
 
 ## Mobil Uygulama (Expo)
 
-Öğretmenlerin sınıfta hızlıca öğrenci arayıp disiplin bildirimi (öğretmen notu) oluşturması için `mobile/` klasöründe ayrı bir React Native (Expo) uygulaması bulunur: sunucu adresi girme, öğretmen kaydı (lisanslı okul + T.C. kimlik no/soyad/e-posta/telefon, yalnızca SMS doğrulama), giriş, şifre değiştirme, öğrenci numarasıyla arama, hazır/serbest sebep etiketleriyle not oluşturma, kendi gönderdiği bildirimleri listeleme. Aynı backend uçlarını kullanır (`POST /api/auth/teacher-register`, `POST /api/auth/login`, `POST /api/auth/change-password`, `GET /api/auth/me`, `GET /api/students/lookup/:number`, `GET /api/teacher-notes/tag-options`, `POST /api/teacher-notes`, `GET /api/teacher-notes/mine`). **Bu, web yönetim panelinden tamamen farklı, ayrı bir uygulamadır** — panelin URL'sini telefon tarayıcısında açmak bu deneyimi vermez, aşağıdaki gibi kurulmuş/başlatılmış olması gerekir.
+Öğretmenlerin sınıfta hızlıca öğrenci arayıp disiplin bildirimi (öğretmen notu) oluşturması için `mobile/` klasöründe ayrı bir React Native (Expo) uygulaması bulunur: öğretmen kaydı (lisanslı okul + T.C. kimlik no/soyad/e-posta/telefon, yalnızca SMS doğrulama), giriş, şifre değiştirme, öğrenci numarasıyla arama, hazır/serbest sebep etiketleriyle not oluşturma, kendi gönderdiği bildirimleri listeleme. Aynı backend uçlarını kullanır (`POST /api/auth/teacher-register`, `POST /api/auth/login`, `POST /api/auth/change-password`, `GET /api/auth/me`, `GET /api/students/lookup/:number`, `GET /api/teacher-notes/tag-options`, `POST /api/teacher-notes`, `GET /api/teacher-notes/mine`). **Bu, web yönetim panelinden tamamen farklı, ayrı bir uygulamadır** — panelin URL'sini telefon tarayıcısında açmak bu deneyimi vermez, aşağıdaki gibi kurulmuş/başlatılmış olması gerekir.
 
-Backend adresi APK'ya gömülü değildir: uygulama ilk açılışta "Sunucu Adresi" ekranını gösterir, girilen adres yalnızca o cihazda saklanır. Adres değiştiğinde (örn. LAN IP'den `https://api.oids.com.tr`'ye geçince) uygulamayı yeniden kurmaya gerek yoktur — giriş ekranındaki **Sunucu: ... (değiştir)** bağlantısına dokunup yeni adresi girmek yeterlidir.
+Backend adresi sabittir ve kullanıcıya sorulmaz: `mobile/src/config.ts` içindeki `API_BASE_URL` (`https://api.oids.com.tr`) tüm isteklerde kullanılır. Geliştirme sırasında LAN'daki bir backend'e bağlanmak için bu sabiti geçici olarak değiştirip Metro'yu yeniden başlatmanız gerekir.
 
 ### Geliştirme sırasında test etme (Expo Go)
 
@@ -615,7 +615,7 @@ npm run start:go
 1. Telefona **Expo Go** uygulamasını kurun (App Store / Play Store).
 2. Bilgisayar ve telefon **aynı Wi-Fi ağında** olmalı.
 3. `npm start` çıktısındaki QR kodu Expo Go ile (Android) veya kamerayla (iOS) okutun.
-4. Uygulama açılınca "Sunucu Adresi" ekranına bilgisayarın LAN IP'sini girin (örn. `http://192.168.1.10:4000`) — `ipconfig` (Windows) ile bulabilirsiniz.
+4. Uygulama sabit olarak `https://api.oids.com.tr`'ye bağlanır. LAN'daki backend'e bağlanmak istiyorsanız `mobile/src/config.ts` içindeki `API_BASE_URL`'i bilgisayarın LAN IP'sine (örn. `http://192.168.1.10:4000`, `ipconfig` ile bulunur) geçici olarak çevirip Metro'yu yeniden başlatın.
 
 Bu yöntemle telefona kalıcı bir uygulama simgesi kurulmaz; Expo Go içinde çalışır, geliştirme bittiğinde kapatılır.
 
@@ -639,7 +639,7 @@ Build birkaç dakika sürer ve Expo'nun bulut sunucularında çalışır (bilgis
 
 Android'de "bilinmeyen kaynaklardan yükleme" (Play Store dışı APK) izni açık olmalı; ilk kurulumda telefon bunu otomatik sorar.
 
-Adres netleştiğinde ve sabitlendiğinde tekrar build almanıza gerek yok — sadece uygulama içindeki "Sunucu Adresi" ekranından yeni adresi girmeniz yeterli. `npm run build:production` ise mağaza (Play Store/App Store) dağıtımı için `.aab`/ipa üretir; şimdilik gerekli değil.
+Sunucu adresi bundle'a gömülü olduğu için adres değişirse `mobile/src/config.ts` güncellenip yeni bir build alınması gerekir. `npm run build:production` ise mağaza (Play Store/App Store) dağıtımı için `.aab`/ipa üretir; şimdilik gerekli değil.
 
 ### Kullanım (öğretmen için)
 

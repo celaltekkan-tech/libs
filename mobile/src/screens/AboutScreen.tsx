@@ -20,7 +20,7 @@ export function AboutScreen() {
 
   const rows: Array<{ label: string; value: string; url?: string }> = [
     { label: 'Sürüm', value: getAppVersionLabel() },
-    { label: 'Sunucu', value: getApiBaseUrl() || '—' },
+    { label: 'Sunucu', value: getApiBaseUrl() },
     ...(user ? [{ label: 'Oturum', value: `${user.full_name}\n${user.email}` }] : []),
     { label: 'Web sitesi', value: 'oids.com.tr', url: WEBSITE_URL },
     { label: 'Yönetim paneli', value: 'uyg.oids.com.tr', url: PANEL_URL },
