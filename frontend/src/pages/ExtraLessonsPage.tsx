@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Button, Calendar, Card, Form, Input, List, Modal, Select, Space, Tabs, Typography, theme } from 'antd'
+import { App, Button, Calendar, Card, Form, Input, InputNumber, List, Modal, Select, Space, Tabs, Typography, theme } from 'antd'
 import type { Dayjs } from 'dayjs'
 import dayjs from 'dayjs'
 import 'dayjs/locale/tr'
 import { AppLayout } from '../components/AppLayout'
 import { useActiveSchool } from '../auth/ActiveSchoolContext'
 import { useAuth } from '../auth/AuthContext'
-import { deleteExtraLessonAbsence, listExtraLessonAbsences, saveExtraLessonAbsence } from '../api/extraLessons'
+import { deleteExtraLessonAbsence, fetchExtraLessonPayroll, listExtraLessonAbsences, saveExtraLessonAbsence } from '../api/extraLessons'
 import { listTeachers } from '../api/teachers'
 import { getErrorMessage } from '../api/client'
-import { EXTRA_LESSON_ABSENCE_REASONS, type ExtraLessonAbsence, type ExtraLessonAbsenceReason } from '../types/extraLesson'
+import { EXTRA_LESSON_ABSENCE_REASONS, type ExtraLessonAbsence, type ExtraLessonAbsenceReason, type ExtraLessonPayroll } from '../types/extraLesson'
 import type { Teacher } from '../types/teacher'
 import { useObjectColors } from '../theme/ObjectPaletteContext'
 import { type SwatchName } from '../theme/objectPalette'
@@ -36,13 +36,15 @@ export function ExtraLessonsPage() {
   const { activeSchoolId } = useActiveSchool()
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [absences, setAbsences] = useState<ExtraLessonAbsence[]>([])
+  const [payroll, setPayroll] = useState<ExtraLessonPayroll | null>(null)
   const [tab, setTab] = useState<'ucretli' | 'dis'>('ucretli')
   const [teacherId, setTeacherId] = useState<number | null>(null)
   const [cursor, setCursor] = useState(now.startOf('month'))
   const [loading, setLoading] = useState(true)
   const [day, setDay] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [form] = Form.useForm<{ reason: ExtraLessonAbsenceReason; note?: string }>()
+  const [form] = Form.useForm<{ reason: ExtraLessonAbsenceReason; note?: string; missed_hours?: number }>()
+  const reason = Form.useWatch('reason', form)
   const canUpdate = hasPermission('payroll.update') || hasPermission('payroll.create')
   const canDelete = hasPermission('payroll.delete')
 
@@ -55,15 +57,26 @@ export function ExtraLessonsPage() {
   }, [activeSchoolId])
 
   const loadAbsences = useCallback(async () => {
+    if (!teacherId) {
+      setAbsences([])
+      setPayroll(null)
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
-      setAbsences(await listExtraLessonAbsences(cursor.year(), cursor.month() + 1, teacherId ?? undefined))
+      const [rows, preview] = await Promise.all([
+        listExtraLessonAbsences(cursor.year(), cursor.month() + 1, teacherId),
+        fetchExtraLessonPayroll(teacherId, cursor.year(), cursor.month() + 1, tab === 'ucretli' ? 'ucretli' : 'gorevlendirme'),
+      ])
+      setAbsences(rows)
+      setPayroll(preview)
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
-  }, [cursor, teacherId, message])
+  }, [cursor, teacherId, tab, message])
 
   useEffect(() => {
     void loadTeachers().catch((err) => message.error(getErrorMessage(err)))
@@ -103,10 +116,11 @@ export function ExtraLessonsPage() {
     form.setFieldsValue({
       reason: existing?.reason || 'rapor',
       note: existing?.note || undefined,
+      missed_hours: existing?.missed_hours == null ? undefined : Number(existing.missed_hours),
     })
   }
 
-  const onSave = async (values: { reason: ExtraLessonAbsenceReason; note?: string }) => {
+  const onSave = async (values: { reason: ExtraLessonAbsenceReason; note?: string; missed_hours?: number }) => {
     if (!teacherId || !day) return
     setSaving(true)
     try {
@@ -114,6 +128,7 @@ export function ExtraLessonsPage() {
         teacher_id: teacherId,
         absence_date: day,
         reason: values.reason,
+        missed_hours: values.reason === 'kismi' ? Number(values.missed_hours) : null,
         note: values.note?.trim() || null,
       })
       message.success('Devamsızlık kaydedildi')
@@ -153,7 +168,7 @@ export function ExtraLessonsPage() {
       </Typography.Title>
       <Typography.Paragraph type="secondary">
         Ücretli öğretmenler ve dış kurum görevlendirmesi burada izlenir. Kendi kadrolu personel için puantaj tutulmaz.
-        Aylık takvimde güne tıklayıp devamsızlığı ve nedenini yazın. Puantaj çıktısı örnek form geldikten sonra eklenecek.
+        Aylık takvimde güne tıklayıp devamsızlığı yazın. Kısmi devamsızlıkta düşülecek saati girin. Gün başlıkları ders programındaki saati gösterir.
       </Typography.Paragraph>
       <Tabs
         activeKey={tab}
@@ -216,6 +231,23 @@ export function ExtraLessonsPage() {
               )
             })}
           </Space>
+          {payroll && payroll.weekday_hours.some((row) => row.hours > 0) && (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(${payroll.weekday_hours.length}, 1fr)`,
+                gap: 6,
+                marginBottom: 8,
+              }}
+            >
+              {payroll.weekday_hours.map((row) => (
+                <div key={row.day} style={{ textAlign: 'center', fontSize: 12, color: token.colorTextSecondary }}>
+                  <div>{row.label}</div>
+                  <div style={{ fontWeight: 700, color: token.colorText }}>{row.hours} saat</div>
+                </div>
+              ))}
+            </div>
+          )}
           <Calendar
             value={cursor}
             onPanelChange={(value) => setCursor(value.startOf('month'))}
@@ -244,12 +276,34 @@ export function ExtraLessonsPage() {
                   }}
                 >
                   {REASON_LABEL[row.reason] || row.reason}
+                  {row.reason === 'kismi' && row.missed_hours != null ? ` ${Number(row.missed_hours)}` : ''}
                 </div>
               )
             }}
           />
         </Card>
       </div>
+      {payroll && (
+        <Card size="small" title="Puantaj" style={{ marginTop: 16 }}>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
+            {payroll.note} Bu ay ders saati {payroll.lesson_hours}, düşülen devamsızlık {payroll.missed_hours}.
+          </Typography.Paragraph>
+          <Space wrap size={[16, 8]}>
+            {payroll.lines.map((line) => (
+              <span key={`${line.code}-${line.label}`}>
+                {line.code ? `${line.code} ` : ''}
+                {line.label}: <strong>{line.hours}</strong>
+              </span>
+            ))}
+            {payroll.lines.length === 0 && <Typography.Text type="secondary">Bu ay için ders saati yok.</Typography.Text>}
+          </Space>
+          {payroll.weeks.map((week) => (
+            <Typography.Paragraph key={week.week} style={{ marginBottom: 4, marginTop: 8 }}>
+              {week.week} haftası: {week.days.map((day) => `${day.label} ders ${day.lesson_hours}, ek ${day.extra_hours}`).join(' · ')}
+            </Typography.Paragraph>
+          ))}
+        </Card>
+      )}
       <Modal
         title={day ? dayjs(day).format('D MMMM YYYY') : 'Devamsızlık'}
         open={Boolean(day)}
@@ -297,6 +351,15 @@ export function ExtraLessonsPage() {
               })}
             />
           </Form.Item>
+          {reason === 'kismi' && (
+            <Form.Item
+              name="missed_hours"
+              label="Düşülecek saat"
+              rules={[{ required: true, message: 'Kısmi saati yazın' }]}
+            >
+              <InputNumber min={0.5} max={14} step={0.5} style={{ width: '100%' }} />
+            </Form.Item>
+          )}
           <Form.Item name="note" label="Açıklama">
             <Input.TextArea rows={3} maxLength={300} placeholder="İsteğe bağlı" />
           </Form.Item>

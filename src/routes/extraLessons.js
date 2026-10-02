@@ -15,6 +15,7 @@ const permission = require('../middlewares/permission');
 const moduleGuard = requireModule('payroll');
 
 router.get('/absences', auth, moduleGuard, permission('payroll.read'), ctrl.listAbsences);
+router.get('/payroll', auth, moduleGuard, permission('payroll.read'), ctrl.payroll);
 router.put(
   '/absences',
   auth,

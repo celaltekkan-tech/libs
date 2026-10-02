@@ -4,6 +4,7 @@ const { Op } = require('sequelize');
 const { Teacher, PromotionHistory, School, sequelize } = require('../models');
 const audit = require('../services/auditService');
 const { fillPromotionForm, fillSalaryChangeForm } = require('../services/promotionFormService');
+const { collectSalaryPromotionEntries } = require('../services/salaryPromotionEntries');
 const { resolvePrincipalName } = require('../services/schoolPrincipalService');
 const { getSalaryPeriodRange } = require('../utils/salaryPeriod');
 const { advanceDegreeRank, addYears, eightYearProgress, nextKariyerTitle } = require('../utils/promotionEngine');
@@ -91,7 +92,7 @@ module.exports = {
     }
   },
 
-  /** Sistem dışında yapılmış terfiyi derece/kademe değiştirmeden takvime işler. */
+  /** Uygulanmış terfiyi işler: kademe, gerekirse derece ilerler; süre bir sonraki yıla alınır. */
   async acknowledgeExternalPromotion(req, res, next) {
     try {
       const teacher = await Teacher.findByPk(req.params.id);
@@ -101,6 +102,8 @@ module.exports = {
       }
 
       const appliedDate = req.validatedBody.degree_rank_date;
+      const advanced = advanceDegreeRank(teacher.degree, teacher.rank);
+      const nextDate = addYears(new Date(appliedDate), 1);
       const history = await sequelize.transaction(async (transaction) => {
         const created = await PromotionHistory.create(
           {
@@ -109,12 +112,12 @@ module.exports = {
             previous_degree: teacher.degree,
             previous_rank: teacher.rank,
             previous_degree_rank_date: teacher.degree_rank_date,
-            new_degree: teacher.degree,
-            new_rank: teacher.rank,
-            new_degree_rank_date: appliedDate,
-            note: 'Sistem dışında uygulandı',
+            new_degree: advanced.degree,
+            new_rank: advanced.rank,
+            new_degree_rank_date: nextDate,
+            note: 'Terfi uygulandı',
             type: 'harici',
-            override_reason: 'Terfi sistem dışında yapılmış olarak işaretlendi. Derece ve kademe değiştirilmedi.',
+            override_reason: 'Kademe ve gerekirse derece ilerletildi. Süre bir sonraki yıla alındı.',
             is_permanent: true,
             created_by: req.user.user_id || null,
           },
@@ -122,8 +125,10 @@ module.exports = {
         );
         await teacher.update(
           {
-            degree_rank_date: appliedDate,
-            degree_rank_anchor_date: appliedDate,
+            degree: advanced.degree,
+            rank: advanced.rank,
+            degree_rank_date: nextDate,
+            degree_rank_anchor_date: nextDate,
           },
           { transaction },
         );
@@ -301,17 +306,7 @@ module.exports = {
 
       // İlgili ay formu: önceki ayın 15'i – seçilen ayın 14'ü (ör. Ekim → 15 Eyl–14 Eki)
       const period = getSalaryPeriodRange(month, year);
-
-      const histories = await PromotionHistory.findAll({
-        where: {
-          tenant_id: tenantId,
-          new_degree_rank_date: { [Op.gte]: period.start, [Op.lt]: period.endExclusive },
-        },
-        include: [{ model: Teacher, include: [{ model: School, required: false }] }],
-        order: [['new_degree_rank_date', 'ASC']],
-      });
-
-      const entries = histories.filter((h) => h.Teacher).map((h) => ({ history: h, teacher: h.Teacher }));
+      const entries = await collectSalaryPromotionEntries(tenantId, period);
       const institutionName =
         entries[0]?.teacher.School?.name || entries[0]?.teacher.working_institution || null;
       const principalName = await resolvePrincipalName(

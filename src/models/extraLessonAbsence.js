@@ -6,6 +6,7 @@ module.exports = (sequelize, DataTypes) => {
       teacher_id: DataTypes.INTEGER,
       absence_date: DataTypes.DATEONLY,
       reason: DataTypes.STRING(30),
+      missed_hours: DataTypes.DECIMAL(4, 1),
       note: DataTypes.STRING(300),
     },
     {

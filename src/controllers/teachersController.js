@@ -600,7 +600,7 @@ module.exports = {
           const nextIso = nextAnniversary(promotionBase, today);
           const missed = lastAnniversary(promotionBase, todayIso);
           const overdueDays = missed && missed > promotionBase ? daysBetweenIso(missed, todayIso) : 0;
-          if (overdueDays > 0 && overdueDays <= 90) {
+          if (overdueDays > 0) {
             daysRemaining = -overdueDays;
             nextDate = new Date(`${missed}T00:00:00`);
           } else if (nextIso) {

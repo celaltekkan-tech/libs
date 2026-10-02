@@ -3,6 +3,7 @@ import type {
   ExtraLessonAbsence,
   ExtraLessonAbsenceReason,
   ExtraLessonEntry,
+  ExtraLessonPayroll,
   ExtraLessonMonthlySummaryRow,
   ExtraLessonPayload,
 } from '../types/extraLesson'
@@ -54,6 +55,18 @@ export async function fetchExtraLessonMonthlySummary(year: number, month: number
   return data.data
 }
 
+export async function fetchExtraLessonPayroll(
+  teacherId: number,
+  year: number,
+  month: number,
+  mode: 'ucretli' | 'gorevlendirme',
+): Promise<ExtraLessonPayroll> {
+  const { data } = await client.get<Envelope<ExtraLessonPayroll>>('/api/extra-lessons/payroll', {
+    params: { teacher_id: teacherId, year, month, mode },
+  })
+  return data.data
+}
+
 export async function listExtraLessonAbsences(year: number, month: number, teacherId?: number): Promise<ExtraLessonAbsence[]> {
   const { data } = await client.get<Envelope<ExtraLessonAbsence[]>>('/api/extra-lessons/absences', {
     params: { year, month, teacher_id: teacherId },
@@ -65,6 +78,7 @@ export async function saveExtraLessonAbsence(payload: {
   teacher_id: number
   absence_date: string
   reason: ExtraLessonAbsenceReason
+  missed_hours?: number | null
   note?: string | null
 }): Promise<ExtraLessonAbsence> {
   const { data } = await client.put<Envelope<ExtraLessonAbsence>>('/api/extra-lessons/absences', payload)

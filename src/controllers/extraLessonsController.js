@@ -4,6 +4,7 @@ const { ExtraLessonEntry, ExtraLessonAbsence, Teacher, ScheduleEntry, LeaveRecor
 const { Op } = require('sequelize');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
+const { buildPayroll } = require('../services/extraLessonPayroll');
 
 const CATEGORY_LABELS = {
   ders_yuku: 'Ders Yükü',
@@ -244,6 +245,24 @@ module.exports = {
     }
   },
 
+  async payroll(req, res, next) {
+    try {
+      const tenantId = req.user && req.user.tenant_id;
+      const teacherId = Number(req.query.teacher_id);
+      const year = Number(req.query.year);
+      const month = Number(req.query.month);
+      const mode = req.query.mode === 'gorevlendirme' ? 'gorevlendirme' : 'ucretli';
+      if (!teacherId || !year || !month) {
+        return res.status(400).json({ success: false, message: 'teacher_id, year ve month zorunludur' });
+      }
+      const data = await buildPayroll({ tenantId, teacherId, year, month, mode });
+      if (!data) return res.status(404).json({ success: false, message: 'Personel bulunamadı' });
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async listAbsences(req, res, next) {
     try {
       const tenantId = req.user && req.user.tenant_id;
@@ -285,16 +304,20 @@ module.exports = {
         });
       }
       const note = payload.note ? String(payload.note).trim() : null;
+      const missedHours = payload.reason === 'kismi' ? Number(payload.missed_hours) : null;
+      if (payload.reason === 'kismi' && !(missedHours > 0)) {
+        return res.status(400).json({ success: false, message: 'Kısmi devamsızlıkta saat yazın' });
+      }
       const [row] = await ExtraLessonAbsence.findOrCreate({
         where: {
           tenant_id: payload.tenant_id,
           teacher_id: payload.teacher_id,
           absence_date: payload.absence_date,
         },
-        defaults: { reason: payload.reason, note },
+        defaults: { reason: payload.reason, note, missed_hours: missedHours },
       });
-      if (row.reason !== payload.reason || (row.note || null) !== note) {
-        await row.update({ reason: payload.reason, note });
+      if (row.reason !== payload.reason || (row.note || null) !== note || Number(row.missed_hours) !== missedHours) {
+        await row.update({ reason: payload.reason, note, missed_hours: missedHours });
       }
       res.json({ success: true, data: row });
     } catch (err) {

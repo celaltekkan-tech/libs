@@ -249,7 +249,7 @@ function buildSalaryFormModel(promotionEntries, options) {
     new_degree: history.new_degree || '',
     new_rank: history.new_rank || '',
     promotion_date: formatDateTR(history.new_degree_rank_date),
-    documents: history.note || '',
+    documents: 'Terfi Formu',
   }));
 
   const other_changes = take(draft.other_changes, cap(mapping.otherChangeRows)).map((r) => ({

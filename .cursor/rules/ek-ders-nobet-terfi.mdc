@@ -1,0 +1,14 @@
+---
+description: Ek ders puantajı, nöbet çıktısı ve terfi formu kuralları (üretim geri bildirimleri)
+alwaysApply: true
+---
+
+# Ek ders, nöbet ve terfi
+
+Ücretli öğretmen girdiği her saatin ek dersini alır. Takvimde günlerin üstünde haftalık ders saati görünür (Pazartesi 5 gibi). Her 2 derse 1 eğitim-öğretim yerine geçen saat vardır; buçuk aşağı yuvarlanır ve günlere dengeli dağıtılır. Bu saat takvimde gösterilmez, puantaja yazılır. Devamsızlık kısmi olabilir; kısmi saat puantajdan düşülür.
+
+Dış kurum görevlendirmesinde haftada ilk 15 saat maaş karşılığıdır. Üstü ek derstir. Rehberlik dersi ek dersten sayılmaz. Ayrıca haftada 2 saat sosyal kişilik hizmeti ve girilen her 10 saat için 1 saat hazırlık/planlama (YEP) vardır. Nöbet ücreti nöbet programındaki görevden gelir. Hafta sonu ve 17:00’den sonraki ders gece kodudur. KBS kodları: gündüz 101, gece 102, nöbet gündüz 119, nöbet yüzde 25 fazla 121, YEP gündüz 122, YEP gece 123.
+
+Nöbet çizelgesi kart düzeninde, siyah-beyaz basılacak Excel ve PDF olarak iner. Açıklama alanına nöbet kuralları yazılır.
+
+Terfi tarihini değiştirmek yalnızca kaydeder, form indirmez. Terfi uygulandı denince kademe ve gerekirse derece ilerler, süre bir sonraki yıla alınır. Maaş formunun D bölümünde eklenecek belge “Terfi Formu”dur. Dönemi kaçırmış ve uzmanlık terfisi verilmiş personel D bölümünde kalır.
