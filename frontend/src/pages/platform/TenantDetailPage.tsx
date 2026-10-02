@@ -45,6 +45,10 @@ interface SchoolNameForm {
   name: string
 }
 
+interface TenantNameForm {
+  name: string
+}
+
 function isLoginLocked(user: TenantUser) {
   if (!user.login_locked_until) return false
   return new Date(user.login_locked_until).getTime() > Date.now()
@@ -80,10 +84,13 @@ export function TenantDetailPage() {
   const [savingPhone, setSavingPhone] = useState(false)
   const [editingSchool, setEditingSchool] = useState<TenantSchool | null>(null)
   const [savingSchoolName, setSavingSchoolName] = useState(false)
+  const [editingTenantName, setEditingTenantName] = useState(false)
+  const [savingTenantName, setSavingTenantName] = useState(false)
   const [editForm] = Form.useForm<EditUserForm>()
   const [passwordForm] = Form.useForm<ResetPasswordForm>()
   const [contactForm] = Form.useForm<TenantContactForm>()
   const [schoolNameForm] = Form.useForm<SchoolNameForm>()
+  const [tenantNameForm] = Form.useForm<TenantNameForm>()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -307,6 +314,32 @@ export function TenantDetailPage() {
     }
   }
 
+  function openEditTenantName() {
+    if (!tenant) return
+    setEditingTenantName(true)
+    tenantNameForm.setFieldsValue({ name: tenant.name })
+  }
+
+  function closeEditTenantName() {
+    setEditingTenantName(false)
+    tenantNameForm.resetFields()
+  }
+
+  async function handleSaveTenantName(values: TenantNameForm) {
+    const name = values.name.trim()
+    setSavingTenantName(true)
+    try {
+      const { tenant: updated } = await updateTenant(tenantId, { name })
+      setTenant(updated)
+      message.success('Hesap adı kaydedildi')
+      closeEditTenantName()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSavingTenantName(false)
+    }
+  }
+
   function openEditSchool(school: TenantSchool) {
     setEditingSchool(school)
     schoolNameForm.setFieldsValue({ name: school.name })
@@ -403,15 +436,20 @@ export function TenantDetailPage() {
                   <Card loading={loading} title={tenant?.name || 'Hesap'}>
                     {tenant && (
                       <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                        {schools.length === 1 && (
-                          <Button
-                            size="small"
-                            icon={<EditOutlined />}
-                            onClick={() => openEditSchool(schools[0])}
-                          >
-                            Okul adını düzenle
+                        <Space wrap>
+                          <Button size="small" icon={<EditOutlined />} onClick={openEditTenantName}>
+                            Hesap adını düzenle
                           </Button>
-                        )}
+                          {schools.length === 1 && (
+                            <Button
+                              size="small"
+                              icon={<EditOutlined />}
+                              onClick={() => openEditSchool(schools[0])}
+                            >
+                              Okul adını düzenle
+                            </Button>
+                          )}
+                        </Space>
                         <Descriptions column={1} size="small">
                           <Descriptions.Item label="Plan">
                             {activeLicense?.plan || 'Aktif lisans yok'}
@@ -800,6 +838,41 @@ export function TenantDetailPage() {
           />
         </Space>
       </div>
+
+      <Modal
+        title="Hesap adını düzenle"
+        open={editingTenantName}
+        onCancel={closeEditTenantName}
+        onOk={() => tenantNameForm.submit()}
+        confirmLoading={savingTenantName}
+        okText="Kaydet"
+        cancelText="Vazgeç"
+        destroyOnClose
+      >
+        <Form
+          form={tenantNameForm}
+          layout="vertical"
+          onFinish={(values) => void handleSaveTenantName(values)}
+        >
+          <Form.Item
+            name="name"
+            label="Hesap adı"
+            rules={[
+              {
+                validator: (_, value) => {
+                  const name = String(value || '').trim()
+                  if (!name) return Promise.reject(new Error('Hesap adı zorunludur'))
+                  if (name.length < 2) return Promise.reject(new Error('En az 2 karakter'))
+                  if (name.length > 200) return Promise.reject(new Error('En fazla 200 karakter'))
+                  return Promise.resolve()
+                },
+              },
+            ]}
+          >
+            <Input maxLength={200} />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal
         title="Okul adını düzenle"
