@@ -6,6 +6,48 @@ export interface TimetableWeights {
   soft_constraint: number
   availability_avoid: number
   block_flex: number
+  teacher_day_off?: number
+}
+
+export type SameClassSubjectsMode = 'off' | 'soft' | 'hard'
+
+/** Çalışma geneli dağıtım ayarları. 0 = sınır yok. */
+export interface DistributionSettings {
+  place_seconds: number
+  gap_seconds: number
+  split_double: boolean
+  merge_singles: boolean
+  merge_two_one: boolean
+  eliminate_gaps: boolean
+  free_day: boolean
+  same_class_subjects: SameClassSubjectsMode
+  prioritize_difficulty: boolean
+  max_daily_hours: number
+  max_windows: number
+  workers: number
+  methods: 'all' | 'single'
+  /** cpsat: kısıt çözücü, greedy: sıkışık ders önce, local: yerel iyileştirme */
+  algorithms?: Array<'cpsat' | 'greedy' | 'local'>
+}
+
+export interface AlgorithmComparison {
+  algorithm: string
+  label: string
+  ok: boolean
+  penalty: number | null
+  gaps: number | null
+  seconds: number
+  delta: number | null
+  winner: boolean
+  note: string | null
+}
+
+/** Öğretmene özel dağıtım. Boş alan genel ayarı kullanır. 0 = sınır yok. */
+export interface TeacherDistributionOverride {
+  max_daily_hours?: number | null
+  max_windows?: number | null
+  free_day?: boolean | null
+  same_class_subjects?: 'inherit' | 'off' | 'on' | null
 }
 
 export interface DayBreak {
@@ -32,6 +74,8 @@ export interface TimetableSettings {
   bell?: BellSchedule
   block_across_lunch?: boolean
   class_lunch?: Record<string, number>
+  distribution?: DistributionSettings
+  teacher_overrides?: Record<string, TeacherDistributionOverride>
 }
 
 export const DEFAULT_BELL: BellSchedule = {
@@ -212,11 +256,17 @@ export interface TimetableRun {
     elapsed?: number
     phase?: 'ai'
     message?: string
+    strategy?: string
+    strategy_label?: string
   } | null
   result: {
     lesson_count: number
     score: Record<string, number>
     violations: Array<{ constraint_id: number; count: number }>
+    strategy?: string | null
+    strategy_label?: string | null
+    comparisons?: AlgorithmComparison[]
+    comparison_note?: string | null
   } | null
   diagnostics: Array<{ level: 'error' | 'warning'; message: string; constraint_ids?: number[] }> | null
   error: string | null
@@ -255,6 +305,7 @@ export const SCORE_LABELS: Record<string, string> = {
   soft_constraints: 'Esnek kısıt ihlalleri',
   availability_avoid: 'İstenmeyen saatlere düşen dersler',
   block_flex: 'Bölünen / birleştirilen bloklar',
+  teacher_day_off: 'Öğretmene boş gün verilememesi',
 }
 
 export const WEIGHT_LABELS: Record<keyof TimetableWeights, string> = {
@@ -265,6 +316,7 @@ export const WEIGHT_LABELS: Record<keyof TimetableWeights, string> = {
   soft_constraint: 'Esnek kısıt varsayılan ağırlığı',
   availability_avoid: 'Zaman tablosunda "istenmiyor" saate ders',
   block_flex: 'Blok esnekliği',
+  teacher_day_off: 'Öğretmene boş gün verilememesi',
 }
 
 export const RUN_STATUS_LABELS: Record<RunStatus, { label: string; color: string }> = {

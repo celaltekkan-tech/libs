@@ -26,7 +26,7 @@ import {
   startTimetableRun,
 } from '../../api/timetable'
 import { getErrorMessage } from '../../api/client'
-import { RUN_STATUS_LABELS, SCORE_LABELS, type CheckResult, type TimetableRun } from '../../types/timetable'
+import { RUN_STATUS_LABELS, SCORE_LABELS, type AlgorithmComparison, type CheckResult, type TimetableRun } from '../../types/timetable'
 import { EffortPicker } from './EffortPicker'
 import type { TimetableCtx } from './shared'
 
@@ -42,7 +42,7 @@ export function SolveTab({ ctx, onShowGrid }: Props) {
   const { project } = ctx
   const [check, setCheck] = useState<CheckResult | null>(null)
   const [checking, setChecking] = useState(false)
-  const [timeLimit, setTimeLimit] = useState<number>(project.settings.time_limit)
+  const [timeLimit, setTimeLimit] = useState<number>(project.settings.distribution?.place_seconds || project.settings.time_limit)
   const [runs, setRuns] = useState<TimetableRun[]>([])
   const [active, setActive] = useState<TimetableRun | null>(null)
   const [selected, setSelected] = useState<TimetableRun | null>(null)
@@ -61,6 +61,10 @@ export function SolveTab({ ctx, onShowGrid }: Props) {
       return []
     }
   }, [project.id, message])
+
+  useEffect(() => {
+    setTimeLimit(project.settings.distribution?.place_seconds || project.settings.time_limit)
+  }, [project.id, project.settings.distribution?.place_seconds, project.settings.time_limit])
 
   useEffect(() => {
     if (ctx.meta.solver_available) return undefined
@@ -94,7 +98,13 @@ export function SolveTab({ ctx, onShowGrid }: Props) {
         await loadRuns()
         await ctx.reloadProject()
         if (r.status === 'tamamlandi') {
-          message.success(r.solver_status === 'AI' ? 'Program yapay zekâ ile oluşturuldu' : 'Program oluşturuldu')
+          message.success(
+            r.solver_status === 'AI'
+              ? 'Program yapay zekâ ile oluşturuldu'
+              : r.result?.strategy_label
+                ? `Program oluşturuldu (${r.result.strategy_label})`
+                : 'Program oluşturuldu',
+          )
         } else if (r.status === 'basarisiz') {
           message.error('Program oluşturulamadı; ayrıntılar aşağıda')
         }
@@ -208,9 +218,10 @@ export function SolveTab({ ctx, onShowGrid }: Props) {
               <>
                 <Space direction="vertical" style={{ width: '100%' }}>
                   <Typography.Text>
-                    {active.progress?.phase === 'ai'
-                      ? active.progress.message || 'Çözücü uygun program bulamadı. Yapay zekâ yerleştiriyor.'
-                      : 'Çözücü çalışıyor. Bu sayfadan ayrılabilirsiniz; işlem sunucuda devam eder.'}
+                    {active.progress?.message ||
+                      (active.progress?.phase === 'ai'
+                        ? 'Çözücü uygun program bulamadı. Yapay zekâ yerleştiriyor.'
+                        : 'Çözücü çalışıyor. Bu sayfadan ayrılabilirsiniz; işlem sunucuda devam eder.')}
                   </Typography.Text>
                   <Progress percent={active.progress?.phase === 'ai' ? 100 : pct} status="active" showInfo={active.progress?.phase !== 'ai'} />
                   {active.progress?.phase !== 'ai' && (
@@ -235,7 +246,10 @@ export function SolveTab({ ctx, onShowGrid }: Props) {
               </>
             ) : (
               <div>
-                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>Ne kadar uğraşsın?</div>
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 4 }}>
+                  Bu çalıştırmanın dağıtım süresi. Hangi algoritmaların kıyaslanacağı ve pencere süresi ayarlardan gelir.
+                  En düşük cezalı program yazılır.
+                </div>
                 <EffortPicker value={timeLimit} onChange={setTimeLimit} />
                 {ctx.canCreate && (
                   <Button
@@ -249,12 +263,6 @@ export function SolveTab({ ctx, onShowGrid }: Props) {
                   >
                     Programı Oluştur
                   </Button>
-                )}
-                {ctx.meta.ai_enabled && (
-                  <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 12, marginBottom: 0 }}>
-                    Çözücü uygun bir program bulamazsa yerleştirmeyi yapay zekâ dener. Bu deneme günlük yapay zekâ
-                    hakkından düşer.
-                  </Typography.Paragraph>
                 )}
               </div>
             )}
@@ -297,9 +305,39 @@ export function SolveTab({ ctx, onShowGrid }: Props) {
                       selected.solver_status === 'AI'
                         ? `${selected.result?.lesson_count ?? 0} ders saati yapay zekâ ile yerleştirildi. Çözücü bu kurallarla uygun program bulamamıştı; taslağı kontrol edin.`
                         : `${selected.result?.lesson_count ?? 0} ders saati yerleştirildi${
-                            selected.solver_status === 'OPTIMAL' ? ' (en iyi çözüm kanıtlandı)' : ''
-                          }`
+                            selected.result?.strategy_label ? ` (${selected.result.strategy_label})` : ''
+                          }${selected.solver_status === 'OPTIMAL' ? ' (en iyi çözüm kanıtlandı)' : ''}`
                     }
+                  />
+                )}
+                {(selected.result?.comparisons?.length ?? 0) > 0 && (
+                  <Table<AlgorithmComparison>
+                    size="small"
+                    pagination={false}
+                    rowKey="algorithm"
+                    dataSource={selected.result?.comparisons}
+                    title={() => 'Algoritma kıyası (düşük ceza daha iyi)'}
+                    columns={[
+                      { title: 'Algoritma', dataIndex: 'label' },
+                      {
+                        title: 'Sonuç',
+                        key: 'ok',
+                        render: (_, row) =>
+                          row.ok ? <Tag color={row.winner ? 'green' : 'default'}>{row.winner ? 'En iyi' : 'Program var'}</Tag> : <Tag>Çıkmadı</Tag>,
+                      },
+                      { title: 'Ceza', dataIndex: 'penalty', render: (v) => (v == null ? '—' : v) },
+                      { title: 'Pencere', dataIndex: 'gaps', render: (v) => (v == null ? '—' : v) },
+                      { title: 'Süre', dataIndex: 'seconds', render: (v: number) => `${v} sn` },
+                      {
+                        title: 'Fark',
+                        dataIndex: 'delta',
+                        render: (v: number | null, row) => {
+                          if (!row.ok || v == null) return row.note || '—'
+                          if (row.winner || v === 0) return '0'
+                          return `+${v} puan`
+                        },
+                      },
+                    ]}
                   />
                 )}
                 {(selected.diagnostics || []).map((d, i) => (

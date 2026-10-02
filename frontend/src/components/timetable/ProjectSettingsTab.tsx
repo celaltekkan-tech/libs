@@ -5,7 +5,7 @@ import dayjs from 'dayjs'
 import { updateTimetableProject } from '../../api/timetable'
 import { getErrorMessage } from '../../api/client'
 import { DAY_OPTIONS } from '../../types/scheduleEntry'
-import { DEFAULT_BELL, WEIGHT_LABELS, type BellSchedule, type TimetableWeights } from '../../types/timetable'
+import { DEFAULT_BELL, WEIGHT_LABELS, type BellSchedule, type SameClassSubjectsMode, type TimetableWeights } from '../../types/timetable'
 import { EffortPicker } from './EffortPicker'
 import type { TimetableCtx } from './shared'
 
@@ -21,6 +21,18 @@ interface FormValues {
   block_across_lunch: boolean
   weights: TimetableWeights
   bell: BellSchedule
+  gap_seconds: number
+  split_double: boolean
+  merge_singles: boolean
+  merge_two_one: boolean
+  eliminate_gaps: boolean
+  free_day: boolean
+  same_class_subjects: SameClassSubjectsMode
+  prioritize_difficulty: boolean
+  max_daily_hours: number
+  max_windows: number
+  workers: number
+  algorithms: Array<'cpsat' | 'greedy' | 'local'>
 }
 
 function breakList(periods: number, saved: number[] | undefined, fallback: number): number[] {
@@ -39,6 +51,7 @@ const WEIGHT_HELP: Record<keyof TimetableWeights, string> = {
   soft_constraint: 'Ağırlığı belirtilmeyen esnek kısıtların ihlal cezası',
   availability_avoid: 'Zaman tablosunda sarı ("istenmiyor") işaretli saate ders konması',
   block_flex: 'Blok düzeni tutmuyorsa programın ne kadar esneyeceği',
+  teacher_day_off: 'Boş gün istenirken öğretmenin her gün okula gelmesi. "Öğretmenlere boş gün vermeye çalış" kapalıysa bu puan kullanılmaz.',
 }
 
 export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
@@ -56,11 +69,27 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
       days: project.days,
       periods_per_day: project.periods_per_day,
       lunch_after: project.lunch_after,
-      time_limit: project.settings.time_limit,
+      time_limit: project.settings.distribution?.place_seconds || project.settings.time_limit,
       max_culture_daily: project.settings.max_culture_daily ?? project.settings.max_subject_daily ?? 2,
       max_vocational_daily: project.settings.max_vocational_daily ?? 8,
       block_across_lunch: Boolean(project.settings.block_across_lunch),
       weights: project.settings.weights,
+      gap_seconds: project.settings.distribution?.gap_seconds ?? 90,
+      split_double: project.settings.distribution?.split_double ?? true,
+      merge_singles: project.settings.distribution?.merge_singles ?? true,
+      merge_two_one: project.settings.distribution?.merge_two_one ?? true,
+      eliminate_gaps: project.settings.distribution?.eliminate_gaps ?? true,
+      free_day: Boolean(project.settings.distribution?.free_day),
+      same_class_subjects: project.settings.distribution?.same_class_subjects ?? 'off',
+      prioritize_difficulty: Boolean(project.settings.distribution?.prioritize_difficulty),
+      max_daily_hours: project.settings.distribution?.max_daily_hours ?? 0,
+      max_windows: project.settings.distribution?.max_windows ?? 25,
+      workers: project.settings.distribution?.workers ?? 4,
+      algorithms: project.settings.distribution?.algorithms?.length
+        ? project.settings.distribution.algorithms
+        : project.settings.distribution?.methods === 'single'
+          ? ['cpsat']
+          : ['cpsat', 'greedy', 'local'],
       bell: {
         ...DEFAULT_BELL,
         ...(project.settings.bell || {}),
@@ -98,6 +127,22 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
           max_vocational_daily: values.max_vocational_daily,
           block_across_lunch: values.block_across_lunch,
           weights: values.weights,
+          distribution: {
+            place_seconds: values.time_limit,
+            gap_seconds: values.gap_seconds,
+            split_double: values.split_double,
+            merge_singles: values.merge_singles,
+            merge_two_one: values.merge_two_one,
+            eliminate_gaps: values.eliminate_gaps,
+            free_day: values.free_day,
+            same_class_subjects: values.same_class_subjects,
+            prioritize_difficulty: values.prioritize_difficulty,
+            max_daily_hours: values.max_daily_hours,
+            max_windows: values.max_windows,
+            workers: values.workers,
+            algorithms: values.algorithms?.length ? values.algorithms : ['cpsat'],
+            methods: values.algorithms?.length === 1 && values.algorithms[0] === 'cpsat' ? 'single' : 'all',
+          },
           bell: {
             ...values.bell,
             break_minutes: values.bell?.breaks?.[0] ?? values.bell?.break_minutes ?? DEFAULT_BELL.break_minutes,
@@ -227,11 +272,33 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
           </Card>
           <Card title="Programı ne kadar uğraştırsın?" size="small" style={{ marginBottom: 16 }}>
             <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-              Saniye yazmanıza gerek yok. Kısa çabuk biter, uzun daha düzgün program arar.
+              Önce geçerli bir program aranır, sonra pencereler ve boşluklar azaltılır. Kısa çabuk biter, uzun daha düzgün program arar.
             </Typography.Paragraph>
-            <Form.Item name="time_limit">
+            <Form.Item name="time_limit" label="Dağıtım süresi">
               <EffortPicker />
             </Form.Item>
+            <Form.Item name="gap_seconds" label="Karnıyarık yok etme süresi" extra="Pencere, boş gün ve şube sıkışıklığı bu sürede iyileştirilir.">
+              <EffortPicker />
+            </Form.Item>
+            <Space size="large" wrap>
+              <Form.Item
+                name="algorithms"
+                label="Algoritmalar"
+                extra="Hepsi çalışır, aynı cezayla kıyaslanır ve en düşük cezalı program yazılır. Kısıt çözücü işçileri kendi içinde birkaç aramayı zaten birlikte dener."
+                rules={[{ required: true, message: 'En az bir algoritma seçin' }]}
+              >
+                <Checkbox.Group
+                  options={[
+                    { value: 'cpsat', label: 'Kısıt çözücü' },
+                    { value: 'greedy', label: 'Sıkışık ders önce' },
+                    { value: 'local', label: 'Yerel iyileştirme' },
+                  ]}
+                />
+              </Form.Item>
+              <Form.Item name="workers" label="Kaç işlemci kullanılsın">
+                <InputNumber min={1} max={8} />
+              </Form.Item>
+            </Space>
             <Space size="large" wrap>
               <Form.Item
                 name="max_culture_daily"
@@ -258,7 +325,7 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
               zaman korunur.
             </Typography.Paragraph>
             {(Object.keys(WEIGHT_LABELS) as Array<keyof TimetableWeights>)
-              .filter((k) => k !== 'block_flex')
+              .filter((k) => k !== 'block_flex' && k !== 'teacher_day_off')
               .map((k) => (
               <Form.Item
                 key={k}
@@ -278,6 +345,52 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
           </Card>
         </Col>
       </Row>
+      <Card title="Blok ve öğretmen kuralları" size="small" style={{ marginBottom: 16 }}>
+        <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+          Bu ayarlar çözücüye gider. Atamada bölme veya birleştirme kapatılmışsa o ders bu kutuların dışında kalır. Meslek ve atölye blokları kendiliğinden bölünmez.
+          Öğretmene özel değerler Öğretmene ders atama sekmesinden girilir. 0, sınır yok demektir.
+        </Typography.Paragraph>
+        <Typography.Text strong>Blok dağıtılamazsa</Typography.Text>
+        <Form.Item name="split_double" valuePropName="checked" style={{ marginBottom: 4 }}>
+          <Checkbox>2 saatlik ders blokları 1+1 şeklinde bölünebilsin</Checkbox>
+        </Form.Item>
+        <Form.Item name="merge_singles" valuePropName="checked" style={{ marginBottom: 4 }}>
+          <Checkbox>1+1 şeklindeki ders blokları birleştirilebilsin</Checkbox>
+        </Form.Item>
+        <Form.Item name="merge_two_one" valuePropName="checked" style={{ marginBottom: 12 }}>
+          <Checkbox>2+1 şeklindeki ders blokları 3 saatlik tek blok olabilsin</Checkbox>
+        </Form.Item>
+        <Form.Item name="eliminate_gaps" valuePropName="checked" style={{ marginBottom: 4 }}>
+          <Checkbox>Karnıyarık sayısını yok etmeye çalış</Checkbox>
+        </Form.Item>
+        <Form.Item name="free_day" valuePropName="checked" style={{ marginBottom: 4 }}>
+          <Checkbox>Öğretmenlere boş gün vermeye çalış</Checkbox>
+        </Form.Item>
+        <Form.Item name="prioritize_difficulty" valuePropName="checked" style={{ marginBottom: 8 }}>
+          <Checkbox>Ders havuzundaki zor derslere öncelik verilsin</Checkbox>
+        </Form.Item>
+        <Form.Item
+          name="same_class_subjects"
+          label="Öğretmenin aynı sınıfa verdiği farklı dersler"
+          extra="Sığmazsa ders boş bırakılmaz. Kesin seçenekte program çıkmazsa çelişen kural yazılır."
+        >
+          <Select
+            options={[
+              { value: 'off', label: 'Aynı güne gelebilir' },
+              { value: 'soft', label: 'Aynı güne gelmesin; sığmazsa aynı güne koy' },
+              { value: 'hard', label: 'Aynı güne gelmesin; sığmazsa çözücü durur' },
+            ]}
+          />
+        </Form.Item>
+        <Space size="large" wrap>
+          <Form.Item name="max_daily_hours" label="Öğretmene 1 günde en fazla kaç saat" extra="0 = sınır yok">
+            <InputNumber min={0} max={12} addonAfter="saat" />
+          </Form.Item>
+          <Form.Item name="max_windows" label="Haftalık programda en fazla pencere" extra="0 = sınır yok">
+            <InputNumber min={0} max={40} addonAfter="pencere" />
+          </Form.Item>
+        </Space>
+      </Card>
       {ctx.canUpdate && (
         <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving}>
           Kaydet

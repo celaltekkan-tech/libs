@@ -996,6 +996,10 @@ module.exports = {
           lesson_count: json.result.lessons?.length || 0,
           score: json.result.score,
           violations: json.result.violations,
+          strategy: json.result.strategy || null,
+          strategy_label: json.result.strategy_label || null,
+          comparisons: json.result.comparisons || [],
+          comparison_note: json.result.comparison_note || null,
         };
       }
       res.json({ success: true, data: json });
