@@ -318,6 +318,10 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
         title: 'Kesin ve esnek kurallar',
         body: 'Kesin kurallar asla ihlal edilmez; çelişirlerse çözücü hangilerinin çeliştiğini söyler. Esnek kurallara önem puanına göre mümkün olduğunca uyulur.',
       },
+      {
+        title: 'Yapay zekâ asistanına soru sormak',
+        body: 'İstekler sekmesindeki asistan yalnızca kural yazmak için değildir. "Nöbet programını nasıl oluştururum", "sorumluluk sınavını nasıl tarihlendiririm" gibi kullanım sorularında menü yolunu ve adımları yazar; "sınav öğretmeni nereden geliyor" gibi işleyiş sorularını da cevaplar. Kayıt açmaz, silmez ve maaş, not, devamsızlık gibi kayıtların içeriğini okumaz. Yapay Zekâ eklenti lisansı ve günlük istek kotası gerekir.',
+      },
     ],
   },
   '/exams': {

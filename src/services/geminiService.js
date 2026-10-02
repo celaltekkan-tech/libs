@@ -2,7 +2,8 @@
 
 // Kullanıcının serbest metnini iki işe ayırır:
 // - ders programı kuralıysa yapılandırılmış kısıt önerir (kullanıcı onaylar, OR-Tools çözer);
-// - OIDS modülleriyle ilgili soruysa kısa cevap yazar.
+// - OIDS modülleriyle ilgili soruysa ("sınav öğretmeni nereden gelir", "nöbet
+//   programını nasıl oluştururum") oidsProductGuide'daki ürün rehberine dayanarak cevap yazar.
 // Programı Gemini üretmez. Gemini'ye TC/telefon gibi kişisel veri gönderilmez;
 // yalnızca id + ad soyad + branş gider.
 //
@@ -11,6 +12,7 @@
 // istekler (in_scope=false) sunucuda tamamen atılır.
 
 const { TYPES, normalizeParams, describe } = require('./timetableConstraintCatalog');
+const { PRODUCT_GUIDE } = require('./oidsProductGuide');
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
@@ -35,6 +37,26 @@ class GeminiError extends Error {
 
 const idProp = { type: 'INTEGER', nullable: true };
 const intList = { type: 'ARRAY', items: { type: 'INTEGER' } };
+const nullableIntList = { type: 'ARRAY', items: { type: 'INTEGER' }, nullable: true };
+
+// Türe göre hangi params alanının dolacağı değişir; hepsi isteğe bağlı olduğunda model
+// slots ve periods gibi alanları atlıyor. Hepsini "zorunlu ama null olabilir" yapmak
+// modeli her alanı tek tek düşünmeye zorlar, kullanılmayanlara null yazar.
+const PARAM_KEYS = [
+  'slots',
+  'periods',
+  'max',
+  'count',
+  'mode',
+  'scope',
+  'days',
+  'teacher_id',
+  'classroom_id',
+  'room_id',
+  'subject_id',
+  'subject_ids',
+  'teacher_ids',
+];
 
 const RESPONSE_SCHEMA = {
   type: 'OBJECT',
@@ -53,29 +75,35 @@ const RESPONSE_SCHEMA = {
           params: {
             type: 'OBJECT',
             properties: {
-              teacher_id: idProp,
-              classroom_id: idProp,
-              room_id: idProp,
-              subject_id: idProp,
-              subject_ids: intList,
               slots: {
                 type: 'ARRAY',
+                nullable: true,
                 items: {
                   type: 'OBJECT',
                   properties: { day: { type: 'INTEGER' }, periods: intList },
                   required: ['day'],
+                  propertyOrdering: ['day', 'periods'],
                 },
               },
+              periods: nullableIntList,
               max: { type: 'INTEGER', nullable: true },
               count: { type: 'INTEGER', nullable: true },
               mode: { type: 'STRING', enum: ['only', 'avoid'], nullable: true },
-              periods: intList,
-              days: intList,
-              teacher_ids: intList,
+              scope: { type: 'STRING', enum: ['class', 'school'], nullable: true },
+              days: nullableIntList,
+              teacher_id: idProp,
+              classroom_id: idProp,
+              room_id: idProp,
+              subject_id: idProp,
+              subject_ids: nullableIntList,
+              teacher_ids: nullableIntList,
             },
+            required: PARAM_KEYS,
+            propertyOrdering: PARAM_KEYS,
           },
         },
         required: ['type', 'is_hard', 'params', 'explanation'],
+        propertyOrdering: ['type', 'is_hard', 'weight', 'params', 'explanation'],
       },
     },
     unresolved: { type: 'ARRAY', items: { type: 'STRING' } },
@@ -85,13 +113,27 @@ const RESPONSE_SCHEMA = {
 };
 
 const MAX_TEXT = 200;
-const MAX_ANSWER = 1200;
+const MAX_ANSWER = 2200;
 const MAX_UNRESOLVED = 10;
 const MAX_PROPOSALS = 30;
 
 function clip(value, max = MAX_TEXT) {
   const s = typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+}
+
+// Adım listesi okunabilir kalsın diye satır sonları korunur.
+function clipAnswer(value) {
+  const s =
+    typeof value === 'string'
+      ? value
+          .replace(/\r\n?/g, '\n')
+          .replace(/[ \t]+/g, ' ')
+          .replace(/ *\n */g, '\n')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim()
+      : '';
+  return s.length > MAX_ANSWER ? `${s.slice(0, MAX_ANSWER - 1)}…` : s;
 }
 
 const OUT_OF_SCOPE_MESSAGE =
@@ -107,25 +149,25 @@ function systemPrompt(ctx) {
 - İsteğin OIDS ile hiç ilgisi yoksa: in_scope=false, answer=null, constraints=[], unresolved=[].
 - Bir kısmı OIDS ile ilgiliyse in_scope=true. İlgisiz kısmı answer içine yazma; gerekirse unresolved listesine
   tek kısa cümleyle bu kısmın OIDS ile ilgili olmadığını yaz.
-- Ders programına konacak kural varsa constraints doldur. Soru veya "nasıl çalışır / nereden gelir / hangi menü"
-  varsa answer yaz. İkisi birden varsa ikisini de doldur. Başka modülde kayıt açma, silme veya güncelleme yok; yolu anlat.
-- answer birkaç kısa cümle, düz Türkçe olsun. Listedeki adlar dışında kayıt, sayı, maaş, not, devamsızlık veya izin günü uydurma.
-  Böyle veri sorulursa ilgili menüyü söyle ve bu ekranın o kaydı okumadığını belirt.
+- Ders programına konacak kural varsa constraints doldur. Soru veya "nasıl yaparım / nasıl çalışır / nereden gelir /
+  hangi menü" varsa answer yaz. İkisi birden varsa ikisini de doldur. Başka modülde kayıt açma, silme veya güncelleme
+  yok; yolu anlat.
+- "Nereden yaparım / nasıl eklerim / nasıl oluştururum" sorusunda cevaba önce menü yolunu yaz
+  (ör. "Sol menü > Personel İşleri > Nöbet Programı"), sonra adımları her satıra bir tane olmak üzere "1. ", "2. " diye
+  sırala. Satırları yeni satırla ayır, en çok 8 adım yaz.
+- "Nasıl hesaplanır / nasıl çalışır / nereden geliyor" sorusunda adım listesi yerine işleyişi anlat; menü adını yine söyle.
+- Cevabı aşağıdaki ÜRÜN REHBERİ'nden al; rehberde olmayan düğme, sekme, alan veya menü adı uydurma. Rehberde cevap
+  yoksa bunu söyle ve Sistem > Teknik Destek'ten sorulmasını öner.
+- Kullanıcı ekranda bir düğmeyi veya menüyü göremiyorsa sebebi genelde yetki grubu (Sistem > Yetkilendirme),
+  lisans planının o modülü kapatması veya üst çubukta yanlış okulun seçili olmasıdır; uygun olanı hatırlat.
+- answer düz Türkçe olsun; adım gerekmeyen soruda birkaç kısa cümle yeter. Listedeki adlar dışında kayıt, sayı, maaş,
+  not, devamsızlık veya izin günü uydurma. Böyle veri sorulursa ilgili menüyü söyle ve bu ekranın o kaydı okumadığını belirt.
 - explanation ve unresolved en fazla bir kısa cümle olsun.
 
 Sen OIDS asistanısın. Ders programını SEN yapmıyorsun; kuralı kısıta çevirirsin, çözücü uygular, kullanıcı onaylamadan kaydolmaz.
 
-OIDS modülleri ve ders programıyla bağları:
-- Okullar, sınıflar, öğrenciler, öğretmenler, diğer personeller, dersler, eğitim öğretim yılları: temel kayıtlar.
-- Terfi takibi ve öğretmen evrak arşivi: personel özlük.
-- Rapor takibi: personelin izin ve rapor günleri. "X şu gün gelemiyor veya raporlu" ders programı kısıtıdır (teacher_unavailable). Rapor kaydı Rapor Takibi menüsünde açılır.
-- Nöbet programı: haftalık nöbet listesi. "Nöbet tutmasın" ve "nöbet gününde en fazla N saat ders" ders programı kısıtıdır.
-- Ek ders puantajı: yayındaki haftalık ders slotlarının ay içinde kaç kez tekrarladığına göre tahmini ders yükü önerir; rapor ve izin günleri bu öneriyi düşürür. Kesin MEBBİS hesabı değildir. İşçi/TYP puantajı öğretmen ek dersinden ayrıdır.
-- Otomatik ders programı: bu ekran. Taslak çözücüyle üretilir, yayınlanınca o yılın resmi ders programına yazılır. Nöbet, sınav ve ek ders yayındaki programa bakar; taslak tek başına onları güncellemez.
-- Sınav programı: ortak ve sorumluluk sınavı. Şubedeki dersin öğretmeni yayındaki ders programından bulunur.
-- Kelebek: sınav oturma düzeni ve gözetmen.
-- DYK ve devamsızlık, veli iletişim, disiplin, rehberlik, işletmede beceri eğitimi: öğrenci işleri. Bu ekrandan kayıt açılmaz.
-- Yetkilendirme, denetim kayıtları, iş takibi, kurum takvimi, SMS/e-posta kayıtları, teknik destek, geri bildirim: sistem menüleri.
+ÜRÜN REHBERİ (modül soruları ve "nasıl yaparım" cevapları yalnızca buradan yazılır):
+${PRODUCT_GUIDE}
 
 Günler: ${dayList}. Günde ${ctx.periods} ders saati var (1..${ctx.periods}).${
     ctx.lunchAfter ? ` Öğle arası ${ctx.lunchAfter}. saatten sonra.` : ''
@@ -148,6 +190,25 @@ Kısıt türleri ve params alanları:
 - subjects_not_same_day: subject_ids (şube içinde en az 2; ortak atölye için scope "school" ve en az 1 ders), classroom_id (null=tüm şubeler), scope ("class" veya "school"). "Fizik ile kimya aynı güne gelmesin" scope=class. Ortak atölye yüzünden dersler farklı şubelerde de aynı güne gelmesin denirse scope=school.
 - subjects_same_day: subject_ids (en az 2), classroom_id (null=tümü). Dersler her hafta aynı günlerde olsun.
 - subject_no_lunch_split: subject_ids, classroom_id (null=tümü). Peş peşe blok öğle arasıyla ikiye bölünmesin.
+
+params doldurma kuralları (en sık yapılan hata burada):
+- Kısıt türünün yukarıda yazan alanlarını eksiksiz doldur. Türle ilgisi olmayan alanlara null yaz.
+- teacher_unavailable, classroom_unavailable ve room_unavailable'da slots zorunludur; gün numarası olmadan kısıt kurulmaz.
+  Tüm gün kastediliyorsa periods'u boş bırak, saat verildiyse yaz.
+- subject_period_preference'ta periods zorunludur, subject_max_daily / teacher_max_daily_hours / teacher_max_consecutive /
+  teacher_duty_day_max_hours'ta max, teacher_min_days_off'ta count zorunludur.
+- Zorunlu alanı metinden çıkaramıyorsan o kısıtı üretme, unresolved'a yaz.
+
+Biçim örnekleri (yalnızca dolan alanlar yazıldı, kalanlara null yaz; yer tutucuları kopyalama, id'leri aşağıdaki listelerden al):
+- "Ayşe Hoca cuma gelemiyor" -> type=teacher_unavailable, is_hard=true, params={"teacher_id": <Ayşe'nin id'si>, "slots": [{"day": 5}]}
+- "Ali Hoca salı son iki saat gelmesin" -> type=teacher_unavailable, is_hard=true, params={"teacher_id": <Ali'nin id'si>, "slots": [{"day": 2, "periods": [${Math.max(
+    1,
+    ctx.periods - 1
+  )}, ${ctx.periods}]}]}
+- "Matematik mümkünse sabah olsun" -> type=subject_period_preference, is_hard=false, weight=30, params={"subject_id": <matematik id'si>, "mode": "only", "periods": [1..${
+    ctx.lunchAfter || Math.ceil(ctx.periods / 2)
+  } arası saatler]}
+- "Nöbet gününde en fazla 4 saat ders olsun" -> type=teacher_duty_day_max_hours, is_hard=true, params={"max": 4}
 
 is_hard: Kullanıcı "kesinlikle, asla, olmasın, gelemez, izinli, raporlu" gibi kesin ifade kullanırsa true.
 "Tercihen, mümkünse, olursa iyi olur, istiyor, rica etti" gibi yumuşak ifadelerde false ve weight 10-50 arası (önem arttıkça yüksek).
@@ -177,6 +238,27 @@ function wrapUserText(text) {
   return `<istek>\n${String(text).replace(/<\/?istek>/gi, '')}\n</istek>`;
 }
 
+// Gemini 3.x'te temperature/top_p/top_k gönderilmemeli: düşük sıcaklık yapılandırılmış
+// çıktıda alan atlamaya ve token döngüsüne yol açıyor (ai.google.dev/gemini-api/docs/whats-new-gemini-3.5).
+// Sıcaklık yalnızca eski modellerde uygulanır; düşünme bütçesi thinkingLevel ile verilir.
+function isGemini3(model) {
+  return /^gemini-3/i.test(model);
+}
+
+function generationConfig(model, options) {
+  const cfg = {
+    maxOutputTokens: options.maxOutputTokens || 4096,
+    responseMimeType: 'application/json',
+    responseSchema: options.schema || RESPONSE_SCHEMA,
+  };
+  if (isGemini3(model)) {
+    if (options.thinkingLevel) cfg.thinkingConfig = { thinkingLevel: options.thinkingLevel };
+  } else {
+    cfg.temperature = options.temperature ?? 0.1;
+  }
+  return cfg;
+}
+
 async function callGemini(system, userText, options = {}) {
   const { apiKey, model, timeoutMs } = config();
   if (!apiKey) throw new GeminiError('Gemini API anahtarı tanımlı değil (GEMINI_API_KEY)', 503);
@@ -191,12 +273,7 @@ async function callGemini(system, userText, options = {}) {
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: 'user', parts: [{ text: wrapUserText(userText) }] }],
-        generationConfig: {
-          temperature: options.temperature ?? 0.1,
-          maxOutputTokens: options.maxOutputTokens || 4096,
-          responseMimeType: 'application/json',
-          responseSchema: options.schema || RESPONSE_SCHEMA,
-        },
+        generationConfig: generationConfig(model, options),
       }),
       signal: controller.signal,
     });
@@ -220,6 +297,10 @@ async function callGemini(system, userText, options = {}) {
   try {
     return JSON.parse(text);
   } catch {
+    // Çıktı sınırına takılan yanıt yarım JSON gelir; sebebi kullanıcıya söyle.
+    if (body?.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
+      throw new GeminiError('Gemini yanıtı çok uzun olduğu için yarım kaldı. İsteği bölüp tekrar deneyin.');
+    }
     throw new GeminiError('Gemini geçersiz yanıt döndürdü');
   }
 }
@@ -230,11 +311,12 @@ async function callGemini(system, userText, options = {}) {
  * Dönüş: { proposals, unresolved, answer, rejected }
  */
 async function parseConstraints(ctx, userText) {
-  const raw = await callGemini(systemPrompt(ctx), userText);
+  // Adım adım cevap + kısıt listesi birlikte istendiğinde 4096 token yetmiyor.
+  const raw = await callGemini(systemPrompt(ctx), userText, { maxOutputTokens: 8192 });
   if (raw?.in_scope !== true) {
     return { proposals: [], unresolved: [], answer: '', rejected: true, message: OUT_OF_SCOPE_MESSAGE };
   }
-  const answer = clip(raw?.answer, MAX_ANSWER);
+  const answer = clipAnswer(raw?.answer);
   const ids = {
     teacher_id: new Set(ctx.teachers.map((t) => t.id)),
     classroom_id: new Set(ctx.classrooms.map((c) => c.id)),
