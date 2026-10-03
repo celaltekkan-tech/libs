@@ -797,10 +797,10 @@ async function ensureNotes(tenantId, school, admin, transaction, added) {
     transaction,
   });
   const notes = [
-    { tags: ['akademik'], note: 'Matematik dersinde katılımı arttı.' },
-    { tags: ['devam'], note: 'Bu hafta iki kez geç geldi.' },
-    { tags: ['sosyal'], note: 'Grup çalışmalarında sorumluluk alıyor.' },
-    { tags: ['veli'], note: 'Veli görüşmesi planlandı.' },
+    { tags: ['Geç kalma'], note: 'Birinci derse on dakika geç kaldı.' },
+    { tags: ['Kılık kıyafet uyumsuzluğu'], note: 'Okul kıyafetine uymayan tişörtle derse geldi.' },
+    { tags: ['Cep telefonu kullanımı'], note: 'Ders sırasında cep telefonuyla ilgilendi, uyarıya rağmen bırakmadı.' },
+    { tags: ['Saygısız konuşma'], note: 'Öğretmene yüksek sesle karşılık verdi.' },
   ];
   const rows = students.slice(0, 4 - count).map((student, index) => ({
     tenant_id: tenantId,
