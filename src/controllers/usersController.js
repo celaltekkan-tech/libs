@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const bcrypt = require('bcrypt');
 const { User, Tenant, School, Role, UserSchool, Teacher } = require('../models');
 const licenseService = require('../services/licenseService');
+const teacherRegister = require('../services/teacherSelfRegisterService');
 const { getUserLimitForPlan, isUnlimitedAccountRole, UNLIMITED_ACCOUNT_ROLES } = require('../config/licensePlans');
 const audit = require('../services/auditService');
 
@@ -181,6 +182,74 @@ function assertRoleWithinQuota(quota, roleName, { alreadyCounted = false } = {})
 }
 
 module.exports = {
+  async listMobileRegisterRequests(req, res, next) {
+    try {
+      const status = typeof req.query.status === 'string' && req.query.status.trim()
+        ? req.query.status.trim()
+        : undefined;
+      const rows = await teacherRegister.listRequests(req.user.tenant_id, { status });
+      res.json({ success: true, data: rows });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async approveMobileRegisterRequest(req, res, next) {
+    try {
+      const payload = req.validatedBody || req.body;
+      const result = await teacherRegister.approveRequest(req.user.tenant_id, req.params.id, {
+        password: payload.password,
+        reviewerUserId: req.user.user_id,
+      });
+      await audit.log(req, {
+        action: 'create',
+        entityType: 'user',
+        entityId: result.user.id,
+        summary: `Mobil kayıt isteği onaylandı: ${result.user.full_name}`,
+      });
+      res.json({
+        success: true,
+        message: 'Kayıt onaylandı. Öğretmen T.C. ve belirlediğiniz şifre ile giriş yapabilir.',
+        data: result.request,
+      });
+    } catch (err) {
+      if (err.status) {
+        return res.status(err.status).json({
+          success: false,
+          code: err.code,
+          message: err.message,
+        });
+      }
+      next(err);
+    }
+  },
+
+  async rejectMobileRegisterRequest(req, res, next) {
+    try {
+      const payload = req.validatedBody || req.body;
+      const row = await teacherRegister.rejectRequest(req.user.tenant_id, req.params.id, {
+        reason: payload.reason,
+        reviewerUserId: req.user.user_id,
+      });
+      await audit.log(req, {
+        action: 'update',
+        entityType: 'mobile_register_request',
+        entityId: row.id,
+        summary: `Mobil kayıt isteği reddedildi: ${row.full_name}`,
+      });
+      res.json({ success: true, message: 'Kayıt isteği reddedildi', data: row });
+    } catch (err) {
+      if (err.status) {
+        return res.status(err.status).json({
+          success: false,
+          code: err.code,
+          message: err.message,
+        });
+      }
+      next(err);
+    }
+  },
+
   async formOptions(req, res, next) {
     try {
       const tenantId = req.user.tenant_id;
@@ -301,12 +370,15 @@ module.exports = {
       });
 
       let teacherId = null;
+      let teacherNationalId = null;
       if (payload.teacher_id) {
         const teacher = await Teacher.findByPk(payload.teacher_id);
         if (!teacher || teacher.tenant_id !== payload.tenant_id) {
           return res.status(400).json({ success: false, message: 'Seçilen personel bulunamadı' });
         }
         teacherId = teacher.id;
+        const digits = String(teacher.national_id || '').replace(/\D/g, '');
+        if (/^\d{11}$/.test(digits)) teacherNationalId = digits;
       }
 
       const password_hash = await bcrypt.hash(payload.password, 10);
@@ -336,6 +408,7 @@ module.exports = {
         is_active: payload.is_active !== false,
         phone,
         teacher_id: teacherId,
+        national_id: teacherNationalId,
       });
 
       await UserSchool.create({
@@ -444,6 +517,8 @@ module.exports = {
             return res.status(400).json({ success: false, message: 'Seçilen personel bulunamadı' });
           }
           updates.teacher_id = teacher.id;
+          const digits = String(teacher.national_id || '').replace(/\D/g, '');
+          if (/^\d{11}$/.test(digits) && !user.national_id) updates.national_id = digits;
         }
       }
 

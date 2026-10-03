@@ -24,6 +24,10 @@ module.exports = (sequelize, DataTypes) => {
           allowNull: false,
           unique: true,
         },
+        national_id: {
+          type: DataTypes.STRING(11),
+          allowNull: true,
+        },
         password_hash: {
           type: DataTypes.STRING,
           allowNull: false,

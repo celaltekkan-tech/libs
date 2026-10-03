@@ -426,6 +426,24 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       },
     ],
   },
+  '/mobile-register-requests': {
+    title: 'Mobil Kayıt İstekleri',
+    summary: 'Öğretmenlerin mobil uygulamadan gönderdiği kayıt isteklerini onaylar veya reddedersiniz.',
+    topics: [
+      {
+        title: 'Onay',
+        steps: [
+          'Bekleyen isteği açın.',
+          'Önerilen kolay şifreyi kullanın veya kendiniz yazın (en az 6 karakter, 1 harf 1 rakam).',
+          'Onaylayın. Öğretmen T.C. kimlik numarası ve bu şifreyle girer. Öğretmen kaydındaki telefon da güncellenir.',
+        ],
+      },
+      {
+        title: 'Red',
+        body: 'İsteği gerekçe yazarak reddedebilirsiniz. Öğretmen tekrar istek gönderebilir.',
+      },
+    ],
+  },
   '/users': {
     title: 'Kullanıcılar ve Yetkilendirme',
     summary: 'Sistem kullanıcılarını ve yetki gruplarını yönetirsiniz.',

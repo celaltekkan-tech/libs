@@ -40,7 +40,7 @@ async function readRememberedLogin(): Promise<{ email: string; password: string 
   }
 }
 
-// Kayıtlı kullanıcı e-posta + şifre ile girer. Yeni kayıt T.C. ve soyad eşleşmesiyle açılır.
+// Kayıtlı kullanıcı T.C. + okulun belirlediği şifre ile girer.
 export function LoginScreen({ navigation }: Props) {
   const { login } = useAuth();
   const { colors } = useTheme();
@@ -93,7 +93,7 @@ export function LoginScreen({ navigation }: Props) {
 
   const onSubmit = async () => {
     if (!email.trim() || !password) {
-      setError('E-posta ve şifre gerekli');
+      setError('T.C. kimlik numarası ve şifre gerekli');
       return;
     }
     if (!captchaId || !captchaCode.trim()) {
@@ -132,12 +132,13 @@ export function LoginScreen({ navigation }: Props) {
 
       <TextInput
         style={styles.input}
-        placeholder="E-posta"
+        placeholder="T.C. kimlik numarası"
         placeholderTextColor={colors.textMuted}
         autoCapitalize="none"
-        keyboardType="email-address"
+        keyboardType="number-pad"
+        maxLength={11}
         value={email}
-        onChangeText={setEmail}
+        onChangeText={(value) => setEmail(value.replace(/\D/g, '').slice(0, 11))}
       />
       <TextInput
         style={styles.input}
