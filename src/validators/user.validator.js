@@ -37,6 +37,7 @@ const approveMobileRegisterSchema = Joi.object({
     'string.empty': 'Şifre zorunludur',
     'string.min': 'Şifre en az 6 karakter olmalı',
   }),
+  confirm_mismatch: Joi.boolean(),
 });
 
 const rejectMobileRegisterSchema = Joi.object({

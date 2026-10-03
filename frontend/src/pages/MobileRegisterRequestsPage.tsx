@@ -10,7 +10,7 @@ import {
   listMobileRegisterRequests,
   rejectMobileRegisterRequest,
 } from '../api/mobileRegisterRequests'
-import { getErrorMessage } from '../api/client'
+import { ApiError, getErrorMessage } from '../api/client'
 import type { MobileRegisterRequest } from '../types/mobileRegisterRequest'
 import { tablePagination } from '../utils/tablePagination'
 
@@ -35,6 +35,9 @@ export function MobileRegisterRequestsPage() {
   const [loading, setLoading] = useState(true)
   const [approveOpen, setApproveOpen] = useState(false)
   const [rejectOpen, setRejectOpen] = useState(false)
+  const [warningOpen, setWarningOpen] = useState(false)
+  const [warningText, setWarningText] = useState('')
+  const [pendingPassword, setPendingPassword] = useState('')
   const [current, setCurrent] = useState<MobileRegisterRequest | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [approveForm] = Form.useForm<{ password: string }>()
@@ -69,19 +72,31 @@ export function MobileRegisterRequestsPage() {
     setRejectOpen(true)
   }
 
-  const onApprove = async (values: { password: string }) => {
+  const completeApprove = async (password: string, confirmMismatch: boolean) => {
     if (!current) return
     setSubmitting(true)
     try {
-      await approveMobileRegisterRequest(current.id, values.password)
+      await approveMobileRegisterRequest(current.id, password, confirmMismatch)
       message.success('Kayıt onaylandı. Öğretmene T.C. ve bu şifreyi söyleyin.')
       setApproveOpen(false)
+      setWarningOpen(false)
+      setPendingPassword('')
       void load()
     } catch (err) {
+      if (err instanceof ApiError && err.code === 'MISMATCH_CONFIRMATION_REQUIRED') {
+        setPendingPassword(password)
+        setWarningText(getErrorMessage(err))
+        setWarningOpen(true)
+        return
+      }
       message.error(getErrorMessage(err))
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const onApprove = async (values: { password: string }) => {
+    await completeApprove(values.password, false)
   }
 
   const onReject = async (values: { reason?: string }) => {
@@ -104,7 +119,14 @@ export function MobileRegisterRequestsPage() {
       { title: 'Ad soyad', dataIndex: 'full_name' },
       { title: 'T.C.', dataIndex: 'national_id', width: 130 },
       { title: 'Telefon', dataIndex: 'phone', width: 140 },
+      { title: 'E-posta', dataIndex: 'email', render: (value: string | null) => value || '—' },
       { title: 'Okul', dataIndex: 'school_name' },
+      {
+        title: 'Onaylayan',
+        dataIndex: 'reviewed_by_name',
+        render: (value: string | null, record: MobileRegisterRequest) =>
+          value ? `${value}${record.reviewed_by_email ? ` · ${record.reviewed_by_email}` : ''}` : '—',
+      },
       {
         title: 'Durum',
         dataIndex: 'status',
@@ -153,7 +175,8 @@ export function MobileRegisterRequestsPage() {
         </Typography.Title>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
           Uygulamadan gelen öğretmen kayıt isteklerini onaylayın. Onaylarken şifreyi siz belirlersiniz; öğretmen T.C.
-          kimlik numarası ve bu şifreyle girer. Onayda öğretmen kaydındaki telefon da güncellenir.
+          kimlik numarası ve bu şifreyle girer. Onayda öğretmen kaydındaki telefon ve e-posta güncellenir. T.C. veya
+          telefon sistemde boşsa ya da taleple uyuşmuyorsa önce öğretmenle teyit edin.
         </Typography.Paragraph>
 
         <Space style={{ marginBottom: 16 }}>
@@ -229,6 +252,25 @@ export function MobileRegisterRequestsPage() {
             <Input.TextArea rows={3} maxLength={400} />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        title="Uyarı"
+        open={warningOpen}
+        onCancel={() => {
+          setWarningOpen(false)
+          setSubmitting(false)
+        }}
+        onOk={() => void completeApprove(pendingPassword, true)}
+        confirmLoading={submitting}
+        okText="Tamam"
+        cancelText="Vazgeç"
+        closable={!submitting}
+      >
+        <Typography.Paragraph>{warningText}</Typography.Paragraph>
+        <Typography.Paragraph type="secondary">
+          Tamam derseniz kayıt sizin adınıza oluşturulur ve bu işlem yasal loga yazılır.
+        </Typography.Paragraph>
       </Modal>
     </AppLayout>
   )

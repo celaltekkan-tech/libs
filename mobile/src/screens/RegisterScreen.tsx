@@ -44,6 +44,7 @@ export function RegisterScreen({ navigation }: Props) {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [doneMessage, setDoneMessage] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
@@ -98,8 +99,8 @@ export function RegisterScreen({ navigation }: Props) {
 
   const onStart = async () => {
     if (!school) return;
-    if (!nationalId.trim() || !firstName.trim() || !lastName.trim() || !phone.trim()) {
-      setError('T.C. kimlik numarası, ad, soyad ve cep telefonu gerekli');
+    if (!nationalId.trim() || !firstName.trim() || !lastName.trim() || !phone.trim() || !email.trim()) {
+      setError('T.C. kimlik numarası, ad, soyad, cep telefonu ve e-posta gerekli');
       return;
     }
     if (!/^\d{11}$/.test(nationalId.trim())) {
@@ -115,6 +116,7 @@ export function RegisterScreen({ navigation }: Props) {
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         phone: phone.trim(),
+        email: email.trim(),
       });
       setDoneMessage(result.message);
       setStep('done');
@@ -135,7 +137,7 @@ export function RegisterScreen({ navigation }: Props) {
         <Text style={styles.subtitle}>
           {step === 'school' && 'Önce il, ilçe ve okulunuzu seçin. Yalnızca geçerli lisansı olan okullar listelenir.'}
           {step === 'identity' &&
-            'T.C., ad soyad ve telefonunuzu yazın. İstek okulunuza gider; onaylanınca T.C. ve okulun belirlediği şifreyle giriş yaparsınız.'}
+            'T.C., ad soyad, telefon ve e-postanızı yazın. İstek okulunuza gider; onaylanınca T.C. ve okulun belirlediği şifreyle giriş yaparsınız.'}
           {step === 'done' && 'İsteğiniz gönderildi.'}
         </Text>
 
@@ -221,6 +223,15 @@ export function RegisterScreen({ navigation }: Props) {
               keyboardType="phone-pad"
               value={phone}
               onChangeText={setPhone}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="E-posta"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              value={email}
+              onChangeText={setEmail}
             />
             {error && <Text style={styles.error}>{error}</Text>}
             <TouchableOpacity style={styles.button} onPress={() => void onStart()} disabled={submitting}>

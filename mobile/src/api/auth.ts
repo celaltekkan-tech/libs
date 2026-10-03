@@ -105,6 +105,7 @@ export async function startTeacherRegister(payload: {
   first_name: string;
   last_name: string;
   phone: string;
+  email: string;
 }): Promise<TeacherRegisterStartResult> {
   const { data } = await client.post<Envelope<TeacherRegisterStartResult>>('/api/auth/teacher-register', payload);
   return data.data;
