@@ -38,6 +38,7 @@ const approveMobileRegisterSchema = Joi.object({
     'string.min': 'Şifre en az 6 karakter olmalı',
   }),
   confirm_mismatch: Joi.boolean(),
+  teacher_id: Joi.number().integer().positive().allow(null),
 });
 
 const rejectMobileRegisterSchema = Joi.object({

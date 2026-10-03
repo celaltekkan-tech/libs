@@ -194,6 +194,15 @@ module.exports = {
     }
   },
 
+  async listMobileRegisterTeachers(req, res, next) {
+    try {
+      const rows = await teacherRegister.listLinkableTeachers(req.user.tenant_id);
+      res.json({ success: true, data: rows });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async approveMobileRegisterRequest(req, res, next) {
     try {
       const payload = req.validatedBody || req.body;
@@ -205,6 +214,7 @@ module.exports = {
       const result = await teacherRegister.approveRequest(req.user.tenant_id, req.params.id, {
         password: payload.password,
         confirmMismatch: payload.confirm_mismatch === true,
+        teacherId: Object.prototype.hasOwnProperty.call(payload, 'teacher_id') ? payload.teacher_id : undefined,
         reviewerUserId: req.user.user_id,
         reviewerName: reviewer?.full_name || req.access?.user?.full_name || null,
         reviewerEmail: reviewer?.email || req.user.email || null,

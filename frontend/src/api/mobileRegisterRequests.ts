@@ -1,5 +1,9 @@
 import client from './client'
-import type { MobileRegisterRequest, MobileRegisterRequestStatus } from '../types/mobileRegisterRequest'
+import type {
+  LinkableTeacher,
+  MobileRegisterRequest,
+  MobileRegisterRequestStatus,
+} from '../types/mobileRegisterRequest'
 
 interface Envelope<T> {
   success: true
@@ -17,14 +21,22 @@ export async function listMobileRegisterRequests(
   return data.data
 }
 
+export async function listLinkableTeachers(): Promise<LinkableTeacher[]> {
+  const { data } = await client.get<Envelope<LinkableTeacher[]>>(
+    '/api/users/mobile-register-requests/teachers',
+  )
+  return data.data
+}
+
 export async function approveMobileRegisterRequest(
   id: number,
   password: string,
   confirmMismatch = false,
+  teacherId: number | null = null,
 ): Promise<MobileRegisterRequest> {
   const { data } = await client.post<Envelope<MobileRegisterRequest>>(
     `/api/users/mobile-register-requests/${id}/approve`,
-    { password, confirm_mismatch: confirmMismatch },
+    { password, confirm_mismatch: confirmMismatch, teacher_id: teacherId },
   )
   return data.data
 }
