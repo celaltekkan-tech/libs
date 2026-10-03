@@ -39,10 +39,15 @@ const approveMobileRegisterSchema = Joi.object({
   }),
   confirm_mismatch: Joi.boolean(),
   teacher_id: Joi.number().integer().positive().allow(null),
+  role_id: Joi.number().integer().positive().allow(null),
 });
 
 const rejectMobileRegisterSchema = Joi.object({
   reason: Joi.string().trim().max(400).allow('', null),
+});
+
+const mobileRegisterVisibilitySchema = Joi.object({
+  hidden: Joi.boolean().required(),
 });
 
 module.exports = {
@@ -51,4 +56,5 @@ module.exports = {
   SCHOOL_ROLES,
   approveMobileRegisterSchema,
   rejectMobileRegisterSchema,
+  mobileRegisterVisibilitySchema,
 };

@@ -15,6 +15,8 @@ module.exports = (sequelize, DataTypes) => {
       reviewed_by_user_id: { type: DataTypes.INTEGER, allowNull: true },
       reviewed_at: { type: DataTypes.DATE, allowNull: true },
       reject_reason: { type: DataTypes.TEXT, allowNull: true },
+      hidden_at: { type: DataTypes.DATE, allowNull: true },
+      hidden_by_user_id: { type: DataTypes.INTEGER, allowNull: true },
     },
     {
       tableName: 'MobileRegisterRequests',
@@ -32,6 +34,10 @@ module.exports = (sequelize, DataTypes) => {
     MobileRegisterRequest.belongsTo(models.User, {
       foreignKey: 'reviewed_by_user_id',
       as: 'ReviewedBy',
+    });
+    MobileRegisterRequest.belongsTo(models.User, {
+      foreignKey: 'hidden_by_user_id',
+      as: 'HiddenBy',
     });
   };
 

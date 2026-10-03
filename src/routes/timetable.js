@@ -91,6 +91,7 @@ router.post('/projects/:projectId/lessons/import/preview', create, uploadFile, i
 router.post('/projects/:projectId/lessons/import', create, uploadFile, importCtrl.commit);
 router.get('/projects/:projectId/lessons', read, ctrl.listLessons);
 router.get('/projects/:projectId/eokul', read, ctrl.eokulPayload);
+router.post('/projects/:projectId/eokul-classes', create, validate(v.eokulClassesSchema), ctrl.importEokulClasses);
 router.get('/projects/:projectId/lessons/export', read, ctrl.exportLessons);
 router.post('/projects/:projectId/lessons/lock', update, validate(v.lockAllSchema), ctrl.lockAll);
 router.post('/projects/:projectId/lessons/clear', remove, validate(v.clearLessonsSchema), ctrl.clearLessons);

@@ -7,6 +7,7 @@ const {
   updateUserSchema,
   approveMobileRegisterSchema,
   rejectMobileRegisterSchema,
+  mobileRegisterVisibilitySchema,
 } = require('../validators/user.validator');
 const auth = require('../middlewares/auth');
 const requireModule = require('../middlewares/moduleGuard');
@@ -22,6 +23,13 @@ router.get(
   ctrl.listMobileRegisterRequests,
 );
 router.get(
+  '/mobile-register-requests/roles',
+  auth,
+  moduleGuard,
+  permission('mobile_register_requests.update'),
+  ctrl.listMobileRegisterRoles,
+);
+router.get(
   '/mobile-register-requests/teachers',
   auth,
   moduleGuard,
@@ -35,6 +43,14 @@ router.post(
   permission('mobile_register_requests.update'),
   validate(approveMobileRegisterSchema),
   ctrl.approveMobileRegisterRequest,
+);
+router.post(
+  '/mobile-register-requests/:id/visibility',
+  auth,
+  moduleGuard,
+  permission('mobile_register_requests.update'),
+  validate(mobileRegisterVisibilitySchema),
+  ctrl.setMobileRegisterVisibility,
 );
 router.post(
   '/mobile-register-requests/:id/reject',

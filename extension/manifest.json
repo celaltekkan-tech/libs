@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "OIDS e-Okul Ders Programı",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "OIDS ders programını e-Okul ders programı ekranına işler. MEBBİS oturumunu kullanır, şifre istemez.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2mvnCE2HuXbextHP1Iex4YZjUwf1hNaDcv13Ppo5lx8uoonFmp/uQEQGHk8XCdKv0Kinsu8Y3ac3w9rdLbNOeVVynFRg8frGwX3Kj8RYugMMEKwKHG2cTAZRrcDGAwKWCVraJ9wcFc+Afty6fBdllynruub3wAwkFjnvJ+WjayTJaKNUcPfOYK4AT1AoaBL/lrVI/S7IdnV461i5cj68HOOR+ZeWHLVi5wRykT9Yjwtu0X7JZErUyRL/P6FpDJUXx7b0LwrNL1fj30A5QetJgbUs8nmxmpwH4mxYEG8goINRkweHkZVLaBlX8IxhQeAZDL+TLp8Q92L4hPR2oha+ZwIDAQAB",
   "action": {

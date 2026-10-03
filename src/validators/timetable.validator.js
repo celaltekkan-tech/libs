@@ -222,6 +222,9 @@ const clearPublishedSchema = Joi.object({
   classroom_id: id,
   teacher_id: id,
 });
+const eokulClassesSchema = Joi.object({
+  labels: Joi.array().items(Joi.string().trim().max(300)).min(1).max(400).required(),
+});
 
 module.exports = {
   createProjectSchema,
@@ -250,4 +253,5 @@ module.exports = {
   lockAllSchema,
   clearLessonsSchema,
   clearPublishedSchema,
+  eokulClassesSchema,
 };

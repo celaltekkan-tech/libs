@@ -1,19 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { App, Button, Form, Input, Modal, Select, Space, Tag, Typography } from 'antd'
-import { CheckOutlined, CloseOutlined, ReloadOutlined } from '@ant-design/icons'
+import { CheckOutlined, CloseOutlined, EyeInvisibleOutlined, EyeOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
 import { SortableTable } from '../components/SortableTable'
 import { useAuth } from '../auth/AuthContext'
 import {
   approveMobileRegisterRequest,
+  listAssignableRoles,
   listLinkableTeachers,
   listMobileRegisterRequests,
   rejectMobileRegisterRequest,
+  setMobileRegisterVisibility,
 } from '../api/mobileRegisterRequests'
 import { ApiError, getErrorMessage } from '../api/client'
-import type { LinkableTeacher, MobileRegisterRequest } from '../types/mobileRegisterRequest'
+import type { AssignableRole, LinkableTeacher, MobileRegisterRequest } from '../types/mobileRegisterRequest'
 import { tablePagination } from '../utils/tablePagination'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 const EASY_WORDS = ['elma', 'okul', 'kedi', 'masa', 'sari', 'mavi', 'topu', 'evim']
 
@@ -47,6 +50,9 @@ export function MobileRegisterRequestsPage() {
   const { hasPermission } = useAuth()
   const [rows, setRows] = useState<MobileRegisterRequest[]>([])
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [visibility, setVisibility] = useState<'visible' | 'hidden'>('visible')
+  const searchQuery = useDebouncedValue(search)
   const [approveOpen, setApproveOpen] = useState(false)
   const [rejectOpen, setRejectOpen] = useState(false)
   const [warningOpen, setWarningOpen] = useState(false)
@@ -54,7 +60,9 @@ export function MobileRegisterRequestsPage() {
   const [pendingPassword, setPendingPassword] = useState('')
   const [current, setCurrent] = useState<MobileRegisterRequest | null>(null)
   const [teachers, setTeachers] = useState<LinkableTeacher[]>([])
+  const [roles, setRoles] = useState<AssignableRole[]>([])
   const [selectedTeacherId, setSelectedTeacherId] = useState<number | null>(null)
+  const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [approveForm] = Form.useForm<{ password: string }>()
   const [rejectForm] = Form.useForm<{ reason?: string }>()
@@ -80,13 +88,13 @@ export function MobileRegisterRequestsPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      setRows(await listMobileRegisterRequests())
+      setRows(await listMobileRegisterRequests({ q: searchQuery, visibility }))
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
       setLoading(false)
     }
-  }, [message])
+  }, [message, searchQuery, visibility])
 
   useEffect(() => {
     void load()
@@ -95,11 +103,17 @@ export function MobileRegisterRequestsPage() {
   const openApprove = (row: MobileRegisterRequest) => {
     setCurrent(row)
     setSelectedTeacherId(row.teacher_on_file?.id ?? null)
+    setSelectedRoleId(null)
     approveForm.setFieldsValue({ password: suggestEasyPassword() })
     setApproveOpen(true)
     if (teachers.length === 0) {
       void listLinkableTeachers()
         .then(setTeachers)
+        .catch((err) => message.error(getErrorMessage(err)))
+    }
+    if (roles.length === 0) {
+      void listAssignableRoles()
+        .then(setRoles)
         .catch((err) => message.error(getErrorMessage(err)))
     }
   }
@@ -112,9 +126,19 @@ export function MobileRegisterRequestsPage() {
 
   const completeApprove = async (password: string, confirmMismatch: boolean) => {
     if (!current) return
+    if (!selectedTeacherId && !selectedRoleId) {
+      message.warning('Eşleşmeyen talep için yetki grubu seçin')
+      return
+    }
     setSubmitting(true)
     try {
-      await approveMobileRegisterRequest(current.id, password, confirmMismatch, selectedTeacherId)
+      await approveMobileRegisterRequest(
+        current.id,
+        password,
+        confirmMismatch,
+        selectedTeacherId,
+        selectedTeacherId ? null : selectedRoleId,
+      )
       message.success('Kayıt onaylandı. Öğretmene T.C. ve bu şifreyi söyleyin.')
       setApproveOpen(false)
       setWarningOpen(false)
@@ -138,6 +162,19 @@ export function MobileRegisterRequestsPage() {
 
   const onApprove = async (values: { password: string }) => {
     await completeApprove(values.password, false)
+  }
+
+  const onVisibility = async (row: MobileRegisterRequest, hidden: boolean) => {
+    setSubmitting(true)
+    try {
+      await setMobileRegisterVisibility(row.id, hidden)
+      message.success(hidden ? 'İstek gizlendi' : 'İstek yeniden gösterildi')
+      void load()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const onReject = async (values: { reason?: string }) => {
@@ -199,27 +236,34 @@ export function MobileRegisterRequestsPage() {
             {
               title: 'İşlemler',
               width: 180,
-              render: (_: unknown, record: MobileRegisterRequest) =>
-                record.status === 'pending' ? (
-                  <Space>
-                    <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => openApprove(record)}>
-                      Onayla
+              render: (_: unknown, record: MobileRegisterRequest) => (
+                <Space wrap>
+                  {visibility === 'visible' && record.status === 'pending' && (
+                    <>
+                      <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => openApprove(record)}>
+                        Onayla
+                      </Button>
+                      <Button size="small" danger icon={<CloseOutlined />} onClick={() => openReject(record)}>
+                        Reddet
+                      </Button>
+                    </>
+                  )}
+                  {visibility === 'visible' ? (
+                    <Button size="small" icon={<EyeInvisibleOutlined />} onClick={() => void onVisibility(record, true)}>
+                      Gizle
                     </Button>
-                    <Button size="small" danger icon={<CloseOutlined />} onClick={() => openReject(record)}>
-                      Reddet
+                  ) : (
+                    <Button size="small" icon={<EyeOutlined />} onClick={() => void onVisibility(record, false)}>
+                      Tekrar göster
                     </Button>
-                  </Space>
-                ) : (
-                  <Typography.Text type="secondary">
-                    {record.reviewed_by_name || '—'}
-                    {record.reject_reason ? ` · ${record.reject_reason}` : ''}
-                  </Typography.Text>
-                ),
+                  )}
+                </Space>
+              ),
             },
           ]
         : []),
     ],
-    [canUpdate],
+    [canUpdate, visibility],
   )
 
   return (
@@ -234,7 +278,24 @@ export function MobileRegisterRequestsPage() {
           telefon sistemde boşsa ya da taleple uyuşmuyorsa önce öğretmenle teyit edin.
         </Typography.Paragraph>
 
-        <Space style={{ marginBottom: 16 }}>
+        <Space style={{ marginBottom: 16 }} wrap>
+          <Input
+            allowClear
+            prefix={<SearchOutlined />}
+            placeholder="Ad, T.C., telefon, e-posta veya okul"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            style={{ width: 320 }}
+          />
+          <Select
+            value={visibility}
+            onChange={setVisibility}
+            style={{ width: 160 }}
+            options={[
+              { value: 'visible', label: 'Görünenler' },
+              { value: 'hidden', label: 'Gizlenenler' },
+            ]}
+          />
           <Button icon={<ReloadOutlined />} onClick={() => void load()}>
             Yenile
           </Button>
@@ -294,9 +355,23 @@ export function MobileRegisterRequestsPage() {
                 : ''}
           </Typography.Paragraph>
         ) : (
-          <Typography.Paragraph type="warning">
-            Öğretmen seçilmedi. Onaylarsanız hesap bir öğretmen kaydına bağlanmaz.
-          </Typography.Paragraph>
+          <>
+            <Typography.Paragraph type="warning">
+              Öğretmen eşleşmedi. Hesabı bağlamak için bir yetki grubu seçin.
+            </Typography.Paragraph>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              placeholder="Yetki grubu seçin"
+              style={{ width: '100%', marginBottom: 12 }}
+              value={selectedRoleId ?? undefined}
+              onChange={(value) => setSelectedRoleId(value)}
+              options={roles.map((role) => ({
+                value: role.id,
+                label: role.description ? `${role.name} — ${role.description}` : role.name,
+              }))}
+            />
+          </>
         )}
         <Form form={approveForm} layout="vertical" onFinish={onApprove}>
           <Form.Item

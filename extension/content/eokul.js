@@ -65,17 +65,93 @@ if (!globalThis.__oidsEokulFill) {
     return shared / (a.size + b.size - shared)
   }
 
+  const FULL_LABEL =
+    /^([A-Za-zÇĞİÖŞÜçğıöşü0-9]{1,12})\s*[-–—]\s*(\d{1,2})\s*\.?\s*S[ıiİI]n[ıiİI]f\s*\/\s*([A-Za-zÇĞİÖŞÜçğıöşü0-9]{1,6})\s*[Şş]ube/i
+
   function sectionKey(value) {
     const folded = fold(value)
     const match = folded.match(/^([a-z0-9]+)/)
     return match ? match[1] : folded
   }
 
-  function sameClass(page, item) {
-    return (
-      String(Number(page.class_level)) === String(Number(item.class_level)) &&
-      sectionKey(page.section) === sectionKey(item.section)
-    )
+  function upper(value) {
+    return String(value || '').toLocaleUpperCase('tr-TR')
+  }
+
+  function classLabelOf(parsed) {
+    if (!parsed) return ''
+    return parsed.program
+      ? `${parsed.program} ${parsed.class_level}/${parsed.section}`
+      : `${parsed.class_level}/${parsed.section}`
+  }
+
+  // "AL - 9. Sınıf / A Şubesi (-)" ve "AMP - 9. Sınıf / A Şubesi (Bilişim)".
+  function parseEokulClassLabel(text) {
+    const raw = String(text || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (!raw) return null
+    const folded = fold(raw)
+    if (!folded || folded === 'seciniz' || folded.startsWith('seciniz')) return null
+
+    const full = raw.match(FULL_LABEL)
+    if (full) {
+      const parsed = {
+        program: upper(full[1]),
+        class_level: String(Number(full[2])),
+        section: upper(full[3]),
+        raw,
+      }
+      parsed.label = classLabelOf(parsed)
+      return parsed
+    }
+
+    const simple = raw.match(/(\d{1,2})\s*[\/\-]\s*([A-Za-zÇĞİÖŞÜçğıöşü0-9]{1,6})\b/)
+    if (!simple) return null
+    const parsed = {
+      program: null,
+      class_level: String(Number(simple[1])),
+      section: upper(simple[2]),
+      raw,
+    }
+    parsed.label = classLabelOf(parsed)
+    return parsed
+  }
+
+  function splitStored(item) {
+    if (item.program) {
+      const section = String(item.section || '')
+      const split = section.match(/^([A-ZÇĞİÖŞÜ0-9]{2,12})-([A-ZÇĞİÖŞÜ0-9]{1,6})$/i)
+      return {
+        program: upper(item.program),
+        class_level: String(Number(item.class_level)),
+        section: upper(split ? split[2] : section),
+      }
+    }
+    const section = String(item.section || '').trim()
+    const match = section.match(/^([A-ZÇĞİÖŞÜ0-9]{2,12})-([A-ZÇĞİÖŞÜ0-9]{1,6})$/i)
+    if (match) {
+      return {
+        program: upper(match[1]),
+        class_level: String(Number(item.class_level)),
+        section: upper(match[2]),
+      }
+    }
+    return {
+      program: null,
+      class_level: String(Number(item.class_level)),
+      section: upper(section),
+    }
+  }
+
+  function sameClass(page, item, programCount) {
+    const stored = splitStored(item)
+    if (stored.class_level !== String(Number(page.class_level))) return false
+    if (sectionKey(stored.section) !== sectionKey(page.section)) return false
+    if (stored.program && page.program) return sectionKey(stored.program) === sectionKey(page.program)
+    if (stored.program && !page.program) return false
+    if (!stored.program && page.program && programCount > 1) return false
+    return true
   }
 
   function classFromParts(levelText, sectionText) {
@@ -84,19 +160,17 @@ if (!globalThis.__oidsEokulFill) {
       .trim()
       .match(/^([A-Za-zÇĞİÖŞÜçğıöşü0-9]+)/)
     if (!levelMatch || !sectionMatch) return null
-    const section = sectionMatch[1].toLocaleUpperCase('tr-TR')
-    return {
+    const parsed = {
+      program: null,
       class_level: String(Number(levelMatch[1])),
-      section,
-      label: `${Number(levelMatch[1])}/${section}`,
+      section: sectionMatch[1].toLocaleUpperCase('tr-TR'),
     }
+    parsed.label = classLabelOf(parsed)
+    return parsed
   }
 
   function parseClassLabel(text) {
-    const raw = String(text || '').trim()
-    const match = raw.match(/(\d{1,2})\s*[\/\-]\s*([A-Za-zÇĞİÖŞÜçğıöşü0-9]+)/)
-    if (!match) return null
-    return classFromParts(match[1], match[2])
+    return parseEokulClassLabel(text)
   }
 
   function labelOf(select) {
@@ -116,7 +190,37 @@ if (!globalThis.__oidsEokulFill) {
     return option ? option.textContent || '' : ''
   }
 
+  function classListFromPage() {
+    let best = null
+    for (const select of document.querySelectorAll('select')) {
+      const labels = []
+      const parsed = []
+      for (const option of select.options) {
+        const text = (option.textContent || '').trim()
+        if (!text) continue
+        const row = parseEokulClassLabel(text)
+        if (!row || !row.program) continue
+        labels.push(row.raw)
+        parsed.push(row)
+      }
+      if (parsed.length >= 2 && (!best || parsed.length > best.parsed.length)) {
+        best = { select, labels, parsed }
+      }
+    }
+    return best
+  }
+
+  function pagePrograms() {
+    const listed = classListFromPage()
+    return new Set((listed?.parsed || []).map((row) => row.program).filter(Boolean))
+  }
+
   function pageClass() {
+    const listed = classListFromPage()
+    if (listed) {
+      const parsed = parseEokulClassLabel(selectedText(listed.select))
+      if (parsed) return parsed
+    }
     const selects = [...document.querySelectorAll('select')]
     let level = ''
     let section = ''
@@ -126,8 +230,8 @@ if (!globalThis.__oidsEokulFill) {
       const label = fold(labelOf(select))
       const text = selectedText(select).trim()
       if (!text) continue
-      if (label.includes('sube')) section = text
-      else if (label.includes('sinif')) level = text
+      if (label.includes('sube') && !label.includes('sinif')) section = text
+      else if (label.includes('sinif') && !label.includes('sube')) level = text
     }
     if (level && section) return classFromParts(level, section)
     return null
@@ -233,10 +337,15 @@ if (!globalThis.__oidsEokulFill) {
     }
     const detected = pageClass()
     if (!detected) return { needClass: true }
-    const item = program.classes.find((row) => sameClass(detected, row))
+    const programs = pagePrograms()
+    const item = program.classes.find((row) => sameClass(detected, row, programs.size))
     if (!item) {
+      const hint =
+        programs.size > 1
+          ? ' AMP ve ATP gibi programlar ayrı yazılıyor. Eklentide "Sınıfları e-Okul’dan al" deyip şubeleri program adıyla açın.'
+          : ''
       return {
-        error: `Açık şube ${detected.label}, bu programda yok. Programdaki şubeler: ${program.classes.map((row) => row.label).join(', ')}`,
+        error: `Açık şube ${detected.label}, bu programda yok. Programdaki şubeler: ${program.classes.map((row) => row.label).join(', ')}.${hint}`,
       }
     }
     return { item, fromPage: true }
@@ -302,6 +411,11 @@ if (!globalThis.__oidsEokulFill) {
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type === 'oids-list-classes') {
+      const listed = classListFromPage()
+      sendResponse({ handled: true, labels: listed ? listed.labels : [] })
+      return
+    }
     if (message?.type !== 'oids-fill') return
     try {
       sendResponse(fill(message))

@@ -310,6 +310,7 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
           'İsteklerde örneğin "Ayşe Hoca cuma gelemiyor" yazın.',
           'Okul saatlerinde dağıtım süresini, karnıyarık süresini, blok kurallarını ve kıyaslanacak algoritmaları yazın. Program bitince hangi algoritmanın cezası daha düşükse o yazılır.',
           'Programı oluşturun, ders programında sürükleyerek düzeltin ve yayınlayın. Hazır program varsa Ders programı sekmesinden PDF veya Excel içe aktarabilirsiniz. Bilsan öğretmen programı ve e-Okul şube programı PDF’leri okunur.',
+          'e-Okul ders programı sayfasında eklentiden sınıfları alabilirsiniz. Anadolu lisesinde şube 9/A kalır. AMP ve ATP ayrı yazılan meslek lisesinde şube AMP-A diye açılır; ikisi de 9/A sanılmaz.',
           'Ders programı sekmesinden tek bir dersi, görünen şube/öğretmen/mekanı ya da tüm taslağı silebilirsiniz. Yayındaki resmi program da şube, öğretmen veya okulun tamamı olarak silinebilir; ders atamaları durur.',
           'Ders programı sekmesindeki Excel menüsünden şube, öğretmen, öğrenci veya mekân programını indirin.',
         ],
@@ -438,6 +439,10 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
           'Onaylayın. Öğretmen T.C. kimlik numarası ve bu şifreyle girer. Öğretmen kaydındaki telefon ve e-posta da güncellenir.',
           'T.C. veya telefon sistemde boşsa ya da taleple uyuşmuyorsa uyarı çıkar. Öğretmenle teyit edip Tamam derseniz kayıt sizin adınıza oluşur.',
         ],
+      },
+      {
+        title: 'Gizleme ve arama',
+        body: 'Görünenler listesinde arayın. Gizle, isteği kurum listesinden kaldırır. Gizlenenler sekmesinden tekrar gösterebilirsiniz.',
       },
       {
         title: 'Red',
@@ -638,6 +643,20 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       {
         title: 'Dev ve canlı senkronu',
         body: 'İki ortam yapılandırıldıysa liste birkaç dakikada bir eşitlenir. Senkronize et, karşı ortamdaki yeni kayıtları, durumları ve ekleri hemen alır; sizin yaptığınız değişiklikleri de karşıya yazar.',
+      },
+    ],
+  },
+  '/platform/mobile-register-requests': {
+    title: 'Mobil Kayıt İstekleri (Platform)',
+    summary: 'Tüm kurumlardaki mobil kayıt taleplerini görür, kurum listesinde gizler, yeniden gösterir veya silersiniz.',
+    topics: [
+      {
+        title: 'Arama ve filtre',
+        body: 'Ad, T.C., telefon, e-posta, okul veya kurum adıyla arayın. Durum, kurum ve gizlilik filtresini kullanın.',
+      },
+      {
+        title: 'Kurum görünürlüğü',
+        body: 'Gizle, talebi kurum ekranından kaldırır. Tekrar göster, kuruma geri açar. Sil, talep kaydını kaldırır; oluşmuş kullanıcı hesabı durur.',
       },
     ],
   },

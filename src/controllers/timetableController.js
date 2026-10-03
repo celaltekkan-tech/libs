@@ -26,6 +26,7 @@ const solver = require('../services/timetableSolverClient');
 const runService = require('../services/timetableRunService');
 const timetableExport = require('../services/timetableExportService');
 const { buildEokulPayload } = require('../services/timetableEokulPayload');
+const { planClassrooms } = require('../services/eokulClassNames');
 const { buildExtensionZip } = require('../services/extensionPackage');
 const gemini = require('../services/geminiService');
 const aiUsage = require('../services/aiUsageService');
@@ -1066,6 +1067,79 @@ module.exports = {
       const project = await loadProject(req);
       const lessons = await lessonsWithAssignments(project);
       res.json({ success: true, data: buildEokulPayload(project, lessons) });
+    } catch (err) {
+      sendError(res, next, err);
+    }
+  },
+
+  // e-Okul sınıf şube listesini okulun şubelerine yazar.
+  // Tek programda ad 9/A kalır. AMP ve ATP birlikteyse şube AMP-A olur.
+  async importEokulClasses(req, res, next) {
+    try {
+      const project = await loadProject(req);
+      const plan = planClassrooms(req.validatedBody.labels);
+      if (!plan.classrooms.length) {
+        throw httpError(400, 'e-Okul sınıf listesi okunamadı. Ders programı sayfasındaki sınıf şube kutusunu açın.');
+      }
+
+      const year = project.academic_year || null;
+      const existing = await Classroom.findAll({
+        where: { tenant_id: project.tenant_id, school_id: project.school_id, is_active: true },
+      });
+
+      let created = 0;
+      let already = 0;
+      for (const item of plan.classrooms) {
+        const found = existing.find((row) => {
+          if (String(row.class_level) !== item.class_level || String(row.section) !== item.section) return false;
+          if (!year) return true;
+          return !row.academic_year || row.academic_year === year;
+        });
+        if (found) {
+          already += 1;
+          continue;
+        }
+        try {
+          const row = await Classroom.create({
+            tenant_id: project.tenant_id,
+            school_id: project.school_id,
+            class_level: item.class_level,
+            section: item.section,
+            academic_year: year,
+            is_active: true,
+          });
+          existing.push(row);
+          created += 1;
+        } catch (err) {
+          if (err.name === 'SequelizeUniqueConstraintError') {
+            already += 1;
+            continue;
+          }
+          throw err;
+        }
+      }
+
+      const naming = plan.multi_program
+        ? `Programlar ayrı yazıldı (${plan.programs.join(', ')}).`
+        : 'Tek program; şube adları 9/A biçiminde kaldı.';
+      await audit.log(req, {
+        action: 'create',
+        entityType: 'classroom',
+        entityId: project.id,
+        summary: `e-Okul sınıf listesi alındı: ${created} yeni, ${already} zaten vardı. ${naming}`,
+      });
+
+      res.json({
+        success: true,
+        data: {
+          created,
+          existing: already,
+          skipped: plan.skipped,
+          multi_program: plan.multi_program,
+          programs: plan.programs,
+          classes: plan.classrooms,
+        },
+      });
     } catch (err) {
       sendError(res, next, err);
     }

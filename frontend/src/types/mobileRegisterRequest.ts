@@ -16,6 +16,13 @@ export interface MobileRegisterTeacherSnapshot {
   email: string | null
 }
 
+export interface AssignableRole {
+  id: number
+  name: string
+  is_system: boolean
+  description: string | null
+}
+
 export interface LinkableTeacher {
   id: number
   first_name: string
@@ -46,6 +53,9 @@ export interface MobileRegisterRequest {
   reviewed_by_user_id: number | null
   reviewed_by_name: string | null
   reviewed_by_email: string | null
+  hidden_at?: string | null
+  hidden_by_name?: string | null
+  tenant_name?: string | null
   teacher_on_file?: MobileRegisterTeacherSnapshot | null
   matched_fields?: Array<'name' | 'national_id' | 'phone' | 'email'>
   not_registered?: boolean
