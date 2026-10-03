@@ -25,6 +25,7 @@ import { TeachersPage } from './pages/TeachersPage'
 import { StudentsPage } from './pages/StudentsPage'
 import { ClassroomsPage } from './pages/ClassroomsPage'
 import { UsersPage } from './pages/UsersPage'
+import { MobileRegisterRequestsPage } from './pages/MobileRegisterRequestsPage'
 import { AuditLogsPage } from './pages/AuditLogsPage'
 import { TimetableBuilderPage } from './pages/TimetableBuilderPage'
 import { SubjectsPage } from './pages/SubjectsPage'
@@ -142,6 +143,7 @@ function ThemedApp() {
                   </Route>
                   <Route element={<ModuleRoute module="users" />}>
                     <Route path="/users" element={<UsersPage />} />
+                    <Route path="/mobile-register-requests" element={<MobileRegisterRequestsPage />} />
                   </Route>
                   <Route element={<ModuleRoute module="schedule" />}>
                     <Route path="/schedule" element={<Navigate to="/schedule-builder" replace />} />

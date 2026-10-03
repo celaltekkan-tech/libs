@@ -9,6 +9,7 @@ const loginLockout = require('../services/loginLockoutService');
 const licenseService = require('../services/licenseService');
 const presence = require('../services/presenceService');
 const captcha = require('../services/captchaService');
+const teacherRegister = require('../services/teacherSelfRegisterService');
 
 const BCRYPT_ROUNDS = 10;
 const PENDING_2FA_EXPIRES = '5m';
@@ -125,7 +126,7 @@ async function rejectInvalidCredentials(req, res, user) {
   return res.status(401).json({
     success: false,
     code: 'INVALID_CREDENTIALS',
-    message: 'E-posta veya şifre hatalı',
+    message: 'Kullanıcı adı veya şifre hatalı',
   });
 }
 
@@ -200,15 +201,27 @@ module.exports = {
         });
       }
 
+      const rawLogin = String(email || '').trim();
+      const tckn = /^\d{11}$/.test(rawLogin) ? rawLogin : null;
       const user = await User.scope('withTotp').findOne({
-        where: { email: String(email).toLowerCase().trim() },
+        where: tckn ? { national_id: tckn } : { email: rawLogin.toLowerCase() },
       });
 
       if (!user) {
+        if (tckn) {
+          const pending = await teacherRegister.findPendingByNationalId(tckn);
+          if (pending) {
+            return res.status(403).json({
+              success: false,
+              code: 'ACCOUNT_PENDING_APPROVAL',
+              message: 'Kayıt isteğiniz okul yönetiminin onayını bekliyor.',
+            });
+          }
+        }
         return res.status(401).json({
           success: false,
           code: 'INVALID_CREDENTIALS',
-          message: 'E-posta veya şifre hatalı',
+          message: 'Kullanıcı adı veya şifre hatalı',
         });
       }
 
@@ -228,12 +241,11 @@ module.exports = {
       }
 
       if (!user.is_active) {
-        if (user.teacher_id) {
+        if (user.national_id || user.teacher_id) {
           return res.status(403).json({
             success: false,
-            code: 'ACCOUNT_UNVERIFIED',
-            message:
-              'Hesabınız henüz doğrulanmadı. Mobil uygulamadan SMS doğrulamasını tamamlayın.',
+            code: 'ACCOUNT_PENDING_APPROVAL',
+            message: 'Hesabınız henüz onaylanmadı. Okul yönetiminizi bekleyin.',
           });
         }
         return res.status(403).json({

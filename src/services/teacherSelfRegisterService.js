@@ -11,31 +11,21 @@ const {
   License,
   Role,
   UserSchool,
+  Permission,
   Province,
   District,
   DirectorySchool,
+  MobileRegisterRequest,
+  Notification,
   sequelize,
 } = require('../models');
-const { foldTurkishName, turkishNamesEqual } = require('../utils/trName');
-const jwtUtil = require('../utils/jwt');
 const licenseService = require('./licenseService');
-const { sendSms, SMS_STATUS, SmsConfigError } = require('./smsEngine');
-const { assertValidMobilePhone, formatMobilePhone, normalizeMobilePhone } = require('../utils/phone');
-const { maskPhone, dateOnlyKey, rollSmsCounterIfStale } = require('./smsLoginService');
-
-// Kayıt: T.C. + soyad öğretmen kaydıyla, girilen telefon Teacher.phone ile eşleşmeli.
-// Hesap pasif açılır; SMS kodu doğrulanınca aktifleşir.
-// TEACHER_REGISTER_SMS_REQUIRED=false geçici moddur (SMS başlığı onaylanana kadar):
-// T.C. + soyad eşleşmesi yeterli, telefon sorulmaz, hesap doğrudan açılır.
-function isSmsRequired() {
-  return String(process.env.TEACHER_REGISTER_SMS_REQUIRED ?? 'true').toLowerCase() !== 'false';
-}
+const { assertValidMobilePhone } = require('../utils/phone');
 
 const BCRYPT_ROUNDS = 10;
-const PENDING_EXPIRES = process.env.TEACHER_REGISTER_TOKEN_TTL || '30m';
-const CODE_TTL_MS = (Number(process.env.TEACHER_REGISTER_CODE_TTL_MINUTES) || 10) * 60 * 1000;
-const MAX_CODES_PER_DAY = Number(process.env.TEACHER_REGISTER_MAX_CODES_PER_DAY) || 8;
 const TEACHER_ROLE_NAME = 'Öğretmen';
+const PLACEHOLDER_EMAIL_DOMAIN = 'tc.oids.local';
+const APPROVER_PERMISSIONS = ['mobile_register_requests.read', 'mobile_register_requests.update'];
 
 function fail(status, code, message) {
   const err = new Error(message);
@@ -44,56 +34,31 @@ function fail(status, code, message) {
   return err;
 }
 
-function foldLastName(value) {
-  return foldTurkishName(value);
-}
-
 function normalizeNationalId(value) {
   const digits = String(value || '').replace(/\D/g, '');
   return /^\d{11}$/.test(digits) ? digits : null;
 }
 
-function istanbulDateString(date = new Date()) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Istanbul',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date);
+function placeholderEmail(nationalId) {
+  return `${nationalId}@${PLACEHOLDER_EMAIL_DOMAIN}`;
 }
 
-function generateCode() {
-  return String(crypto.randomInt(100000, 1000000));
-}
-
-function createPendingToken(user) {
-  return jwtUtil.sign(
-    {
-      purpose: 'teacher_register_pending',
-      user_id: user.id,
-      tenant_id: user.tenant_id,
-      teacher_id: user.teacher_id,
-    },
-    { expiresIn: PENDING_EXPIRES },
-  );
-}
-
-function verifyPendingToken(tempToken) {
-  let payload;
-  try {
-    payload = jwtUtil.verify(tempToken);
-  } catch (err) {
-    const expired = err.name === 'TokenExpiredError';
-    throw fail(
-      401,
-      expired ? 'TOKEN_EXPIRED' : 'TOKEN_INVALID',
-      expired ? 'Doğrulama süresi doldu, kaydı yeniden başlatın' : 'Geçersiz doğrulama oturumu',
-    );
+function assertEasyPassword(value) {
+  const password = String(value || '');
+  if (password.length < 6 || password.length > 32) {
+    throw fail(400, 'PASSWORD_WEAK', 'Şifre en az 6 karakter olmalı');
   }
-  if (payload.purpose !== 'teacher_register_pending' || !payload.user_id) {
-    throw fail(401, 'TOKEN_INVALID', 'Geçersiz doğrulama oturumu');
+  if (!/[A-Za-zÇĞİÖŞÜçğıöşü]/.test(password) || !/\d/.test(password)) {
+    throw fail(400, 'PASSWORD_WEAK', 'Şifrede en az 1 harf ve 1 rakam olmalı');
   }
-  return payload;
+  return password;
+}
+
+function suggestEasyPassword() {
+  const words = ['elma', 'okul', 'kedi', 'masa', 'sari', 'mavi', 'topu', 'evim', 'cayi', 'sut1'];
+  const word = words[crypto.randomInt(0, words.length)];
+  const digits = String(crypto.randomInt(10, 100));
+  return `${word}${digits}`.slice(0, 8);
 }
 
 async function assertSchoolLicensed(school) {
@@ -129,129 +94,6 @@ async function findTeacherRole(tenantId) {
     throw fail(500, 'ROLE_NOT_FOUND', 'Öğretmen yetki grubu tanımlı değil');
   }
   return role;
-}
-
-async function matchTeacher(school, nationalIdRaw, lastName) {
-  const tckn = normalizeNationalId(nationalIdRaw);
-  const soyad = foldLastName(lastName);
-  if (!tckn) {
-    throw fail(400, 'VALIDATION_ERROR', 'Geçerli bir T.C. kimlik numarası girin');
-  }
-  if (!soyad) {
-    throw fail(400, 'VALIDATION_ERROR', 'Soyad zorunludur');
-  }
-
-  const teachers = await Teacher.findAll({
-    where: {
-      tenant_id: school.tenant_id,
-      personnel_type: 'ogretmen',
-      personnel_category_id: null,
-      national_id: { [Op.ne]: null },
-      [Op.or]: [{ school_id: school.id }, { school_id: null }],
-    },
-  });
-
-  const match = teachers.find(
-    (row) => normalizeNationalId(row.national_id) === tckn && turkishNamesEqual(row.last_name, lastName),
-  );
-  if (!match) {
-    throw fail(
-      404,
-      'TEACHER_NOT_FOUND',
-      'T.C. kimlik numarası ve soyad bu okuldaki öğretmen kaydıyla eşleşmedi',
-    );
-  }
-  return match;
-}
-
-function assertPhoneBelongsToTeacher(teacher, phone) {
-  const onFile = normalizeMobilePhone(teacher.phone);
-  if (!onFile) {
-    throw fail(
-      409,
-      'TEACHER_PHONE_MISSING',
-      'Bu öğretmen için sistemde kayıtlı bir telefon numarası yok. Okul yönetimiyle iletişime geçin.',
-    );
-  }
-  if (normalizeMobilePhone(phone) !== onFile) {
-    throw fail(
-      403,
-      'PHONE_MISMATCH',
-      'Girilen telefon numarası bu öğretmenin kayıtlı numarasıyla eşleşmedi',
-    );
-  }
-}
-
-function getCodeState(user) {
-  const today = istanbulDateString();
-  const sameDay = dateOnlyKey(user.sms_login_requests_date) === today;
-  const count = sameDay ? Number(user.sms_login_requests_count || 0) : 0;
-  return {
-    today,
-    count,
-    remaining: Math.max(0, MAX_CODES_PER_DAY - count),
-  };
-}
-
-async function storeVerificationCode(user, extra = {}) {
-  await rollSmsCounterIfStale(user);
-  const state = getCodeState(user);
-  if (state.count >= MAX_CODES_PER_DAY) {
-    throw fail(
-      429,
-      'CODE_DAILY_LIMIT',
-      `Bugün için doğrulama kodu hakkı doldu (en fazla ${MAX_CODES_PER_DAY})`,
-    );
-  }
-  const code = generateCode();
-  const codeHash = await bcrypt.hash(code, BCRYPT_ROUNDS);
-  const expiresAt = new Date(Date.now() + CODE_TTL_MS);
-  const nextCount = state.count + 1;
-  await user.update({
-    sms_login_code_hash: codeHash,
-    sms_login_code_expires_at: expiresAt,
-    sms_login_requests_date: state.today,
-    sms_login_requests_count: nextCount,
-    ...extra,
-  });
-  return {
-    code,
-    expires_at: expiresAt.toISOString(),
-    requests_remaining: Math.max(0, MAX_CODES_PER_DAY - nextCount),
-    max_requests: MAX_CODES_PER_DAY,
-  };
-}
-
-async function sendRegisterSms(phone, code) {
-  const minutes = Math.round(CODE_TTL_MS / 60000);
-  let result;
-  try {
-    result = await sendSms({
-      phoneNumber: phone,
-      message: `Okul Idare dogrulama kodunuz: ${code}. Kod ${minutes} dk gecerlidir.`,
-    });
-  } catch (err) {
-    if (err instanceof SmsConfigError) {
-      throw fail(500, 'SMS_CONFIG', 'SMS motoru yapılandırma hatası');
-    }
-    throw err;
-  }
-  if (result.status !== SMS_STATUS.SUCCESS) {
-    // 5xx gövdesini Cloudflare yutuyor (502 → düz "Bad Gateway"); mesaj istemciye ulaşsın diye 424.
-    throw fail(424, 'SMS_SEND_FAILED', `SMS gönderilemedi: ${result.error || 'bilinmeyen hata'}`);
-  }
-}
-
-async function loadPendingUser(tempToken) {
-  const payload = verifyPendingToken(tempToken);
-  const user = await User.unscoped().findByPk(payload.user_id);
-  if (!user || user.teacher_id !== payload.teacher_id) {
-    throw fail(401, 'TOKEN_INVALID', 'Geçersiz doğrulama oturumu');
-  }
-  if (user.is_active) {
-    throw fail(409, 'ALREADY_REGISTERED', 'Bu hesap zaten doğrulanmış. E-posta ve şifrenizle giriş yapın.');
-  }
-  return user;
 }
 
 async function listProvinces() {
@@ -348,160 +190,281 @@ async function listLicensedSchools(provinceId, districtId) {
     .map((school) => ({ id: school.id, name: school.name }));
 }
 
-async function startRegistration({ school_id, national_id, last_name, email, phone }) {
+async function findTeacherByNationalId(tenantId, nationalId) {
+  const teachers = await Teacher.findAll({
+    where: {
+      tenant_id: tenantId,
+      national_id: { [Op.ne]: null },
+    },
+  });
+  return teachers.find((row) => normalizeNationalId(row.national_id) === nationalId) || null;
+}
+
+async function notifyTenantApprovers(tenantId, title, body) {
+  const users = await User.findAll({
+    where: { tenant_id: tenantId, is_active: true, is_platform_admin: false },
+    include: [
+      {
+        model: UserSchool,
+        include: [{ model: Role, include: [{ model: Permission, through: { attributes: [] } }] }],
+      },
+    ],
+  });
+
+  const recipients = users.filter((user) => {
+    if (['admin', 'supervisor'].includes(user.role)) return true;
+    return (user.UserSchools || []).some((assignment) =>
+      (assignment.Role?.Permissions || []).some((perm) => APPROVER_PERMISSIONS.includes(perm.permission_key)),
+    );
+  });
+
+  if (recipients.length === 0) return;
+  await Notification.bulkCreate(
+    recipients.map((user) => ({
+      recipient_user_id: user.id,
+      tenant_id: tenantId,
+      sender_user_id: null,
+      title,
+      body,
+    })),
+  );
+}
+
+function serializeRequest(row) {
+  const data = row.toJSON ? row.toJSON() : { ...row };
+  return {
+    id: data.id,
+    tenant_id: data.tenant_id,
+    school_id: data.school_id,
+    school_name: data.School?.name || null,
+    national_id: data.national_id,
+    first_name: data.first_name,
+    last_name: data.last_name,
+    full_name: `${data.first_name} ${data.last_name}`.trim(),
+    phone: data.phone,
+    status: data.status,
+    teacher_id: data.teacher_id,
+    user_id: data.user_id,
+    reject_reason: data.reject_reason,
+    reviewed_at: data.reviewed_at,
+    reviewed_by_name: data.ReviewedBy?.full_name || null,
+    created_at: data.created_at,
+    updated_at: data.updated_at,
+  };
+}
+
+const requestInclude = [
+  { model: School, attributes: ['id', 'name'] },
+  { model: User, as: 'ReviewedBy', attributes: ['id', 'full_name'] },
+];
+
+async function startRegistration({ school_id, national_id, first_name, last_name, phone }) {
   const school = await School.findByPk(school_id, {
     include: [{ model: Tenant, attributes: ['id', 'is_active', 'name'] }],
   });
-  await assertSchoolLicensed(school);
-  const teacher = await matchTeacher(school, national_id, last_name);
-  const smsRequired = isSmsRequired();
-  let phoneNorm;
-  if (smsRequired) {
-    phoneNorm = assertValidMobilePhone(phone, { required: true });
-    assertPhoneBelongsToTeacher(teacher, phoneNorm);
-  } else {
-    phoneNorm = formatMobilePhone(teacher.phone);
-  }
-  const activation = smsRequired
-    ? { is_active: false }
-    : { is_active: true, sms_login_code_hash: null, sms_login_code_expires_at: null, last_login_at: new Date() };
-  const emailNorm = String(email).trim().toLowerCase();
+  const { tenant } = await assertSchoolLicensed(school);
+
   const tckn = normalizeNationalId(national_id);
-  const fullName = `${teacher.first_name} ${teacher.last_name}`.trim();
+  if (!tckn) {
+    throw fail(400, 'VALIDATION_ERROR', 'Geçerli bir T.C. kimlik numarası girin');
+  }
+  const first = String(first_name || '').trim();
+  const last = String(last_name || '').trim();
+  if (!first || !last) {
+    throw fail(400, 'VALIDATION_ERROR', 'Ad ve soyad zorunludur');
+  }
+  const phoneNorm = assertValidMobilePhone(phone, { required: true });
 
-  const existingByTeacher = await User.unscoped().findOne({ where: { teacher_id: teacher.id } });
-  if (existingByTeacher?.is_active) {
-    throw fail(409, 'ALREADY_REGISTERED', 'Bu öğretmen zaten kayıtlı. E-posta ve şifrenizle giriş yapın.');
+  const existingUser = await User.unscoped().findOne({
+    where: {
+      [Op.or]: [{ national_id: tckn }, { email: placeholderEmail(tckn) }],
+    },
+  });
+  if (existingUser?.is_active) {
+    throw fail(409, 'ALREADY_REGISTERED', 'Bu T.C. kimlik numarası zaten kayıtlı. Şifrenizle giriş yapın.');
   }
 
-  const existingByEmail = await User.unscoped().findOne({ where: { email: emailNorm } });
-  if (existingByEmail && existingByEmail.teacher_id !== teacher.id) {
-    throw fail(409, 'EMAIL_IN_USE', 'Bu e-posta zaten kullanılıyor. Giriş yapın veya başka bir adres deneyin.');
-  }
-  if (existingByEmail?.is_active) {
-    throw fail(409, 'ALREADY_REGISTERED', 'Bu e-posta zaten kayıtlı. Şifrenizle giriş yapın.');
+  const pending = await MobileRegisterRequest.findOne({
+    where: { tenant_id: school.tenant_id, national_id: tckn, status: 'pending' },
+  });
+  if (pending) {
+    throw fail(
+      409,
+      'REQUEST_PENDING',
+      'Bu T.C. için bekleyen bir kayıt isteği zaten var. Okul yönetiminin onayını bekleyin.',
+    );
   }
 
-  const role = await findTeacherRole(school.tenant_id);
-  const password_hash = await bcrypt.hash(tckn, BCRYPT_ROUNDS);
+  const teacher = await findTeacherByNationalId(school.tenant_id, tckn);
+
+  const request = await MobileRegisterRequest.create({
+    tenant_id: school.tenant_id,
+    school_id: school.id,
+    national_id: tckn,
+    first_name: first,
+    last_name: last,
+    phone: phoneNorm,
+    status: 'pending',
+    teacher_id: teacher?.id || null,
+  });
+
+  const fullName = `${first} ${last}`.trim();
+  await notifyTenantApprovers(
+    school.tenant_id,
+    'Yeni mobil kayıt isteği',
+    `${fullName} (${tckn}) ${school.name} için mobil kayıt istedi. Telefon: ${phoneNorm}`,
+  );
+
+  return {
+    request_id: request.id,
+    status: 'pending',
+    school_name: school.name,
+    tenant_name: tenant.name,
+    message: `${school.name} yönetimine kayıt isteğiniz gönderildi. Onaylanınca T.C. kimlik numaranız ve okulun belirlediği şifre ile giriş yapabilirsiniz.`,
+  };
+}
+
+async function findPendingByNationalId(nationalId) {
+  const tckn = normalizeNationalId(nationalId);
+  if (!tckn) return null;
+  return MobileRegisterRequest.findOne({
+    where: { national_id: tckn, status: 'pending' },
+    include: [{ model: School, attributes: ['id', 'name'] }],
+  });
+}
+
+async function listRequests(tenantId, { status } = {}) {
+  const where = { tenant_id: tenantId };
+  if (status) where.status = status;
+  const rows = await MobileRegisterRequest.findAll({
+    where,
+    include: requestInclude,
+    order: [
+      ['status', 'ASC'],
+      ['created_at', 'DESC'],
+    ],
+  });
+  return rows.map(serializeRequest);
+}
+
+async function loadTenantRequest(tenantId, id) {
+  const request = await MobileRegisterRequest.findByPk(id, { include: requestInclude });
+  if (!request || request.tenant_id !== tenantId) {
+    throw fail(404, 'REQUEST_NOT_FOUND', 'Kayıt isteği bulunamadı');
+  }
+  return request;
+}
+
+async function approveRequest(tenantId, id, { password, reviewerUserId }) {
+  const request = await loadTenantRequest(tenantId, id);
+  if (request.status !== 'pending') {
+    throw fail(409, 'REQUEST_NOT_PENDING', 'Bu istek zaten sonuçlandırılmış');
+  }
+  const plainPassword = assertEasyPassword(password);
+  const tckn = request.national_id;
+  const fullName = `${request.first_name} ${request.last_name}`.trim();
+  const emailNorm = placeholderEmail(tckn);
+
+  const existingByNational = await User.unscoped().findOne({
+    where: { [Op.or]: [{ national_id: tckn }, { email: emailNorm }] },
+  });
+  if (existingByNational?.is_active) {
+    throw fail(409, 'ALREADY_REGISTERED', 'Bu T.C. kimlik numarası zaten bir hesaba bağlı');
+  }
+
+  const teacher = (request.teacher_id && (await Teacher.findByPk(request.teacher_id)))
+    || (await findTeacherByNationalId(tenantId, tckn));
+
+  if (teacher) {
+    const existingByTeacher = await User.unscoped().findOne({ where: { teacher_id: teacher.id } });
+    if (existingByTeacher?.is_active) {
+      throw fail(409, 'ALREADY_REGISTERED', 'Bu öğretmenin zaten aktif bir hesabı var');
+    }
+  }
+
+  const role = await findTeacherRole(tenantId);
+  const password_hash = await bcrypt.hash(plainPassword, BCRYPT_ROUNDS);
 
   const user = await sequelize.transaction(async (transaction) => {
-    let pending = existingByTeacher || existingByEmail || null;
-    if (pending) {
-      await pending.update(
-        {
-          tenant_id: school.tenant_id,
-          school_id: school.id,
-          teacher_id: teacher.id,
-          full_name: fullName,
-          email: emailNorm,
-          phone: phoneNorm,
-          password_hash,
-          role: 'user',
-          ...activation,
-        },
-        { transaction },
-      );
-    } else {
-      pending = await User.create(
-        {
-          tenant_id: school.tenant_id,
-          school_id: school.id,
-          teacher_id: teacher.id,
-          full_name: fullName,
-          email: emailNorm,
-          phone: phoneNorm,
-          password_hash,
-          role: 'user',
-          ...activation,
-        },
-        { transaction },
-      );
+    if (teacher) {
+      await teacher.update({ phone: request.phone }, { transaction });
     }
 
-    const assignment = await UserSchool.findOne({ where: { user_id: pending.id }, transaction });
+    let account = existingByNational || (teacher
+      ? await User.unscoped().findOne({ where: { teacher_id: teacher.id }, transaction })
+      : null);
+
+    const fields = {
+      tenant_id: tenantId,
+      school_id: request.school_id,
+      teacher_id: teacher?.id || null,
+      full_name: fullName,
+      email: emailNorm,
+      national_id: tckn,
+      phone: request.phone,
+      password_hash,
+      role: 'user',
+      is_active: true,
+      sms_login_code_hash: null,
+      sms_login_code_expires_at: null,
+    };
+
+    if (account) {
+      await account.update(fields, { transaction });
+    } else {
+      account = await User.create(fields, { transaction });
+    }
+
+    const assignment = await UserSchool.findOne({ where: { user_id: account.id }, transaction });
     if (assignment) {
-      await assignment.update({ school_id: school.id, role_id: role.id }, { transaction });
+      await assignment.update({ school_id: request.school_id, role_id: role.id }, { transaction });
     } else {
       await UserSchool.create(
-        { user_id: pending.id, school_id: school.id, role_id: role.id },
+        { user_id: account.id, school_id: request.school_id, role_id: role.id },
         { transaction },
       );
     }
 
-    // SMS modunda Teacher.email doğrulama sonrasında (verifyCode) güncellenir.
-    if (!smsRequired) await teacher.update({ email: emailNorm }, { transaction });
-    return pending;
+    await request.update(
+      {
+        status: 'approved',
+        teacher_id: teacher?.id || request.teacher_id,
+        user_id: account.id,
+        reviewed_by_user_id: reviewerUserId || null,
+        reviewed_at: new Date(),
+        reject_reason: null,
+      },
+      { transaction },
+    );
+
+    return account;
   });
 
-  if (!smsRequired) return { user };
-
-  const issued = await storeVerificationCode(user);
-  await sendRegisterSms(phoneNorm, issued.code);
-  const pending = createPendingToken(user);
-
-  return {
-    sms_required: true,
-    pending_token: pending.token,
-    expires_at: pending.expires_at,
-    phone_hint: maskPhone(phoneNorm),
-    code_expires_at: issued.expires_at,
-    requests_remaining: issued.requests_remaining,
-    max_requests: issued.max_requests,
-  };
+  return { user, request: serializeRequest(await loadTenantRequest(tenantId, request.id)) };
 }
 
-async function resendSms(tempToken) {
-  const user = await loadPendingUser(tempToken);
-  const phone = assertValidMobilePhone(user.phone, { required: true });
-  const issued = await storeVerificationCode(user);
-  await sendRegisterSms(phone, issued.code);
-  return {
-    phone_hint: maskPhone(phone),
-    code_expires_at: issued.expires_at,
-    requests_remaining: issued.requests_remaining,
-    max_requests: issued.max_requests,
-  };
-}
-
-async function verifyCode(tempToken, code) {
-  const user = await loadPendingUser(tempToken);
-  if (!user.sms_login_code_hash || !user.sms_login_code_expires_at) {
-    throw fail(400, 'CODE_REQUIRED', 'Önce SMS doğrulama kodu isteyin');
+async function rejectRequest(tenantId, id, { reason, reviewerUserId }) {
+  const request = await loadTenantRequest(tenantId, id);
+  if (request.status !== 'pending') {
+    throw fail(409, 'REQUEST_NOT_PENDING', 'Bu istek zaten sonuçlandırılmış');
   }
-  if (new Date(user.sms_login_code_expires_at).getTime() < Date.now()) {
-    throw fail(400, 'CODE_EXPIRED', 'Doğrulama kodunun süresi doldu');
-  }
-  const ok = await bcrypt.compare(String(code || '').replace(/\D/g, ''), user.sms_login_code_hash);
-  if (!ok) {
-    throw fail(400, 'CODE_INVALID', 'Doğrulama kodu hatalı');
-  }
-
-  await user.update({
-    is_active: true,
-    sms_login_code_hash: null,
-    sms_login_code_expires_at: null,
-    last_login_at: new Date(),
+  await request.update({
+    status: 'rejected',
+    reviewed_by_user_id: reviewerUserId || null,
+    reviewed_at: new Date(),
+    reject_reason: String(reason || '').trim() || null,
   });
-
-  if (user.teacher_id) {
-    const teacher = await Teacher.findByPk(user.teacher_id);
-    if (teacher) {
-      const updates = {};
-      if (user.email) updates.email = String(user.email).trim().toLowerCase();
-      if (user.phone) updates.phone = user.phone;
-      if (Object.keys(updates).length) await teacher.update(updates);
-    }
-  }
-  return user;
+  return serializeRequest(await loadTenantRequest(tenantId, request.id));
 }
 
 module.exports = {
-  isSmsRequired,
+  suggestEasyPassword,
   listProvinces,
   listDistricts,
   listLicensedSchools,
   startRegistration,
-  resendSms,
-  verifyCode,
+  findPendingByNationalId,
+  listRequests,
+  approveRequest,
+  rejectRequest,
 };

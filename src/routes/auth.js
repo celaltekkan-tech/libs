@@ -7,8 +7,6 @@ const auth = require('../middlewares/auth');
 const validate = require('../middlewares/validate');
 const {
   teacherRegisterStartSchema,
-  teacherRegisterPendingSchema,
-  teacherRegisterVerifySchema,
   registerSchema,
   loginSchema,
   verify2faSchema,
@@ -27,12 +25,6 @@ router.get('/teacher-register/provinces', teacherRegisterCtrl.listProvinces);
 router.get('/teacher-register/districts', teacherRegisterCtrl.listDistricts);
 router.get('/teacher-register/schools', teacherRegisterCtrl.listSchools);
 router.post('/teacher-register', validate(teacherRegisterStartSchema), teacherRegisterCtrl.start);
-router.post(
-  '/teacher-register/resend-sms',
-  validate(teacherRegisterPendingSchema),
-  teacherRegisterCtrl.resendSms,
-);
-router.post('/teacher-register/verify', validate(teacherRegisterVerifySchema), teacherRegisterCtrl.verify);
 
 router.post('/register', validate(registerSchema), ctrl.register);
 router.get('/captcha', ctrl.captcha);

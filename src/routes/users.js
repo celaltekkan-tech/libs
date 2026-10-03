@@ -2,12 +2,41 @@ const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/usersController');
 const validate = require('../middlewares/validate');
-const { createUserSchema, updateUserSchema } = require('../validators/user.validator');
+const {
+  createUserSchema,
+  updateUserSchema,
+  approveMobileRegisterSchema,
+  rejectMobileRegisterSchema,
+} = require('../validators/user.validator');
 const auth = require('../middlewares/auth');
 const requireModule = require('../middlewares/moduleGuard');
 const permission = require('../middlewares/permission');
 
 const moduleGuard = requireModule('users');
+
+router.get(
+  '/mobile-register-requests',
+  auth,
+  moduleGuard,
+  permission('mobile_register_requests.read'),
+  ctrl.listMobileRegisterRequests,
+);
+router.post(
+  '/mobile-register-requests/:id/approve',
+  auth,
+  moduleGuard,
+  permission('mobile_register_requests.update'),
+  validate(approveMobileRegisterSchema),
+  ctrl.approveMobileRegisterRequest,
+);
+router.post(
+  '/mobile-register-requests/:id/reject',
+  auth,
+  moduleGuard,
+  permission('mobile_register_requests.update'),
+  validate(rejectMobileRegisterSchema),
+  ctrl.rejectMobileRegisterRequest,
+);
 
 router.get('/form-options', auth, moduleGuard, permission('users.read'), ctrl.formOptions);
 router.get('/', auth, moduleGuard, permission('users.read'), ctrl.list);

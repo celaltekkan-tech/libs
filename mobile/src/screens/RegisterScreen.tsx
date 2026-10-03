@@ -8,31 +8,25 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SelectField, type SelectOption } from '../components/SelectField';
-import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import {
-  fetchRegisterConfig,
   listRegisterDistricts,
   listRegisterProvinces,
   listRegisterSchools,
-  resendTeacherRegisterSms,
   startTeacherRegister,
-  verifyTeacherRegister,
 } from '../api/auth';
 import { getErrorMessage } from '../api/client';
 import type { AuthStackParamList } from '../navigation/types';
 import type { ThemeColors } from '../theme/colors';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Register'>;
-type Step = 'school' | 'identity' | 'sms';
+type Step = 'school' | 'identity' | 'done';
 
 export function RegisterScreen({ navigation }: Props) {
-  const { applySession } = useAuth();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -47,26 +41,16 @@ export function RegisterScreen({ navigation }: Props) {
   const [loadingGeo, setLoadingGeo] = useState(false);
 
   const [nationalId, setNationalId] = useState('');
+  const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [smsRequired, setSmsRequired] = useState(true);
-
-  const [pendingToken, setPendingToken] = useState('');
-  const [code, setCode] = useState('');
-  const [phoneHint, setPhoneHint] = useState('');
+  const [doneMessage, setDoneMessage] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    // Uç yoksa/erişilemezse SMS zorunlu varsayılır.
-    void fetchRegisterConfig()
-      .then((cfg) => {
-        if (!cancelled) setSmsRequired(cfg.sms_required !== false);
-      })
-      .catch(() => undefined);
     void listRegisterProvinces()
       .then((rows) => {
         if (!cancelled) setProvinces(rows);
@@ -114,12 +98,12 @@ export function RegisterScreen({ navigation }: Props) {
 
   const onStart = async () => {
     if (!school) return;
-    if (!nationalId.trim() || !lastName.trim() || !email.trim() || (smsRequired && !phone.trim())) {
-      setError(
-        smsRequired
-          ? 'T.C. kimlik numarası, soyad, e-posta ve cep telefonu gerekli'
-          : 'T.C. kimlik numarası, soyad ve e-posta gerekli',
-      );
+    if (!nationalId.trim() || !firstName.trim() || !lastName.trim() || !phone.trim()) {
+      setError('T.C. kimlik numarası, ad, soyad ve cep telefonu gerekli');
+      return;
+    }
+    if (!/^\d{11}$/.test(nationalId.trim())) {
+      setError('T.C. kimlik numarası 11 hane olmalı');
       return;
     }
     setSubmitting(true);
@@ -128,50 +112,12 @@ export function RegisterScreen({ navigation }: Props) {
       const result = await startTeacherRegister({
         school_id: school.id,
         national_id: nationalId.trim(),
+        first_name: firstName.trim(),
         last_name: lastName.trim(),
-        email: email.trim(),
-        phone: smsRequired ? phone.trim() : '',
+        phone: phone.trim(),
       });
-      if (result.kind === 'session') {
-        await applySession(result.session);
-        return;
-      }
-      setPendingToken(result.pending.pending_token);
-      setPhoneHint(result.pending.phone_hint);
-      setCode('');
-      setStep('sms');
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const onVerify = async () => {
-    const digits = code.replace(/\D/g, '');
-    if (!/^\d{6}$/.test(digits)) {
-      setError('6 haneli doğrulama kodunu girin');
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    try {
-      const session = await verifyTeacherRegister(pendingToken, digits);
-      await applySession(session);
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const onResendSms = async () => {
-    setSubmitting(true);
-    setError(null);
-    try {
-      const result = await resendTeacherRegisterSms(pendingToken);
-      setPhoneHint(result.phone_hint);
-      setCode('');
+      setDoneMessage(result.message);
+      setStep('done');
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {
@@ -189,11 +135,8 @@ export function RegisterScreen({ navigation }: Props) {
         <Text style={styles.subtitle}>
           {step === 'school' && 'Önce il, ilçe ve okulunuzu seçin. Yalnızca geçerli lisansı olan okullar listelenir.'}
           {step === 'identity' &&
-            (smsRequired
-              ? 'T.C. kimlik numarası ve soyad ile öğretmen kaydınız eşleştirilir; doğrulama cep telefonunuza gelen SMS ile yapılır. Telefon, öğretmen kaydınızdaki numarayla aynı olmalıdır. E-posta adresiniz giriş için kullanıcı adı olur.'
-              : 'T.C. kimlik numarası ve soyad, okulun öğretmenler listesindeki kayıtla eşleşirse hesabınız açılır. E-posta giriş kullanıcı adınızdır. Şifreniz T.C. kimlik numaranızdır.')}
-          {step === 'sms' &&
-            `Doğrulama kodu ${phoneHint} numarasına gönderildi. Varsayılan şifreniz T.C. kimlik numaranızdır.`}
+            'T.C., ad soyad ve telefonunuzu yazın. İstek okulunuza gider; onaylanınca T.C. ve okulun belirlediği şifreyle giriş yaparsınız.'}
+          {step === 'done' && 'İsteğiniz gönderildi.'}
         </Text>
 
         {step === 'school' && (
@@ -257,6 +200,14 @@ export function RegisterScreen({ navigation }: Props) {
             />
             <TextInput
               style={styles.input}
+              placeholder="Ad"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="words"
+              value={firstName}
+              onChangeText={setFirstName}
+            />
+            <TextInput
+              style={styles.input}
               placeholder="Soyad"
               placeholderTextColor={colors.textMuted}
               autoCapitalize="words"
@@ -265,29 +216,18 @@ export function RegisterScreen({ navigation }: Props) {
             />
             <TextInput
               style={styles.input}
-              placeholder="E-posta"
+              placeholder="Cep telefonu (05xx xxx xx xx)"
               placeholderTextColor={colors.textMuted}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              value={email}
-              onChangeText={setEmail}
+              keyboardType="phone-pad"
+              value={phone}
+              onChangeText={setPhone}
             />
-            {smsRequired && (
-              <TextInput
-                style={styles.input}
-                placeholder="Cep telefonu (05xx xxx xx xx)"
-                placeholderTextColor={colors.textMuted}
-                keyboardType="phone-pad"
-                value={phone}
-                onChangeText={setPhone}
-              />
-            )}
             {error && <Text style={styles.error}>{error}</Text>}
             <TouchableOpacity style={styles.button} onPress={() => void onStart()} disabled={submitting}>
               {submitting ? (
                 <ActivityIndicator color={colors.primaryText} />
               ) : (
-                <Text style={styles.buttonText}>{smsRequired ? 'SMS Kodu Gönder' : 'Kayıt Ol'}</Text>
+                <Text style={styles.buttonText}>Kayıt İsteği Gönder</Text>
               )}
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setStep('school')}>
@@ -296,35 +236,20 @@ export function RegisterScreen({ navigation }: Props) {
           </>
         )}
 
-        {step === 'sms' && (
+        {step === 'done' && (
           <>
-            <TextInput
-              style={styles.input}
-              placeholder="6 haneli SMS kodu"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="number-pad"
-              textContentType="oneTimeCode"
-              autoComplete="sms-otp"
-              maxLength={6}
-              value={code}
-              onChangeText={(value) => setCode(value.replace(/\D/g, '').slice(0, 6))}
-            />
-            {error && <Text style={styles.error}>{error}</Text>}
-            <TouchableOpacity style={styles.button} onPress={() => void onVerify()} disabled={submitting}>
-              {submitting ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.buttonText}>Doğrula ve Giriş Yap</Text>}
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => void onResendSms()} disabled={submitting}>
-              <Text style={styles.link}>Kodu yeniden gönder</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setStep('identity')} disabled={submitting}>
-              <Text style={styles.link}>Bilgileri düzelt</Text>
+            <Text style={styles.doneText}>{doneMessage}</Text>
+            <TouchableOpacity style={styles.button} onPress={() => navigation.goBack()}>
+              <Text style={styles.buttonText}>Girişe dön</Text>
             </TouchableOpacity>
           </>
         )}
 
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.link}>Hesabım var, giriş yap</Text>
-        </TouchableOpacity>
+        {step !== 'done' && (
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={styles.link}>Hesabım var, giriş yap</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -358,5 +283,12 @@ function makeStyles(colors: ThemeColors) {
     buttonText: { color: colors.primaryText, fontSize: 16, fontWeight: '600' },
     error: { color: colors.danger, marginBottom: 12, textAlign: 'center' },
     link: { color: colors.headerLink, textAlign: 'center', marginTop: 16, fontSize: 14 },
+    doneText: {
+      fontSize: 16,
+      color: colors.text,
+      textAlign: 'center',
+      lineHeight: 24,
+      marginBottom: 16,
+    },
   });
 }

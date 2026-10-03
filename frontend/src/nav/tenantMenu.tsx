@@ -18,6 +18,7 @@ import {
   HomeOutlined,
   IdcardOutlined,
   MailOutlined,
+  MobileOutlined,
   NotificationOutlined,
   ReadOutlined,
   RiseOutlined,
@@ -196,7 +197,14 @@ export function buildTenantMenu(opts: {
   }
 
   const system: NavLeaf[] = []
-  if (hasModule('users')) system.push({ key: '/users', icon: <UserOutlined />, label: 'Yetkilendirme' })
+  if (hasModule('users')) {
+    system.push({ key: '/users', icon: <UserOutlined />, label: 'Yetkilendirme' })
+    system.push({
+      key: '/mobile-register-requests',
+      icon: <MobileOutlined />,
+      label: 'Mobil Kayıt İstekleri',
+    })
+  }
   if (hasModule('audit')) {
     system.push({ key: '/audit-logs', icon: <AuditOutlined />, label: 'Denetim Kayıtları' })
   }

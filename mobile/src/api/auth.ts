@@ -27,12 +27,11 @@ export interface RegisterOption {
 }
 
 export interface TeacherRegisterStartResult {
-  pending_token: string;
-  expires_at: string;
-  phone_hint: string;
-  code_expires_at: string;
-  requests_remaining: number;
-  max_requests: number;
+  request_id: number;
+  status: 'pending';
+  school_name: string;
+  tenant_name?: string;
+  message: string;
 }
 
 function sessionFromPayload(payload: LoginResponseData): AuthSession {
@@ -100,45 +99,15 @@ export async function listRegisterSchools(provinceId: number, districtId: number
   return data.data;
 }
 
-export async function fetchRegisterConfig(): Promise<{ sms_required: boolean }> {
-  const { data } = await client.get<Envelope<{ sms_required: boolean }>>('/api/auth/teacher-register/config');
-  return data.data;
-}
-
-// SMS zorunluysa doğrulama oturumu, değilse (geçici SMS'siz mod) doğrudan oturum döner.
-export type TeacherRegisterStartResponse =
-  | { kind: 'sms'; pending: TeacherRegisterStartResult }
-  | { kind: 'session'; session: AuthSession };
-
 export async function startTeacherRegister(payload: {
   school_id: number;
   national_id: string;
+  first_name: string;
   last_name: string;
-  email: string;
   phone: string;
-}): Promise<TeacherRegisterStartResponse> {
-  const { data } = await client.post<Envelope<TeacherRegisterStartResult & LoginResponseData>>(
-    '/api/auth/teacher-register',
-    payload,
-  );
-  if (data.data.pending_token) return { kind: 'sms', pending: data.data };
-  return { kind: 'session', session: sessionFromPayload(data.data) };
-}
-
-export async function resendTeacherRegisterSms(pendingToken: string): Promise<TeacherRegisterStartResult> {
-  const { data } = await client.post<Envelope<TeacherRegisterStartResult>>(
-    '/api/auth/teacher-register/resend-sms',
-    { pending_token: pendingToken },
-  );
+}): Promise<TeacherRegisterStartResult> {
+  const { data } = await client.post<Envelope<TeacherRegisterStartResult>>('/api/auth/teacher-register', payload);
   return data.data;
-}
-
-export async function verifyTeacherRegister(pendingToken: string, code: string): Promise<AuthSession> {
-  const { data } = await client.post<Envelope<LoginResponseData>>('/api/auth/teacher-register/verify', {
-    pending_token: pendingToken,
-    code,
-  });
-  return sessionFromPayload(data.data);
 }
 
 export async function changePassword(

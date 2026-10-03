@@ -185,6 +185,13 @@ const MENU_PERMISSION_GROUPS = [
     permissions: ['users.read', 'users.create', 'users.update', 'users.delete'],
   },
   {
+    id: 'mobile_register_requests',
+    label: 'Mobil Kayıt İstekleri',
+    group: 'Sistem',
+    module: 'users',
+    permissions: ['mobile_register_requests.read', 'mobile_register_requests.update'],
+  },
+  {
     id: 'audit',
     label: 'Denetim Kayıtları',
     group: 'Sistem',
@@ -239,6 +246,7 @@ const MENU_PATH_PERMISSION = {
   '/skill-training': 'skill_training.read',
   '/guidance': 'guidance.read',
   '/users': 'users.read',
+  '/mobile-register-requests': 'mobile_register_requests.read',
   '/audit-logs': 'audit.read',
   '/feedback': 'feedback.read',
   '/work-tasks': 'work_tasks.read',

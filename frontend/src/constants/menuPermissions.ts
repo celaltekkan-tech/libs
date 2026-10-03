@@ -24,6 +24,7 @@ export const MENU_PATH_PERMISSION: Record<string, string> = {
   '/skill-training': 'skill_training.read',
   '/guidance': 'guidance.read',
   '/users': 'users.read',
+  '/mobile-register-requests': 'mobile_register_requests.read',
   '/audit-logs': 'audit.read',
   '/work-tasks': 'work_tasks.read',
   // /calendar: kaynak OR kontrolü AppLayout + CALENDAR_MENU_SOURCE_PERMISSIONS

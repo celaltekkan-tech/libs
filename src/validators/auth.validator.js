@@ -28,38 +28,15 @@ const teacherRegisterStartSchema = Joi.object({
       'string.empty': 'T.C. kimlik numarası zorunludur',
       'string.pattern.base': 'Geçerli bir T.C. kimlik numarası girin (11 hane)',
     }),
-  last_name: Joi.string().trim().min(1).max(80).required(),
-  email: email.required().messages({
-    'string.email': 'Geçerli bir e-posta adresi girin',
-    'string.empty': 'E-posta zorunludur',
+  first_name: Joi.string().trim().min(1).max(80).required().messages({
+    'string.empty': 'Ad zorunludur',
   }),
-  // SMS zorunluysa servis katmanı telefonu zorunlu tutar (TEACHER_REGISTER_SMS_REQUIRED).
-  phone: Joi.string().trim().max(30).allow('', null),
-});
-
-const teacherRegisterPendingSchema = Joi.object({
-  pending_token: Joi.string().required().messages({
-    'string.empty': 'Doğrulama oturumu zorunludur',
+  last_name: Joi.string().trim().min(1).max(80).required().messages({
+    'string.empty': 'Soyad zorunludur',
   }),
-});
-
-function sixDigitCode(value, helpers) {
-  const digits = String(value || '').replace(/\D/g, '');
-  if (!/^\d{6}$/.test(digits)) {
-    return helpers.error('string.pattern.base');
-  }
-  return digits;
-}
-
-const teacherRegisterVerifySchema = teacherRegisterPendingSchema.keys({
-  code: Joi.string()
-    .trim()
-    .custom(sixDigitCode)
-    .required()
-    .messages({
-      'string.empty': 'Doğrulama kodu zorunludur',
-      'string.pattern.base': '6 haneli doğrulama kodunu girin',
-    }),
+  phone: Joi.string().trim().max(30).required().messages({
+    'string.empty': 'Cep telefonu zorunludur',
+  }),
 });
 
 const registerSchema = Joi.object({
@@ -71,10 +48,17 @@ const registerSchema = Joi.object({
 });
 
 const loginSchema = Joi.object({
-  email: email.required().messages({
-    'string.email': 'Geçerli bir e-posta adresi girin',
-    'string.empty': 'E-posta zorunludur',
-  }),
+  email: Joi.alternatives()
+    .try(
+      Joi.string().trim().pattern(/^\d{11}$/),
+      email,
+    )
+    .required()
+    .messages({
+      'alternatives.match': 'Geçerli bir T.C. kimlik numarası veya e-posta girin',
+      'any.required': 'T.C. kimlik numarası veya e-posta zorunludur',
+      'string.empty': 'T.C. kimlik numarası veya e-posta zorunludur',
+    }),
   password: Joi.string().required().messages({
     'string.empty': 'Şifre zorunludur',
   }),
@@ -175,8 +159,6 @@ const tenantMenuLayoutSchema = Joi.object({
 
 module.exports = {
   teacherRegisterStartSchema,
-  teacherRegisterPendingSchema,
-  teacherRegisterVerifySchema,
   registerSchema,
   loginSchema,
   verify2faSchema,

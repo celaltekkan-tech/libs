@@ -32,4 +32,21 @@ const updateUserSchema = Joi.object({
   .or('role_id', 'school_role')
   .min(1);
 
-module.exports = { createUserSchema, updateUserSchema, SCHOOL_ROLES };
+const approveMobileRegisterSchema = Joi.object({
+  password: Joi.string().trim().min(6).max(32).required().messages({
+    'string.empty': 'Şifre zorunludur',
+    'string.min': 'Şifre en az 6 karakter olmalı',
+  }),
+});
+
+const rejectMobileRegisterSchema = Joi.object({
+  reason: Joi.string().trim().max(400).allow('', null),
+});
+
+module.exports = {
+  createUserSchema,
+  updateUserSchema,
+  SCHOOL_ROLES,
+  approveMobileRegisterSchema,
+  rejectMobileRegisterSchema,
+};
