@@ -20,7 +20,9 @@ const {
   sequelize,
 } = require('../models');
 const licenseService = require('./licenseService');
-const { assertValidMobilePhone } = require('../utils/phone');
+const legalTimestampLog = require('./legalTimestampLogService');
+const { turkishNamesEqual } = require('../utils/trName');
+const { assertValidMobilePhone, normalizeMobilePhone, formatMobilePhone } = require('../utils/phone');
 
 const BCRYPT_ROUNDS = 10;
 const TEACHER_ROLE_NAME = 'Öğretmen';
@@ -191,13 +193,84 @@ async function listLicensedSchools(provinceId, districtId) {
 }
 
 async function findTeacherByNationalId(tenantId, nationalId) {
+  const tckn = normalizeNationalId(nationalId);
+  if (!tckn) return null;
   const teachers = await Teacher.findAll({
     where: {
       tenant_id: tenantId,
       national_id: { [Op.ne]: null },
     },
   });
-  return teachers.find((row) => normalizeNationalId(row.national_id) === nationalId) || null;
+  return teachers.find((row) => normalizeNationalId(row.national_id) === tckn) || null;
+}
+
+async function findTeacherByName(tenantId, schoolId, firstName, lastName) {
+  const teachers = await Teacher.findAll({
+    where: { tenant_id: tenantId, personnel_type: 'ogretmen' },
+  });
+  const matches = teachers.filter(
+    (row) => turkishNamesEqual(row.first_name, firstName) && turkishNamesEqual(row.last_name, lastName),
+  );
+  if (matches.length === 0) return null;
+  return matches.find((row) => Number(row.school_id) === Number(schoolId)) || matches[0];
+}
+
+async function resolveTeacher(tenantId, schoolId, request) {
+  if (request.teacher_id) {
+    const byId = await Teacher.findByPk(request.teacher_id);
+    if (byId && byId.tenant_id === tenantId) return byId;
+  }
+  const byTc = await findTeacherByNationalId(tenantId, request.national_id);
+  if (byTc) return byTc;
+  return findTeacherByName(tenantId, schoolId, request.first_name, request.last_name);
+}
+
+function snapshotTeacher(teacher) {
+  if (!teacher) return null;
+  return {
+    id: teacher.id,
+    first_name: teacher.first_name || null,
+    last_name: teacher.last_name || null,
+    national_id: teacher.national_id || null,
+    phone: teacher.phone || null,
+    email: teacher.email || null,
+  };
+}
+
+function buildMismatches(request, teacher) {
+  const mismatches = [];
+  const requestedTc = normalizeNationalId(request.national_id);
+  const oursTc = teacher ? normalizeNationalId(teacher.national_id) : null;
+  const requestedPhone = normalizeMobilePhone(request.phone);
+  const oursPhone = teacher ? normalizeMobilePhone(teacher.phone) : null;
+
+  if (!oursTc) {
+    mismatches.push({ field: 'national_id', kind: 'empty', ours: null, requested: requestedTc });
+  } else if (oursTc !== requestedTc) {
+    mismatches.push({ field: 'national_id', kind: 'mismatch', ours: oursTc, requested: requestedTc });
+  }
+
+  if (!oursPhone) {
+    mismatches.push({
+      field: 'phone',
+      kind: 'empty',
+      ours: null,
+      requested: request.phone || null,
+    });
+  } else if (oursPhone !== requestedPhone) {
+    mismatches.push({
+      field: 'phone',
+      kind: 'mismatch',
+      ours: formatMobilePhone(oursPhone),
+      requested: request.phone || null,
+    });
+  }
+
+  return mismatches;
+}
+
+function warningMessage(fullName) {
+  return `Lütfen ${fullName} öğretmen ile irtibata geçiniz; "talebi siz mi oluşturdunuz" diye.`;
 }
 
 async function notifyTenantApprovers(tenantId, title, body) {
@@ -242,23 +315,38 @@ function serializeRequest(row) {
     last_name: data.last_name,
     full_name: `${data.first_name} ${data.last_name}`.trim(),
     phone: data.phone,
+    email: data.email || null,
     status: data.status,
     teacher_id: data.teacher_id,
     user_id: data.user_id,
     reject_reason: data.reject_reason,
     reviewed_at: data.reviewed_at,
+    reviewed_by_user_id: data.reviewed_by_user_id || data.ReviewedBy?.id || null,
     reviewed_by_name: data.ReviewedBy?.full_name || null,
+    reviewed_by_email: data.ReviewedBy?.email || null,
     created_at: data.created_at,
     updated_at: data.updated_at,
   };
 }
 
+async function serializeRequestWithMatch(row) {
+  const base = serializeRequest(row);
+  const teacher = await resolveTeacher(row.tenant_id, row.school_id, row);
+  const mismatches = buildMismatches(row, teacher);
+  return {
+    ...base,
+    teacher_on_file: snapshotTeacher(teacher),
+    mismatches,
+    warning_message: mismatches.length ? warningMessage(base.full_name) : null,
+  };
+}
+
 const requestInclude = [
   { model: School, attributes: ['id', 'name'] },
-  { model: User, as: 'ReviewedBy', attributes: ['id', 'full_name'] },
+  { model: User, as: 'ReviewedBy', attributes: ['id', 'full_name', 'email'] },
 ];
 
-async function startRegistration({ school_id, national_id, first_name, last_name, phone }) {
+async function startRegistration({ school_id, national_id, first_name, last_name, phone, email }) {
   const school = await School.findByPk(school_id, {
     include: [{ model: Tenant, attributes: ['id', 'is_active', 'name'] }],
   });
@@ -274,14 +362,18 @@ async function startRegistration({ school_id, national_id, first_name, last_name
     throw fail(400, 'VALIDATION_ERROR', 'Ad ve soyad zorunludur');
   }
   const phoneNorm = assertValidMobilePhone(phone, { required: true });
+  const emailNorm = String(email || '').trim().toLowerCase();
+  if (!emailNorm) {
+    throw fail(400, 'VALIDATION_ERROR', 'E-posta zorunludur');
+  }
 
   const existingUser = await User.unscoped().findOne({
     where: {
-      [Op.or]: [{ national_id: tckn }, { email: placeholderEmail(tckn) }],
+      [Op.or]: [{ national_id: tckn }, { email: placeholderEmail(tckn) }, { email: emailNorm }],
     },
   });
   if (existingUser?.is_active) {
-    throw fail(409, 'ALREADY_REGISTERED', 'Bu T.C. kimlik numarası zaten kayıtlı. Şifrenizle giriş yapın.');
+    throw fail(409, 'ALREADY_REGISTERED', 'Bu T.C. kimlik numarası veya e-posta zaten kayıtlı. Şifrenizle giriş yapın.');
   }
 
   const pending = await MobileRegisterRequest.findOne({
@@ -304,6 +396,7 @@ async function startRegistration({ school_id, national_id, first_name, last_name
     first_name: first,
     last_name: last,
     phone: phoneNorm,
+    email: emailNorm,
     status: 'pending',
     teacher_id: teacher?.id || null,
   });
@@ -312,7 +405,7 @@ async function startRegistration({ school_id, national_id, first_name, last_name
   await notifyTenantApprovers(
     school.tenant_id,
     'Yeni mobil kayıt isteği',
-    `${fullName} (${tckn}) ${school.name} için mobil kayıt istedi. Telefon: ${phoneNorm}`,
+    `${fullName} (${tckn}) ${school.name} için mobil kayıt istedi. Telefon: ${phoneNorm} · E-posta: ${emailNorm}`,
   );
 
   return {
@@ -344,7 +437,7 @@ async function listRequests(tenantId, { status } = {}) {
       ['created_at', 'DESC'],
     ],
   });
-  return rows.map(serializeRequest);
+  return Promise.all(rows.map((row) => serializeRequestWithMatch(row)));
 }
 
 async function loadTenantRequest(tenantId, id) {
@@ -355,7 +448,15 @@ async function loadTenantRequest(tenantId, id) {
   return request;
 }
 
-async function approveRequest(tenantId, id, { password, reviewerUserId }) {
+async function approveRequest(tenantId, id, {
+  password,
+  confirmMismatch = false,
+  reviewerUserId,
+  reviewerName,
+  reviewerEmail,
+  ip,
+  userAgent,
+}) {
   const request = await loadTenantRequest(tenantId, id);
   if (request.status !== 'pending') {
     throw fail(409, 'REQUEST_NOT_PENDING', 'Bu istek zaten sonuçlandırılmış');
@@ -363,17 +464,41 @@ async function approveRequest(tenantId, id, { password, reviewerUserId }) {
   const plainPassword = assertEasyPassword(password);
   const tckn = request.national_id;
   const fullName = `${request.first_name} ${request.last_name}`.trim();
-  const emailNorm = placeholderEmail(tckn);
+  const emailNorm = String(request.email || '').trim().toLowerCase() || placeholderEmail(tckn);
+
+  const teacher = await resolveTeacher(tenantId, request.school_id, request);
+  const teacherBefore = snapshotTeacher(teacher);
+  const mismatches = buildMismatches(request, teacher);
+  if (mismatches.length && !confirmMismatch) {
+    const err = fail(409, 'MISMATCH_CONFIRMATION_REQUIRED', warningMessage(fullName));
+    err.mismatches = mismatches;
+    err.warning_message = err.message;
+    throw err;
+  }
+
+  let actorName = reviewerName || null;
+  let actorEmail = reviewerEmail || null;
+  if (reviewerUserId && (!actorName || !actorEmail)) {
+    const reviewer = await User.findByPk(reviewerUserId, { attributes: ['id', 'full_name', 'email'] });
+    actorName = actorName || reviewer?.full_name || null;
+    actorEmail = actorEmail || reviewer?.email || null;
+  }
 
   const existingByNational = await User.unscoped().findOne({
-    where: { [Op.or]: [{ national_id: tckn }, { email: emailNorm }] },
+    where: { [Op.or]: [{ national_id: tckn }, { email: placeholderEmail(tckn) }] },
   });
   if (existingByNational?.is_active) {
     throw fail(409, 'ALREADY_REGISTERED', 'Bu T.C. kimlik numarası zaten bir hesaba bağlı');
   }
 
-  const teacher = (request.teacher_id && (await Teacher.findByPk(request.teacher_id)))
-    || (await findTeacherByNationalId(tenantId, tckn));
+  const existingByEmail = await User.unscoped().findOne({ where: { email: emailNorm } });
+  if (existingByEmail) {
+    const samePerson =
+      existingByEmail.national_id === tckn || (teacher && existingByEmail.teacher_id === teacher.id);
+    if (!samePerson) {
+      throw fail(409, 'EMAIL_IN_USE', 'Bu e-posta zaten kullanılıyor');
+    }
+  }
 
   if (teacher) {
     const existingByTeacher = await User.unscoped().findOne({ where: { teacher_id: teacher.id } });
@@ -384,15 +509,18 @@ async function approveRequest(tenantId, id, { password, reviewerUserId }) {
 
   const role = await findTeacherRole(tenantId);
   const password_hash = await bcrypt.hash(plainPassword, BCRYPT_ROUNDS);
+  const approvedAt = new Date();
 
   const user = await sequelize.transaction(async (transaction) => {
     if (teacher) {
-      await teacher.update({ phone: request.phone }, { transaction });
+      const teacherUpdates = { phone: request.phone, email: emailNorm };
+      if (!normalizeNationalId(teacher.national_id)) teacherUpdates.national_id = tckn;
+      await teacher.update(teacherUpdates, { transaction });
     }
 
-    let account = existingByNational || (teacher
-      ? await User.unscoped().findOne({ where: { teacher_id: teacher.id }, transaction })
-      : null);
+    let account = existingByNational
+      || existingByEmail
+      || (teacher ? await User.unscoped().findOne({ where: { teacher_id: teacher.id }, transaction }) : null);
 
     const fields = {
       tenant_id: tenantId,
@@ -431,16 +559,66 @@ async function approveRequest(tenantId, id, { password, reviewerUserId }) {
         teacher_id: teacher?.id || request.teacher_id,
         user_id: account.id,
         reviewed_by_user_id: reviewerUserId || null,
-        reviewed_at: new Date(),
+        reviewed_at: approvedAt,
         reject_reason: null,
       },
       { transaction },
     );
 
+    if (teacher) await teacher.reload({ transaction });
+    const teacherAfter = snapshotTeacher(teacher);
+
+    await legalTimestampLog.record({
+      tenantId,
+      schoolId: request.school_id,
+      requestId: request.id,
+      eventType: 'mobile_register_account_created',
+      actor: {
+        userId: reviewerUserId || null,
+        name: actorName,
+        email: actorEmail,
+        ip,
+        userAgent,
+      },
+      payload: {
+        event: 'mobile_register_account_created',
+        law: '5651',
+        occurred_at: approvedAt.toISOString(),
+        approver: {
+          id: reviewerUserId || null,
+          name: actorName,
+          email: actorEmail,
+        },
+        request: {
+          id: request.id,
+          national_id: request.national_id,
+          first_name: request.first_name,
+          last_name: request.last_name,
+          phone: request.phone,
+          email: emailNorm,
+          school_id: request.school_id,
+          school_name: request.School?.name || null,
+        },
+        teacher_before: teacherBefore,
+        teacher_after: teacherAfter,
+        mismatches,
+        warning_acknowledged: mismatches.length > 0,
+        warning_message: mismatches.length ? warningMessage(fullName) : null,
+        created_user: {
+          id: account.id,
+          full_name: fullName,
+          national_id: tckn,
+          email: emailNorm,
+          phone: request.phone,
+        },
+      },
+      transaction,
+    });
+
     return account;
   });
 
-  return { user, request: serializeRequest(await loadTenantRequest(tenantId, request.id)) };
+  return { user, request: await serializeRequestWithMatch(await loadTenantRequest(tenantId, request.id)) };
 }
 
 async function rejectRequest(tenantId, id, { reason, reviewerUserId }) {
@@ -454,7 +632,7 @@ async function rejectRequest(tenantId, id, { reason, reviewerUserId }) {
     reviewed_at: new Date(),
     reject_reason: String(reason || '').trim() || null,
   });
-  return serializeRequest(await loadTenantRequest(tenantId, request.id));
+  return serializeRequestWithMatch(await loadTenantRequest(tenantId, request.id));
 }
 
 module.exports = {

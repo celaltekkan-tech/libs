@@ -20,10 +20,11 @@ export async function listMobileRegisterRequests(
 export async function approveMobileRegisterRequest(
   id: number,
   password: string,
+  confirmMismatch = false,
 ): Promise<MobileRegisterRequest> {
   const { data } = await client.post<Envelope<MobileRegisterRequest>>(
     `/api/users/mobile-register-requests/${id}/approve`,
-    { password },
+    { password, confirm_mismatch: confirmMismatch },
   )
   return data.data
 }

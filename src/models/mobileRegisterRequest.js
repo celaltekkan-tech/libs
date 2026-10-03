@@ -8,6 +8,7 @@ module.exports = (sequelize, DataTypes) => {
       first_name: { type: DataTypes.STRING(80), allowNull: false },
       last_name: { type: DataTypes.STRING(80), allowNull: false },
       phone: { type: DataTypes.STRING(30), allowNull: false },
+      email: { type: DataTypes.STRING, allowNull: true },
       status: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'pending' },
       teacher_id: { type: DataTypes.INTEGER, allowNull: true },
       user_id: { type: DataTypes.INTEGER, allowNull: true },

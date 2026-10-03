@@ -197,15 +197,25 @@ module.exports = {
   async approveMobileRegisterRequest(req, res, next) {
     try {
       const payload = req.validatedBody || req.body;
+      const reviewer = await User.findByPk(req.user.user_id, { attributes: ['id', 'full_name', 'email'] });
+      const forwarded = req.headers['x-forwarded-for'];
+      const ip = typeof forwarded === 'string' && forwarded.length
+        ? forwarded.split(',')[0].trim()
+        : req.ip || req.socket?.remoteAddress || null;
       const result = await teacherRegister.approveRequest(req.user.tenant_id, req.params.id, {
         password: payload.password,
+        confirmMismatch: payload.confirm_mismatch === true,
         reviewerUserId: req.user.user_id,
+        reviewerName: reviewer?.full_name || req.access?.user?.full_name || null,
+        reviewerEmail: reviewer?.email || req.user.email || null,
+        ip,
+        userAgent: req.get('user-agent'),
       });
       await audit.log(req, {
         action: 'create',
         entityType: 'user',
         entityId: result.user.id,
-        summary: `Mobil kayıt isteği onaylandı: ${result.user.full_name}`,
+        summary: `Mobil kayıt isteği onaylandı: ${result.user.full_name} (onaylayan: ${reviewer?.full_name || req.user.user_id})`,
       });
       res.json({
         success: true,
@@ -218,6 +228,9 @@ module.exports = {
           success: false,
           code: err.code,
           message: err.message,
+          data: err.mismatches
+            ? { mismatches: err.mismatches, warning_message: err.warning_message || err.message }
+            : undefined,
         });
       }
       next(err);
