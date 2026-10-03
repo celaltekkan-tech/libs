@@ -204,25 +204,50 @@ async function findTeacherByNationalId(tenantId, nationalId) {
   return teachers.find((row) => normalizeNationalId(row.national_id) === tckn) || null;
 }
 
-async function findTeacherByName(tenantId, schoolId, firstName, lastName) {
-  const teachers = await Teacher.findAll({
-    where: { tenant_id: tenantId, personnel_type: 'ogretmen' },
-  });
-  const matches = teachers.filter(
-    (row) => turkishNamesEqual(row.first_name, firstName) && turkishNamesEqual(row.last_name, lastName),
-  );
-  if (matches.length === 0) return null;
-  return matches.find((row) => Number(row.school_id) === Number(schoolId)) || matches[0];
+function matchedFields(request, teacher) {
+  const fields = [];
+  if (
+    turkishNamesEqual(teacher.first_name, request.first_name)
+    && turkishNamesEqual(teacher.last_name, request.last_name)
+  ) {
+    fields.push('name');
+  }
+  const requestedTc = normalizeNationalId(request.national_id);
+  const oursTc = normalizeNationalId(teacher.national_id);
+  if (requestedTc && oursTc && requestedTc === oursTc) fields.push('national_id');
+  const requestedPhone = normalizeMobilePhone(request.phone);
+  const oursPhone = normalizeMobilePhone(teacher.phone);
+  if (requestedPhone && oursPhone && requestedPhone === oursPhone) fields.push('phone');
+  const requestedEmail = String(request.email || '').trim().toLowerCase();
+  const oursEmail = String(teacher.email || '').trim().toLowerCase();
+  if (requestedEmail && oursEmail && requestedEmail === oursEmail) fields.push('email');
+  return fields;
 }
 
-async function resolveTeacher(tenantId, schoolId, request) {
-  if (request.teacher_id) {
-    const byId = await Teacher.findByPk(request.teacher_id);
-    if (byId && byId.tenant_id === tenantId) return byId;
-  }
-  const byTc = await findTeacherByNationalId(tenantId, request.national_id);
-  if (byTc) return byTc;
-  return findTeacherByName(tenantId, schoolId, request.first_name, request.last_name);
+async function assessTeacherMatch(tenantId, schoolId, request) {
+  const teachers = await Teacher.findAll({ where: { tenant_id: tenantId } });
+  const hits = teachers
+    .map((teacher) => ({ teacher, fields: matchedFields(request, teacher) }))
+    .filter((hit) => hit.fields.length > 0);
+
+  hits.sort((a, b) => {
+    if (b.fields.length !== a.fields.length) return b.fields.length - a.fields.length;
+    const schoolA = Number(a.teacher.school_id) === Number(schoolId) ? 1 : 0;
+    const schoolB = Number(b.teacher.school_id) === Number(schoolId) ? 1 : 0;
+    return schoolB - schoolA;
+  });
+
+  const best = hits[0] || null;
+  return {
+    registered: hits.length > 0,
+    teacher: best?.teacher || null,
+    matched_fields: best?.fields || [],
+    matches: hits.map((hit) => ({
+      teacher_id: hit.teacher.id,
+      full_name: `${hit.teacher.first_name || ''} ${hit.teacher.last_name || ''}`.trim(),
+      fields: hit.fields,
+    })),
+  };
 }
 
 function snapshotTeacher(teacher) {
@@ -270,7 +295,11 @@ function buildMismatches(request, teacher) {
 }
 
 function warningMessage(fullName) {
-  return `Lütfen ${fullName} öğretmen ile irtibata geçiniz; "talebi siz mi oluşturdunuz" diye.`;
+  return `Lütfen ${fullName} öğretmen ile irtibata geçiniz; "talebi siz mi oluşturdunuz".`;
+}
+
+function unregisteredWarningMessage() {
+  return 'Bu öğretmen kayıtlı bir öğretmen değil! Yine de onaylamak istiyor musunuz?';
 }
 
 async function notifyTenantApprovers(tenantId, title, body) {
@@ -331,13 +360,19 @@ function serializeRequest(row) {
 
 async function serializeRequestWithMatch(row) {
   const base = serializeRequest(row);
-  const teacher = await resolveTeacher(row.tenant_id, row.school_id, row);
-  const mismatches = buildMismatches(row, teacher);
+  const match = await assessTeacherMatch(row.tenant_id, row.school_id, row);
+  const mismatches = match.registered ? buildMismatches(row, match.teacher) : [];
   return {
     ...base,
-    teacher_on_file: snapshotTeacher(teacher),
+    teacher_on_file: snapshotTeacher(match.teacher),
+    matched_fields: match.matched_fields,
+    not_registered: !match.registered,
     mismatches,
-    warning_message: mismatches.length ? warningMessage(base.full_name) : null,
+    warning_message: !match.registered
+      ? unregisteredWarningMessage()
+      : mismatches.length
+        ? warningMessage(base.full_name)
+        : null,
   };
 }
 
@@ -426,6 +461,58 @@ async function findPendingByNationalId(nationalId) {
   });
 }
 
+async function listLinkableTeachers(tenantId) {
+  const rows = await Teacher.findAll({
+    where: { tenant_id: tenantId },
+    attributes: ['id', 'first_name', 'last_name', 'national_id', 'phone', 'email', 'school_id'],
+    order: [['first_name', 'ASC'], ['last_name', 'ASC']],
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    first_name: row.first_name,
+    last_name: row.last_name,
+    full_name: `${row.first_name || ''} ${row.last_name || ''}`.trim(),
+    national_id: row.national_id || null,
+    phone: row.phone || null,
+    email: row.email || null,
+    school_id: row.school_id || null,
+  }));
+}
+
+async function resolveApprovalTeacher(tenantId, request, selectedTeacherId) {
+  const match = await assessTeacherMatch(tenantId, request.school_id, request);
+  const suggestedId = match.teacher?.id || null;
+  if (selectedTeacherId === undefined) {
+    return {
+      ...match,
+      link_mode: match.teacher ? 'auto' : 'none',
+      suggested_teacher_id: suggestedId,
+    };
+  }
+  if (!selectedTeacherId) {
+    return {
+      registered: false,
+      teacher: null,
+      matched_fields: [],
+      matches: match.matches,
+      link_mode: 'none',
+      suggested_teacher_id: suggestedId,
+    };
+  }
+  const teacher = await Teacher.findByPk(selectedTeacherId);
+  if (!teacher || teacher.tenant_id !== tenantId) {
+    throw fail(400, 'TEACHER_NOT_FOUND', 'Seçilen öğretmen bu kuruma ait değil');
+  }
+  return {
+    registered: true,
+    teacher,
+    matched_fields: matchedFields(request, teacher),
+    matches: match.matches,
+    link_mode: suggestedId === teacher.id ? 'auto' : 'manual',
+    suggested_teacher_id: suggestedId,
+  };
+}
+
 async function listRequests(tenantId, { status } = {}) {
   const where = { tenant_id: tenantId };
   if (status) where.status = status;
@@ -451,6 +538,7 @@ async function loadTenantRequest(tenantId, id) {
 async function approveRequest(tenantId, id, {
   password,
   confirmMismatch = false,
+  teacherId: selectedTeacherId,
   reviewerUserId,
   reviewerName,
   reviewerEmail,
@@ -466,13 +554,28 @@ async function approveRequest(tenantId, id, {
   const fullName = `${request.first_name} ${request.last_name}`.trim();
   const emailNorm = String(request.email || '').trim().toLowerCase() || placeholderEmail(tckn);
 
-  const teacher = await resolveTeacher(tenantId, request.school_id, request);
+  const match = await resolveApprovalTeacher(tenantId, request, selectedTeacherId);
+  const teacher = match.teacher;
   const teacherBefore = snapshotTeacher(teacher);
-  const mismatches = buildMismatches(request, teacher);
-  if (mismatches.length && !confirmMismatch) {
-    const err = fail(409, 'MISMATCH_CONFIRMATION_REQUIRED', warningMessage(fullName));
+  const mismatches = match.registered ? buildMismatches(request, teacher) : [];
+  const warnings = [];
+  if (!match.registered) {
+    warnings.push({
+      code: 'TEACHER_NOT_REGISTERED',
+      message: unregisteredWarningMessage(),
+    });
+  } else if (mismatches.length) {
+    warnings.push({
+      code: 'MISMATCH_CONFIRMATION_REQUIRED',
+      message: warningMessage(fullName),
+      mismatches,
+    });
+  }
+  if (warnings.length && !confirmMismatch) {
+    const warning = warnings[0];
+    const err = fail(409, warning.code, warning.message);
     err.mismatches = mismatches;
-    err.warning_message = err.message;
+    err.warning_message = warning.message;
     throw err;
   }
 
@@ -601,15 +704,23 @@ async function approveRequest(tenantId, id, {
         },
         teacher_before: teacherBefore,
         teacher_after: teacherAfter,
+        not_registered: !match.registered,
+        link_mode: match.link_mode,
+        suggested_teacher_id: match.suggested_teacher_id,
+        matched_fields: match.matched_fields,
+        teacher_matches: match.matches,
         mismatches,
-        warning_acknowledged: mismatches.length > 0,
-        warning_message: mismatches.length ? warningMessage(fullName) : null,
+        warnings: warnings.map((warning) => ({ ...warning, acknowledged: true })),
+        warning_acknowledged: warnings.length > 0,
+        warning_message: warnings[0]?.message || null,
+        linked_teacher_id: teacher?.id || null,
         created_user: {
           id: account.id,
           full_name: fullName,
           national_id: tckn,
           email: emailNorm,
           phone: request.phone,
+          teacher_id: teacher?.id || null,
         },
       },
       transaction,
@@ -642,6 +753,7 @@ module.exports = {
   listLicensedSchools,
   startRegistration,
   findPendingByNationalId,
+  listLinkableTeachers,
   listRequests,
   approveRequest,
   rejectRequest,

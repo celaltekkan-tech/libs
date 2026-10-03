@@ -16,6 +16,17 @@ export interface MobileRegisterTeacherSnapshot {
   email: string | null
 }
 
+export interface LinkableTeacher {
+  id: number
+  first_name: string
+  last_name: string
+  full_name: string
+  national_id: string | null
+  phone: string | null
+  email: string | null
+  school_id: number | null
+}
+
 export interface MobileRegisterRequest {
   id: number
   tenant_id: number
@@ -36,6 +47,8 @@ export interface MobileRegisterRequest {
   reviewed_by_name: string | null
   reviewed_by_email: string | null
   teacher_on_file?: MobileRegisterTeacherSnapshot | null
+  matched_fields?: Array<'name' | 'national_id' | 'phone' | 'email'>
+  not_registered?: boolean
   mismatches?: MobileRegisterMismatch[]
   warning_message?: string | null
   created_at: string

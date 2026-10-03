@@ -21,6 +21,13 @@ router.get(
   permission('mobile_register_requests.read'),
   ctrl.listMobileRegisterRequests,
 );
+router.get(
+  '/mobile-register-requests/teachers',
+  auth,
+  moduleGuard,
+  permission('mobile_register_requests.update'),
+  ctrl.listMobileRegisterTeachers,
+);
 router.post(
   '/mobile-register-requests/:id/approve',
   auth,

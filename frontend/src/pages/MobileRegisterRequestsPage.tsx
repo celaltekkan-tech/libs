@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Button, Form, Input, Modal, Space, Tag, Typography } from 'antd'
+import { App, Button, Form, Input, Modal, Select, Space, Tag, Typography } from 'antd'
 import { CheckOutlined, CloseOutlined, ReloadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../components/AppLayout'
@@ -7,11 +7,12 @@ import { SortableTable } from '../components/SortableTable'
 import { useAuth } from '../auth/AuthContext'
 import {
   approveMobileRegisterRequest,
+  listLinkableTeachers,
   listMobileRegisterRequests,
   rejectMobileRegisterRequest,
 } from '../api/mobileRegisterRequests'
 import { ApiError, getErrorMessage } from '../api/client'
-import type { MobileRegisterRequest } from '../types/mobileRegisterRequest'
+import type { LinkableTeacher, MobileRegisterRequest } from '../types/mobileRegisterRequest'
 import { tablePagination } from '../utils/tablePagination'
 
 const EASY_WORDS = ['elma', 'okul', 'kedi', 'masa', 'sari', 'mavi', 'topu', 'evim']
@@ -28,6 +29,19 @@ function statusTag(status: MobileRegisterRequest['status']) {
   return <Tag color="red">Reddedildi</Tag>
 }
 
+const MATCH_FIELD_LABELS: Record<string, string> = {
+  name: 'Ad soyad',
+  national_id: 'T.C.',
+  phone: 'Telefon',
+  email: 'E-posta',
+}
+
+function teacherLabel(row: MobileRegisterRequest) {
+  const teacher = row.teacher_on_file
+  if (!teacher) return null
+  return `${teacher.first_name || ''} ${teacher.last_name || ''}`.trim() || `Öğretmen #${teacher.id}`
+}
+
 export function MobileRegisterRequestsPage() {
   const { message } = App.useApp()
   const { hasPermission } = useAuth()
@@ -39,11 +53,29 @@ export function MobileRegisterRequestsPage() {
   const [warningText, setWarningText] = useState('')
   const [pendingPassword, setPendingPassword] = useState('')
   const [current, setCurrent] = useState<MobileRegisterRequest | null>(null)
+  const [teachers, setTeachers] = useState<LinkableTeacher[]>([])
+  const [selectedTeacherId, setSelectedTeacherId] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [approveForm] = Form.useForm<{ password: string }>()
   const [rejectForm] = Form.useForm<{ reason?: string }>()
 
   const canUpdate = hasPermission('mobile_register_requests.update')
+  const selectedTeacher = useMemo(() => {
+    const fromList = teachers.find((teacher) => teacher.id === selectedTeacherId)
+    if (fromList) return fromList
+    const suggested = current?.teacher_on_file
+    if (!suggested || suggested.id !== selectedTeacherId) return null
+    return {
+      id: suggested.id,
+      first_name: suggested.first_name || '',
+      last_name: suggested.last_name || '',
+      full_name: `${suggested.first_name || ''} ${suggested.last_name || ''}`.trim(),
+      national_id: suggested.national_id,
+      phone: suggested.phone,
+      email: suggested.email,
+      school_id: null,
+    }
+  }, [teachers, selectedTeacherId, current])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -62,8 +94,14 @@ export function MobileRegisterRequestsPage() {
 
   const openApprove = (row: MobileRegisterRequest) => {
     setCurrent(row)
+    setSelectedTeacherId(row.teacher_on_file?.id ?? null)
     approveForm.setFieldsValue({ password: suggestEasyPassword() })
     setApproveOpen(true)
+    if (teachers.length === 0) {
+      void listLinkableTeachers()
+        .then(setTeachers)
+        .catch((err) => message.error(getErrorMessage(err)))
+    }
   }
 
   const openReject = (row: MobileRegisterRequest) => {
@@ -76,14 +114,17 @@ export function MobileRegisterRequestsPage() {
     if (!current) return
     setSubmitting(true)
     try {
-      await approveMobileRegisterRequest(current.id, password, confirmMismatch)
+      await approveMobileRegisterRequest(current.id, password, confirmMismatch, selectedTeacherId)
       message.success('Kayıt onaylandı. Öğretmene T.C. ve bu şifreyi söyleyin.')
       setApproveOpen(false)
       setWarningOpen(false)
       setPendingPassword('')
       void load()
     } catch (err) {
-      if (err instanceof ApiError && err.code === 'MISMATCH_CONFIRMATION_REQUIRED') {
+      if (
+        err instanceof ApiError
+        && (err.code === 'MISMATCH_CONFIRMATION_REQUIRED' || err.code === 'TEACHER_NOT_REGISTERED')
+      ) {
         setPendingPassword(password)
         setWarningText(getErrorMessage(err))
         setWarningOpen(true)
@@ -121,6 +162,20 @@ export function MobileRegisterRequestsPage() {
       { title: 'Telefon', dataIndex: 'phone', width: 140 },
       { title: 'E-posta', dataIndex: 'email', render: (value: string | null) => value || '—' },
       { title: 'Okul', dataIndex: 'school_name' },
+      {
+        title: 'Eşleşen öğretmen',
+        render: (_: unknown, record: MobileRegisterRequest) => {
+          const name = teacherLabel(record)
+          if (!name) return <Tag>Kayıtlı değil</Tag>
+          const fields = (record.matched_fields || []).map((field) => MATCH_FIELD_LABELS[field] || field)
+          return (
+            <span>
+              {name}
+              {fields.length > 0 ? <Typography.Text type="secondary"> · {fields.join(', ')}</Typography.Text> : null}
+            </span>
+          )
+        },
+      },
       {
         title: 'Onaylayan',
         dataIndex: 'reviewed_by_name',
@@ -209,6 +264,40 @@ export function MobileRegisterRequestsPage() {
           Öğretmen T.C. <b>{current?.national_id}</b> ve aşağıda yazdığınız şifreyle giriş yapacak. Kolay bir şifre
           önerdik; isterseniz değiştirin.
         </Typography.Paragraph>
+        <Typography.Paragraph style={{ marginBottom: 8 }}>
+          Önerilen eşleşme otomatik seçilir. Beğenmezseniz listeden başka öğretmen seçin. Onayda mobil hesap seçtiğiniz
+          öğretmene bağlanır.
+        </Typography.Paragraph>
+        <Select
+          showSearch
+          allowClear
+          optionFilterProp="label"
+          placeholder="Öğretmen seçin"
+          style={{ width: '100%', marginBottom: 12 }}
+          value={selectedTeacherId ?? undefined}
+          onChange={(value) => setSelectedTeacherId(value ?? null)}
+          options={teachers.map((teacher) => ({
+            value: teacher.id,
+            label: `${teacher.full_name}${teacher.national_id ? ` · ${teacher.national_id}` : ''}`,
+          }))}
+        />
+        {selectedTeacher ? (
+          <Typography.Paragraph>
+            Bağlanacak öğretmen: <b>{selectedTeacher.full_name}</b>
+            {selectedTeacher.national_id ? ` · T.C. ${selectedTeacher.national_id}` : ''}
+            {selectedTeacher.phone ? ` · ${selectedTeacher.phone}` : ''}
+            {selectedTeacher.email ? ` · ${selectedTeacher.email}` : ''}
+            {current?.teacher_on_file?.id === selectedTeacher.id && (current.matched_fields || []).length > 0
+              ? ` · Eşleşen: ${(current.matched_fields || []).map((field) => MATCH_FIELD_LABELS[field] || field).join(', ')}`
+              : current?.teacher_on_file?.id !== selectedTeacher.id
+                ? ' · Siz seçtiniz'
+                : ''}
+          </Typography.Paragraph>
+        ) : (
+          <Typography.Paragraph type="warning">
+            Öğretmen seçilmedi. Onaylarsanız hesap bir öğretmen kaydına bağlanmaz.
+          </Typography.Paragraph>
+        )}
         <Form form={approveForm} layout="vertical" onFinish={onApprove}>
           <Form.Item
             name="password"
