@@ -27,6 +27,7 @@ Okullar (Temel Tanımlar > Okullar): Hesaba bağlı okul kayıtları.
 - Birinci ve ikinci yabancı dil alanları, sorumluluk sınavında Yabancı Dil ve İkinci Yabancı Dil derslerinin öğretmenini belirler.
 Sınıflar (Temel Tanımlar > Sınıflar): Sınıf ve şube tanımları. Ders programı ve öğrenci ataması bu kayda dayanır.
 - Nasıl eklenir: Yeni kayıt > sınıf düzeyi, şube ve kapasite > Kaydet.
+- e-Okul ders programı sayfasındaki sınıf şube listesi, eklentideki "Sınıfları e-Okul'dan al" ile okula yazılır. Tek programda ad 9/A kalır. AMP ve ATP gibi birden fazla program varsa şube AMP-A biçiminde açılır.
 Öğrenciler (Temel Tanımlar > Öğrenciler): Öğrenci kayıtları, sınıf ataması, kayıt durumu.
 - Nasıl eklenir: Yeni Öğrenci > kimlik, sınıf, anne/baba adı, veli iletişim bilgileri > istenirse fotoğraf > kayıt durumu > Kaydet.
 - Ad, numara veya T.C. ile arama yapılır. e-Okul Excel'i içe aktarılabilir, liste Excel/PDF olarak indirilebilir.

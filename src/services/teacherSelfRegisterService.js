@@ -20,6 +20,7 @@ const {
   sequelize,
 } = require('../models');
 const licenseService = require('./licenseService');
+const { getUserLimitForPlan, isUnlimitedAccountRole } = require('../config/licensePlans');
 const legalTimestampLog = require('./legalTimestampLogService');
 const { turkishNamesEqual } = require('../utils/trName');
 const { assertValidMobilePhone, normalizeMobilePhone, formatMobilePhone } = require('../utils/phone');
@@ -78,6 +79,31 @@ async function assertSchoolLicensed(school) {
   return { tenant, license: active };
 }
 
+const SCHOOL_ROLE_LIMITS = {
+  Müdür: 1,
+  Yönetici: 1,
+  'Müdür Yardımcısı': 10,
+};
+
+async function listAssignableRoles(tenantId) {
+  const roles = await Role.findAll({
+    where: {
+      [Op.or]: [{ is_system: true, tenant_id: null }, { tenant_id: tenantId }],
+    },
+    attributes: ['id', 'role_name', 'is_system', 'description'],
+    order: [
+      ['is_system', 'DESC'],
+      ['role_name', 'ASC'],
+    ],
+  });
+  return roles.map((role) => ({
+    id: role.id,
+    name: role.role_name,
+    is_system: role.is_system,
+    description: role.description || null,
+  }));
+}
+
 async function findTeacherRole(tenantId) {
   const role = await Role.findOne({
     where: {
@@ -95,6 +121,64 @@ async function findTeacherRole(tenantId) {
   if (!role) {
     throw fail(500, 'ROLE_NOT_FOUND', 'Öğretmen yetki grubu tanımlı değil');
   }
+  return role;
+}
+
+async function resolveApprovalRole(tenantId, schoolId, { teacher, roleId }) {
+  if (teacher) return findTeacherRole(tenantId);
+  if (!roleId) {
+    throw fail(400, 'ROLE_REQUIRED', 'Eşleşmeyen talep için yetki grubu seçin');
+  }
+  const role = await Role.findByPk(roleId);
+  if (!role || (role.tenant_id && role.tenant_id !== tenantId) || (!role.is_system && role.tenant_id !== tenantId)) {
+    throw fail(400, 'ROLE_NOT_FOUND', 'Yetki grubu bulunamadı');
+  }
+
+  const headcount = SCHOOL_ROLE_LIMITS[role.role_name];
+  if (headcount && schoolId) {
+    const rows = await UserSchool.findAll({
+      where: { school_id: schoolId, role_id: role.id },
+      include: [{
+        model: User,
+        where: { tenant_id: tenantId, is_active: true },
+        attributes: ['id'],
+        required: true,
+      }],
+    });
+    if (rows.length >= headcount) {
+      throw fail(
+        400,
+        'SCHOOL_ROLE_LIMIT',
+        role.role_name === 'Müdür' || role.role_name === 'Yönetici'
+          ? 'Bu okulda müdür bir kişidir. İkinci müdür atanamaz.'
+          : 'Bu okulda müdür yardımcısı en fazla 10 kişi olabilir.',
+      );
+    }
+  }
+
+  if (!isUnlimitedAccountRole(role.role_name)) {
+    const active = await licenseService.getActiveLicense(tenantId);
+    const limit = getUserLimitForPlan(active?.plan);
+    if (limit != null) {
+      const users = await User.findAll({
+        where: { tenant_id: tenantId, is_platform_admin: false, is_active: true },
+        include: [{ model: UserSchool, include: [{ model: Role, attributes: ['role_name'] }] }],
+        attributes: ['id'],
+      });
+      const counted = users.filter((user) => {
+        const assignments = [...(user.UserSchools || [])].sort((a, b) => Number(a.id) - Number(b.id));
+        return !isUnlimitedAccountRole(assignments[0]?.Role?.role_name);
+      }).length;
+      if (counted >= limit) {
+        throw fail(
+          403,
+          'USER_LIMIT_REACHED',
+          `Bu planda öğretmen, rehber öğretmen, müdür ve müdür yardımcısı dışında en fazla ${limit} kullanıcı olabilir.`,
+        );
+      }
+    }
+  }
+
   return role;
 }
 
@@ -353,6 +437,9 @@ function serializeRequest(row) {
     reviewed_by_user_id: data.reviewed_by_user_id || data.ReviewedBy?.id || null,
     reviewed_by_name: data.ReviewedBy?.full_name || null,
     reviewed_by_email: data.ReviewedBy?.email || null,
+    hidden_at: data.hidden_at || null,
+    hidden_by_name: data.HiddenBy?.full_name || null,
+    tenant_name: data.Tenant?.name || null,
     created_at: data.created_at,
     updated_at: data.updated_at,
   };
@@ -378,8 +465,59 @@ async function serializeRequestWithMatch(row) {
 
 const requestInclude = [
   { model: School, attributes: ['id', 'name'] },
+  { model: Tenant, attributes: ['id', 'name'] },
   { model: User, as: 'ReviewedBy', attributes: ['id', 'full_name', 'email'] },
+  { model: User, as: 'HiddenBy', attributes: ['id', 'full_name'] },
 ];
+
+function visibilityWhere(visibility) {
+  if (visibility === 'hidden') return { hidden_at: { [Op.not]: null } };
+  if (visibility === 'all') return {};
+  return { hidden_at: null };
+}
+
+function searchWhere(q) {
+  const term = String(q || '').trim();
+  if (!term) return null;
+  const like = `%${term}%`;
+  return {
+    [Op.or]: [
+      { first_name: { [Op.iLike]: like } },
+      { last_name: { [Op.iLike]: like } },
+      { national_id: { [Op.iLike]: like } },
+      { phone: { [Op.iLike]: like } },
+      { email: { [Op.iLike]: like } },
+      sequelize.where(
+        sequelize.fn(
+          'concat',
+          sequelize.col('MobileRegisterRequest.first_name'),
+          ' ',
+          sequelize.col('MobileRegisterRequest.last_name'),
+        ),
+        { [Op.iLike]: like },
+      ),
+      sequelize.where(sequelize.col('School.name'), { [Op.iLike]: like }),
+      sequelize.where(sequelize.col('Tenant.name'), { [Op.iLike]: like }),
+    ],
+  };
+}
+
+function requestSnapshot(request) {
+  return {
+    id: request.id,
+    tenant_id: request.tenant_id,
+    tenant_name: request.Tenant?.name || null,
+    school_id: request.school_id,
+    school_name: request.School?.name || null,
+    national_id: request.national_id,
+    first_name: request.first_name,
+    last_name: request.last_name,
+    phone: request.phone,
+    email: request.email || null,
+    status: request.status,
+    hidden_at: request.hidden_at || null,
+  };
+}
 
 async function startRegistration({ school_id, national_id, first_name, last_name, phone, email }) {
   const school = await School.findByPk(school_id, {
@@ -513,18 +651,107 @@ async function resolveApprovalTeacher(tenantId, request, selectedTeacherId) {
   };
 }
 
-async function listRequests(tenantId, { status } = {}) {
-  const where = { tenant_id: tenantId };
+async function listRequests(tenantId, { status, q, visibility = 'visible' } = {}) {
+  const where = { tenant_id: tenantId, ...visibilityWhere(visibility) };
   if (status) where.status = status;
+  const search = searchWhere(q);
+  if (search) where[Op.and] = [search];
   const rows = await MobileRegisterRequest.findAll({
     where,
     include: requestInclude,
-    order: [
-      ['status', 'ASC'],
-      ['created_at', 'DESC'],
-    ],
+    subQuery: false,
+    order: [['created_at', 'DESC']],
   });
   return Promise.all(rows.map((row) => serializeRequestWithMatch(row)));
+}
+
+async function listAllRequests({ status, q, visibility = 'all', tenantId } = {}) {
+  const where = { ...visibilityWhere(visibility) };
+  if (tenantId) where.tenant_id = tenantId;
+  if (status) where.status = status;
+  const search = searchWhere(q);
+  if (search) where[Op.and] = [search];
+  const rows = await MobileRegisterRequest.findAll({
+    where,
+    include: requestInclude,
+    subQuery: false,
+    order: [['created_at', 'DESC']],
+    limit: 1000,
+  });
+  return Promise.all(rows.map((row) => serializeRequestWithMatch(row)));
+}
+
+async function loadAnyRequest(id) {
+  const request = await MobileRegisterRequest.findByPk(id, { include: requestInclude });
+  if (!request) throw fail(404, 'REQUEST_NOT_FOUND', 'Kayıt isteği bulunamadı');
+  return request;
+}
+
+async function writeVisibilityLog(request, hidden, actor, transaction) {
+  await legalTimestampLog.record({
+    tenantId: request.tenant_id,
+    schoolId: request.school_id,
+    requestId: request.id,
+    eventType: hidden ? 'mobile_register_hidden' : 'mobile_register_shown',
+    actor,
+    payload: {
+      event: hidden ? 'mobile_register_hidden' : 'mobile_register_shown',
+      law: '5651',
+      occurred_at: new Date().toISOString(),
+      approver: { id: actor.userId || null, name: actor.name || null, email: actor.email || null },
+      request: requestSnapshot(request),
+      hidden,
+    },
+    transaction,
+  });
+}
+
+async function applyVisibility(request, hidden, actor) {
+  await sequelize.transaction(async (transaction) => {
+    await writeVisibilityLog(request, hidden, actor, transaction);
+    await request.update(
+      hidden
+        ? { hidden_at: new Date(), hidden_by_user_id: actor.userId || null }
+        : { hidden_at: null, hidden_by_user_id: null },
+      { transaction },
+    );
+  });
+}
+
+async function setRequestVisibility(tenantId, id, hidden, actor) {
+  const request = await loadTenantRequest(tenantId, id);
+  await applyVisibility(request, hidden, actor);
+  return serializeRequestWithMatch(await loadTenantRequest(tenantId, id));
+}
+
+async function setAnyRequestVisibility(id, hidden, actor) {
+  const request = await loadAnyRequest(id);
+  await applyVisibility(request, hidden, actor);
+  return serializeRequestWithMatch(await loadAnyRequest(id));
+}
+
+async function deleteAnyRequest(id, actor) {
+  const request = await loadAnyRequest(id);
+  const snapshot = requestSnapshot(request);
+  await sequelize.transaction(async (transaction) => {
+    await legalTimestampLog.record({
+      tenantId: request.tenant_id,
+      schoolId: request.school_id,
+      requestId: request.id,
+      eventType: 'mobile_register_deleted',
+      actor,
+      payload: {
+        event: 'mobile_register_deleted',
+        law: '5651',
+        occurred_at: new Date().toISOString(),
+        approver: { id: actor.userId || null, name: actor.name || null, email: actor.email || null },
+        request: snapshot,
+      },
+      transaction,
+    });
+    await request.destroy({ transaction });
+  });
+  return snapshot;
 }
 
 async function loadTenantRequest(tenantId, id) {
@@ -539,6 +766,7 @@ async function approveRequest(tenantId, id, {
   password,
   confirmMismatch = false,
   teacherId: selectedTeacherId,
+  roleId,
   reviewerUserId,
   reviewerName,
   reviewerEmail,
@@ -556,6 +784,7 @@ async function approveRequest(tenantId, id, {
 
   const match = await resolveApprovalTeacher(tenantId, request, selectedTeacherId);
   const teacher = match.teacher;
+  const role = await resolveApprovalRole(tenantId, request.school_id, { teacher, roleId });
   const teacherBefore = snapshotTeacher(teacher);
   const mismatches = match.registered ? buildMismatches(request, teacher) : [];
   const warnings = [];
@@ -610,7 +839,6 @@ async function approveRequest(tenantId, id, {
     }
   }
 
-  const role = await findTeacherRole(tenantId);
   const password_hash = await bcrypt.hash(plainPassword, BCRYPT_ROUNDS);
   const approvedAt = new Date();
 
@@ -714,6 +942,8 @@ async function approveRequest(tenantId, id, {
         warning_acknowledged: warnings.length > 0,
         warning_message: warnings[0]?.message || null,
         linked_teacher_id: teacher?.id || null,
+        role_id: role.id,
+        role_name: role.role_name,
         created_user: {
           id: account.id,
           full_name: fullName,
@@ -753,8 +983,13 @@ module.exports = {
   listLicensedSchools,
   startRegistration,
   findPendingByNationalId,
+  listAssignableRoles,
   listLinkableTeachers,
   listRequests,
+  listAllRequests,
+  setRequestVisibility,
+  setAnyRequestVisibility,
+  deleteAnyRequest,
   approveRequest,
   rejectRequest,
 };

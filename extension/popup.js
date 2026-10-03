@@ -55,8 +55,7 @@ async function oidsSession() {
   return session
 }
 
-async function pullFromOids() {
-  setStatus('Program alınıyor…')
+async function currentProject() {
   const session = await oidsSession()
   const headers = { Authorization: `Bearer ${session.token}`, Accept: 'application/json' }
   const listRes = await fetch(`${API}/api/timetable/projects`, { headers })
@@ -66,6 +65,13 @@ async function pullFromOids() {
   if (!projects.length) throw new Error('Ders programı çalışması yok.')
   const preferred = new Set((session.projects || []).map((item) => item.projectId))
   const project = projects.find((item) => preferred.has(item.id)) || projects[0]
+  return { token: session.token, project }
+}
+
+async function pullFromOids() {
+  setStatus('Program alınıyor…')
+  const { token, project } = await currentProject()
+  const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' }
   const res = await fetch(`${API}/api/timetable/projects/${project.id}/eokul`, { headers })
   const body = await res.json()
   if (!res.ok || body.success === false) throw new Error(body.message || 'Program alınamadı')
@@ -150,6 +156,65 @@ async function fillPage() {
     response.missed?.length ? 'error' : 'ok'
   )
 }
+
+async function listClassesOnTab(tabId) {
+  const ask = async () => {
+    const frames = await framesOf(tabId)
+    let empty = null
+    for (const frame of frames) {
+      try {
+        const response = await chrome.tabs.sendMessage(tabId, { type: 'oids-list-classes' }, { frameId: frame.frameId })
+        if (response?.labels?.length) return response
+        if (response) empty = response
+      } catch {
+        // bu karede dinleyici yok
+      }
+    }
+    return empty
+  }
+  let response = await ask()
+  if (!response?.labels?.length) {
+    await chrome.scripting.executeScript({
+      target: { tabId, allFrames: true },
+      files: ['content/eokul.js'],
+    })
+    response = await ask()
+  }
+  return response
+}
+
+async function importClasses() {
+  setStatus('Sınıf listesi okunuyor…')
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+  if (!tab?.id || !tab.url || !/meb\.gov\.tr/i.test(tab.url)) {
+    throw new Error('Önce e-Okul ders programı sekmesine geçin.')
+  }
+  const listed = await listClassesOnTab(tab.id)
+  if (!listed?.labels?.length) {
+    throw new Error('Sınıf şube listesi bulunamadı. Kurum İşlemleri → Ders İşlemleri → Ders Programı sayfasını açın.')
+  }
+  const { token, project } = await currentProject()
+  const res = await fetch(`${API}/api/timetable/projects/${project.id}/eokul-classes`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ labels: listed.labels }),
+  })
+  const body = await res.json()
+  if (!res.ok || body.success === false) throw new Error(body.message || 'Sınıflar yazılamadı')
+  const data = body.data || {}
+  const naming = data.multi_program
+    ? ` ${ (data.programs || []).join(' ve ') } ayrı olduğu için şubeler ${data.programs?.[0] || 'AMP'}-A biçiminde açıldı.`
+    : ' Tek program olduğu için adlar 9/A biçiminde kaldı.'
+  setStatus(`${data.created || 0} yeni şube eklendi, ${data.existing || 0} tanesi zaten vardı.${naming}`, 'ok')
+}
+
+document.getElementById('import-classes-btn').addEventListener('click', () => {
+  importClasses().catch((err) => setStatus(err.message || 'Sınıflar alınamadı', 'error'))
+})
 
 document.getElementById('pull').addEventListener('click', () => {
   pullFromOids().catch((err) => setStatus(err.message || 'Alınamadı', 'error'))

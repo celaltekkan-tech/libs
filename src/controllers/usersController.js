@@ -6,6 +6,20 @@ const teacherRegister = require('../services/teacherSelfRegisterService');
 const { getUserLimitForPlan, isUnlimitedAccountRole, UNLIMITED_ACCOUNT_ROLES } = require('../config/licensePlans');
 const audit = require('../services/auditService');
 
+function actorFromRequest(req, reviewer) {
+  const forwarded = req.headers['x-forwarded-for'];
+  const ip = typeof forwarded === 'string' && forwarded.length
+    ? forwarded.split(',')[0].trim()
+    : req.ip || req.socket?.remoteAddress || null;
+  return {
+    userId: req.user.user_id,
+    name: reviewer?.full_name || req.access?.user?.full_name || null,
+    email: reviewer?.email || req.user.email || null,
+    ip,
+    userAgent: req.get('user-agent'),
+  };
+}
+
 const assignmentInclude = [
   {
     model: UserSchool,
@@ -187,7 +201,49 @@ module.exports = {
       const status = typeof req.query.status === 'string' && req.query.status.trim()
         ? req.query.status.trim()
         : undefined;
-      const rows = await teacherRegister.listRequests(req.user.tenant_id, { status });
+      const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+      const visibility = req.query.visibility === 'hidden' ? 'hidden' : 'visible';
+      const rows = await teacherRegister.listRequests(req.user.tenant_id, { status, q, visibility });
+      res.json({ success: true, data: rows });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async setMobileRegisterVisibility(req, res, next) {
+    try {
+      const payload = req.validatedBody || req.body;
+      const reviewer = await User.findByPk(req.user.user_id, { attributes: ['id', 'full_name', 'email'] });
+      const row = await teacherRegister.setRequestVisibility(
+        req.user.tenant_id,
+        req.params.id,
+        payload.hidden === true,
+        actorFromRequest(req, reviewer),
+      );
+      await audit.log(req, {
+        action: 'update',
+        entityType: 'mobile_register_request',
+        entityId: row.id,
+        summary: payload.hidden
+          ? `Mobil kayıt isteği gizlendi: ${row.full_name}`
+          : `Mobil kayıt isteği yeniden gösterildi: ${row.full_name}`,
+      });
+      res.json({
+        success: true,
+        message: payload.hidden ? 'İstek gizlendi' : 'İstek yeniden gösterildi',
+        data: row,
+      });
+    } catch (err) {
+      if (err.status) {
+        return res.status(err.status).json({ success: false, code: err.code, message: err.message });
+      }
+      next(err);
+    }
+  },
+
+  async listMobileRegisterRoles(req, res, next) {
+    try {
+      const rows = await teacherRegister.listAssignableRoles(req.user.tenant_id);
       res.json({ success: true, data: rows });
     } catch (err) {
       next(err);
@@ -215,6 +271,7 @@ module.exports = {
         password: payload.password,
         confirmMismatch: payload.confirm_mismatch === true,
         teacherId: Object.prototype.hasOwnProperty.call(payload, 'teacher_id') ? payload.teacher_id : undefined,
+        roleId: payload.role_id || null,
         reviewerUserId: req.user.user_id,
         reviewerName: reviewer?.full_name || req.access?.user?.full_name || null,
         reviewerEmail: reviewer?.email || req.user.email || null,

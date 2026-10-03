@@ -14,6 +14,7 @@ import { TenantDetailPage } from './pages/platform/TenantDetailPage'
 import { FeedbackPage } from './pages/FeedbackPage'
 import { FeedbackListPage } from './pages/platform/FeedbackListPage'
 import { PlatformNotificationsPage } from './pages/platform/PlatformNotificationsPage'
+import { PlatformMobileRegisterRequestsPage } from './pages/platform/PlatformMobileRegisterRequestsPage'
 import { LicensesPage } from './pages/platform/LicensesPage'
 import { BackupsPage } from './pages/platform/BackupsPage'
 import { SmsTestPage } from './pages/platform/SmsTestPage'
@@ -164,6 +165,7 @@ function ThemedApp() {
                   <Route path="/platform/support" element={<FeedbackListPage mode="support" />} />
                   <Route path="/platform/feedback" element={<FeedbackListPage />} />
                   <Route path="/platform/notifications" element={<PlatformNotificationsPage />} />
+                  <Route path="/platform/mobile-register-requests" element={<PlatformMobileRegisterRequestsPage />} />
                   <Route path="/platform/backups" element={<BackupsPage />} />
                   <Route path="/platform/sms-test" element={<SmsTestPage />} />
                   <Route path="/platform/lesson-pools" element={<LessonPoolsPage />} />

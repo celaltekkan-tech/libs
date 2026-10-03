@@ -111,6 +111,7 @@ export function EokulExtensionButton({ projectId, hasLessons }: { projectId: num
               <li>Sağ üstten Geliştirici modunu açın.</li>
               <li>Paketlenmemiş öğe yükle deyip oids-eokul klasörünü seçin.</li>
               <li>Bu sekmeye dönüp sayfayı yenileyin, sonra programı eklentiye yükleyin.</li>
+              <li>e-Okul ders programı sayfasında “Sınıfları e-Okul’dan al” şube adlarını okula yazar. AMP ve ATP ayrıysa şube AMP-A olur.</li>
             </ol>
           </Typography.Paragraph>
           <Button loading={loadingProgram} disabled={!hasLessons || installed === false} onClick={() => void onLoad()}>

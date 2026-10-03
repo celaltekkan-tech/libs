@@ -14,6 +14,17 @@ function sectionSort(a, b) {
   return String(a.section).localeCompare(String(b.section), 'tr', { sensitivity: 'base' });
 }
 
+/** Şube "AMP-A" ise program AMP, harf A. Düz "A" program taşımaz. */
+function splitProgramSection(section) {
+  const raw = String(section || '').trim();
+  const match = raw.match(/^([A-ZÇĞİÖŞÜ0-9]{2,12})-([A-ZÇĞİÖŞÜ0-9]{1,6})$/i);
+  if (!match) return { program: null, section: raw };
+  return {
+    program: match[1].toLocaleUpperCase('tr-TR'),
+    section: match[2].toLocaleUpperCase('tr-TR'),
+  };
+}
+
 /**
  * Taslak dersleri, e-Okul "Ders Programı" ızgarasının dolduracağı biçime çevirir.
  * Aynı şube/gün/saatte birden fazla ders varsa (seçmeli) hepsi subjects içinde durur.
@@ -28,9 +39,11 @@ function buildEokulPayload(project, lessons) {
     if (!classroom || !subject?.name) continue;
 
     if (!classes.has(assignment.classroom_id)) {
+      const parts = splitProgramSection(classroom.section);
       classes.set(assignment.classroom_id, {
         class_level: String(classroom.class_level),
         section: String(classroom.section),
+        program: parts.program,
         label: `${classroom.class_level}/${classroom.section}`,
         slots: new Map(),
       });
@@ -58,6 +71,7 @@ function buildEokulPayload(project, lessons) {
   const list = [...classes.values()].map((item) => ({
     class_level: item.class_level,
     section: item.section,
+    program: item.program,
     label: item.label,
     slots: [...item.slots.values()].sort((a, b) => a.day - b.day || a.period - b.period),
   }));
