@@ -9,6 +9,7 @@ export interface Tenant {
   two_factor_enabled?: boolean
   sms_login_enabled?: boolean
   feedback_enabled?: boolean
+  is_demo?: boolean
   created_at: string
   updated_at: string
   last_login_at?: string | null
@@ -17,6 +18,26 @@ export interface Tenant {
 export interface TenantListItem extends Tenant {
   school_count: number
   user_count: number
+}
+
+export interface DemoResetStatus {
+  tenant_id: number | null
+  tenant_name: string | null
+  schedule_time: string
+  timezone: string
+  has_snapshot: boolean
+  snapshot_taken_at: string | null
+  last_reset_at: string | null
+  last_reset_trigger: 'manual' | 'scheduled' | null
+  last_reset_summary: { restored?: boolean; added?: string[] } | null
+}
+
+export interface DemoResetResult {
+  tenant_id: number
+  tenant_name: string
+  restored?: boolean
+  added: string[]
+  snapshot_taken_at?: string
 }
 
 export interface TenantSchool {
@@ -43,6 +64,19 @@ export interface TenantUser {
   sms_login_requests_date?: string | null
   login_failed_count?: number
   login_locked_until?: string | null
+}
+
+export interface BannedAccount {
+  user_id: number
+  tenant_id: number
+  tenant_name: string | null
+  full_name: string
+  email: string
+  role: string
+  banned_at: string | null
+  banned_until: string | null
+  ip_address: string | null
+  failed_count: number
 }
 
 export interface CreateTenantWizardPayload {

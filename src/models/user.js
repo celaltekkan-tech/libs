@@ -94,6 +94,14 @@ module.exports = (sequelize, DataTypes) => {
           type: DataTypes.DATE,
           allowNull: true,
         },
+        login_locked_at: {
+          type: DataTypes.DATE,
+          allowNull: true,
+        },
+        login_lock_ip: {
+          type: DataTypes.STRING(64),
+          allowNull: true,
+        },
       },
       {
         tableName: "Users",

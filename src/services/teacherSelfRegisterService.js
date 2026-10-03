@@ -21,7 +21,7 @@ const jwtUtil = require('../utils/jwt');
 const licenseService = require('./licenseService');
 const { sendSms, SMS_STATUS, SmsConfigError } = require('./smsEngine');
 const { assertValidMobilePhone, formatMobilePhone, normalizeMobilePhone } = require('../utils/phone');
-const { maskPhone } = require('./smsLoginService');
+const { maskPhone, dateOnlyKey, rollSmsCounterIfStale } = require('./smsLoginService');
 
 // Kayıt: T.C. + soyad öğretmen kaydıyla, girilen telefon Teacher.phone ile eşleşmeli.
 // Hesap pasif açılır; SMS kodu doğrulanınca aktifleşir.
@@ -184,7 +184,7 @@ function assertPhoneBelongsToTeacher(teacher, phone) {
 
 function getCodeState(user) {
   const today = istanbulDateString();
-  const sameDay = user.sms_login_requests_date === today;
+  const sameDay = dateOnlyKey(user.sms_login_requests_date) === today;
   const count = sameDay ? Number(user.sms_login_requests_count || 0) : 0;
   return {
     today,
@@ -194,6 +194,7 @@ function getCodeState(user) {
 }
 
 async function storeVerificationCode(user, extra = {}) {
+  await rollSmsCounterIfStale(user);
   const state = getCodeState(user);
   if (state.count >= MAX_CODES_PER_DAY) {
     throw fail(

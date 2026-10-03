@@ -25,7 +25,13 @@ module.exports = {
 
     if (!tenant) {
       await queryInterface.bulkInsert('Tenants', [
-        { name: TENANT_NAME, plan: 'Basic', created_at: now, updated_at: now },
+        {
+          name: TENANT_NAME,
+          plan: 'Basic',
+          data: JSON.stringify({ demo: true }),
+          created_at: now,
+          updated_at: now,
+        },
       ]);
       tenant = await selectOne(
         queryInterface,

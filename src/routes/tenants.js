@@ -8,11 +8,23 @@ const {
   updateTenantUserSchema,
   resetTenantUserPasswordSchema,
   updateTenantSchoolSchema,
+  demoResetScheduleSchema,
 } = require('../validators/tenant.validator');
 const auth = require('../middlewares/auth');
 const platformAdmin = require('../middlewares/platformAdmin');
 
 router.get('/', auth, platformAdmin, ctrl.list);
+router.get('/banned-users', auth, platformAdmin, ctrl.listBannedUsers);
+router.get('/demo-reset', auth, platformAdmin, ctrl.demoResetStatus);
+router.put(
+  '/demo-reset/schedule',
+  auth,
+  platformAdmin,
+  validate(demoResetScheduleSchema),
+  ctrl.updateDemoResetSchedule
+);
+router.post('/demo-reset/run', auth, platformAdmin, ctrl.runDemoReset);
+router.post('/demo-reset/capture', auth, platformAdmin, ctrl.captureDemoBaseline);
 router.get('/:id', auth, platformAdmin, ctrl.get);
 router.get('/:id/schools', auth, platformAdmin, ctrl.listSchools);
 router.put(

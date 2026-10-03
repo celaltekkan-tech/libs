@@ -1,9 +1,11 @@
 const bcrypt = require('bcrypt');
+const { Op } = require('sequelize');
 const db = require('../models');
 const { Tenant, School, User, Role, UserSchool } = db;
 const { seedDefaultHolidays } = require('../services/holidayService');
 const { applyDirectorySchoolToPayload } = require('../services/directorySchoolService');
 const licenseService = require('../services/licenseService');
+const demoReset = require('../services/demoResetService');
 
 const BCRYPT_ROUNDS = 10;
 
@@ -52,11 +54,12 @@ module.exports = {
   async list(req, res, next) {
     try {
       const tenants = await Tenant.findAll({ order: [['id', 'ASC']] });
-      const [schoolCounts, userCounts, planByTenant, lastLogins] = await Promise.all([
+      const [schoolCounts, userCounts, planByTenant, lastLogins, demo] = await Promise.all([
         countsByTenant(School),
         countsByTenant(User),
         licenseService.getActiveMainPlanMap(),
         lastLoginByTenant(),
+        demoReset.findDemoTenant(),
       ]);
 
       const data = tenants.map((tenant) => ({
@@ -65,6 +68,37 @@ module.exports = {
         school_count: schoolCounts.get(tenant.id) || 0,
         user_count: userCounts.get(tenant.id) || 0,
         last_login_at: lastLogins.get(tenant.id) || null,
+        is_demo: Boolean(demo && demo.id === tenant.id),
+      }));
+
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async listBannedUsers(req, res, next) {
+    try {
+      const users = await User.findAll({
+        where: {
+          is_platform_admin: false,
+          login_locked_until: { [Op.gt]: new Date() },
+        },
+        include: [{ model: Tenant, attributes: ['id', 'name'] }],
+        order: [['login_locked_until', 'DESC']],
+      });
+
+      const data = users.map((user) => ({
+        user_id: user.id,
+        tenant_id: user.tenant_id,
+        tenant_name: user.Tenant ? user.Tenant.name : null,
+        full_name: user.full_name,
+        email: user.email,
+        role: user.role,
+        banned_at: toIsoOrNull(user.login_locked_at),
+        banned_until: toIsoOrNull(user.login_locked_until),
+        ip_address: user.login_lock_ip || null,
+        failed_count: Number(user.login_failed_count || 0),
       }));
 
       res.json({ success: true, data });
@@ -80,13 +114,19 @@ module.exports = {
         return res.status(404).json({ success: false, message: 'Hesap bulunamadı' });
       }
 
-      const [main, lastLoginAt] = await Promise.all([
+      const [main, lastLoginAt, demo] = await Promise.all([
         licenseService.getActiveLicense(tenant.id),
         tenantLastLoginAt(tenant.id),
+        demoReset.findDemoTenant(),
       ]);
       res.json({
         success: true,
-        data: { ...tenant.toJSON(), plan: main?.plan || null, last_login_at: lastLoginAt },
+        data: {
+          ...tenant.toJSON(),
+          plan: main?.plan || null,
+          last_login_at: lastLoginAt,
+          is_demo: Boolean(demo && demo.id === tenant.id),
+        },
       });
     } catch (err) {
       next(err);
@@ -152,6 +192,9 @@ module.exports = {
         return res.status(404).json({ success: false, message: 'Hesap bulunamadı' });
       }
 
+      const smsLoginService = require('../services/smsLoginService');
+      await smsLoginService.resetStaleSmsRequestCounters({ tenantId: tenant.id });
+
       const users = await User.findAll({
         where: { tenant_id: tenant.id },
         attributes: { exclude: ['password_hash'] },
@@ -159,7 +202,18 @@ module.exports = {
         order: [['id', 'ASC']],
       });
 
-      res.json({ success: true, data: users });
+      const today = smsLoginService.istanbulDateString();
+      const data = users.map((user) => {
+        const json = user.toJSON();
+        const state = smsLoginService.getRequestState(user);
+        json.sms_login_requests_count = state.count;
+        if (smsLoginService.dateOnlyKey(json.sms_login_requests_date) !== today) {
+          json.sms_login_requests_date = null;
+        }
+        return json;
+      });
+
+      res.json({ success: true, data });
     } catch (err) {
       next(err);
     }
@@ -611,6 +665,42 @@ module.exports = {
 
       await tenant.destroy();
       res.json({ success: true, message: 'Hesap silindi' });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async demoResetStatus(req, res, next) {
+    try {
+      const data = await demoReset.getStatus();
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async updateDemoResetSchedule(req, res, next) {
+    try {
+      const data = await demoReset.updateSchedule(req.validatedBody.schedule_time);
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async runDemoReset(req, res, next) {
+    try {
+      const data = await demoReset.resetDemoTenant('manual');
+      res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async captureDemoBaseline(req, res, next) {
+    try {
+      const data = await demoReset.captureBaseline();
+      res.json({ success: true, data });
     } catch (err) {
       next(err);
     }

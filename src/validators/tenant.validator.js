@@ -52,10 +52,17 @@ const updateTenantSchoolSchema = Joi.object({
   name: Joi.string().trim().required().min(2).max(200),
 });
 
+const demoResetScheduleSchema = Joi.object({
+  schedule_time: Joi.string()
+    .pattern(/^([01]\d|2[0-3]):[0-5]\d$/)
+    .required(),
+});
+
 module.exports = {
   createTenantWizardSchema,
   updateTenantSchema,
   updateTenantUserSchema,
   resetTenantUserPasswordSchema,
   updateTenantSchoolSchema,
+  demoResetScheduleSchema,
 };
