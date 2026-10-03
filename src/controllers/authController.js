@@ -111,9 +111,9 @@ async function finalizeLogin(req, res, user) {
   return respondWithSession(res, user);
 }
 
-async function rejectInvalidCredentials(res, user) {
+async function rejectInvalidCredentials(req, res, user) {
   if (user) {
-    const result = await loginLockout.registerFailure(user);
+    const result = await loginLockout.registerFailure(user, req);
     if (result.locked) {
       return res.status(423).json({
         success: false,
@@ -224,7 +224,7 @@ module.exports = {
 
       const isValidPassword = await bcrypt.compare(password, user.password_hash);
       if (!isValidPassword) {
-        return rejectInvalidCredentials(res, user);
+        return rejectInvalidCredentials(req, res, user);
       }
 
       if (!user.is_active) {
@@ -365,7 +365,7 @@ module.exports = {
         return finalizeLogin(req, res, user);
       }
 
-      const fail = await loginLockout.registerFailure(user);
+      const fail = await loginLockout.registerFailure(user, req);
       if (fail.locked) {
         return res.status(423).json({
           success: false,
@@ -429,7 +429,7 @@ module.exports = {
 
       const ok = await smsLoginService.verifySmsLoginCode(user, code);
       if (!ok) {
-        const fail = await loginLockout.registerFailure(user);
+        const fail = await loginLockout.registerFailure(user, req);
         if (fail.locked) {
           return res.status(423).json({
             success: false,

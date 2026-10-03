@@ -29,9 +29,21 @@ function generateCode() {
   return String(crypto.randomInt(100000, 1000000));
 }
 
+function dateOnlyKey(value) {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const y = value.getUTCFullYear();
+    const m = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(value.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const match = String(value).match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : null;
+}
+
 function getRequestState(user) {
   const today = istanbulDateString();
-  const sameDay = user.sms_login_requests_date === today;
+  const sameDay = dateOnlyKey(user.sms_login_requests_date) === today;
   const count = sameDay ? Number(user.sms_login_requests_count || 0) : 0;
   return {
     today,
@@ -40,8 +52,60 @@ function getRequestState(user) {
   };
 }
 
+async function resetStaleSmsRequestCounters({ tenantId } = {}) {
+  const { Op } = require('sequelize');
+  const { User } = require('../models');
+  const today = istanbulDateString();
+  const where = {
+    sms_login_requests_count: { [Op.gt]: 0 },
+    [Op.or]: [
+      { sms_login_requests_date: null },
+      { sms_login_requests_date: { [Op.ne]: today } },
+    ],
+  };
+  if (tenantId != null) where.tenant_id = tenantId;
+  const [updated] = await User.update(
+    {
+      sms_login_requests_count: 0,
+      sms_login_requests_date: null,
+    },
+    { where },
+  );
+  return { updated };
+}
+
+function startSmsLoginCounterCron() {
+  const cron = require('node-cron');
+  const expr = '5 0 * * *';
+  const run = async (reason) => {
+    try {
+      const result = await resetStaleSmsRequestCounters();
+      if (result.updated > 0) {
+        console.log(`[sms-login] ${reason}: ${result.updated} sayaç sıfırlandı`);
+      }
+    } catch (err) {
+      console.error('[sms-login] sayaç sıfırlama başarısız:', err.message);
+    }
+  };
+  cron.schedule(expr, () => run('gün değişti'), { timezone: 'Europe/Istanbul' });
+  console.log('[sms-login] günlük sayaç sıfırlama: her gün 00:05 (Europe/Istanbul)');
+  return run('açılış');
+}
+
+async function rollSmsCounterIfStale(user) {
+  const today = istanbulDateString();
+  const stored = dateOnlyKey(user.sms_login_requests_date);
+  if (stored && stored < today) {
+    await user.update({
+      sms_login_requests_count: 0,
+      sms_login_requests_date: today,
+    });
+  }
+  return getRequestState(user);
+}
+
 async function assertCanRequestSms(user) {
-  const state = getRequestState(user);
+  const state = await rollSmsCounterIfStale(user);
   if (state.count >= MAX_SMS_REQUESTS_PER_DAY) {
     const err = new Error(
       `Bugün için SMS kodu hakkı doldu (en fazla ${MAX_SMS_REQUESTS_PER_DAY}). Yöneticiniz sayacı sıfırlayabilir.`,
@@ -159,10 +223,14 @@ async function resetSmsRequestCounter(user) {
 module.exports = {
   MAX_SMS_REQUESTS_PER_DAY,
   istanbulDateString,
+  dateOnlyKey,
   maskPhone,
   getRequestState,
+  rollSmsCounterIfStale,
   issueSmsLoginCode,
   verifySmsLoginCode,
   clearSmsLoginCode,
   resetSmsRequestCounter,
+  resetStaleSmsRequestCounters,
+  startSmsLoginCounterCron,
 };

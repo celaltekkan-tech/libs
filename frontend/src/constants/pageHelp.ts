@@ -543,7 +543,11 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       },
       {
         title: 'Detay',
-        body: 'Hesap satırından detaya giderek kullanıcı, lisans ve okul özetini görürsünüz. Hesap adını düzenle kart başlığını değiştirir. Okul adını düzenle okul kaydını değiştirir; hesap adı aynıysa o da güncellenir. Kullanıcı satırındaki Şifre sıfırla ile yeni şifre belirlersiniz; giriş kilidi de kalkar. Yanlış şifre yüzünden kilitlenen kullanıcıda Giriş kilidi kolonu kırmızı görünür; Kilidi kaldır ile şifreyi değiştirmeden hatalı deneme sayacını sıfırlayıp hemen giriş yapmasını sağlarsınız.',
+        body: 'Hesap satırından detaya giderek kullanıcı, lisans ve okul özetini görürsünüz. Hesap adını düzenle kart başlığını değiştirir. Okul adını düzenle okul kaydını değiştirir; hesap adı aynıysa o da güncellenir. Kullanıcı satırındaki Şifre sıfırla ile yeni şifre belirlersiniz. Ban kaldırma yalnızca Banlı Hesaplar sekmesinden yapılır.',
+      },
+      {
+        title: 'Banlı Hesaplar sekmesi',
+        body: 'Hatalı giriş denemesi yüzünden banlanan tüm kullanıcılar tek listede görünür: hesap adı, kullanıcı, banlanma saati, geri sayan kalan süre ve denemenin geldiği IP adresi. Banı kaldır düğmesi şifreyi değiştirmeden kilidi açar. Liste kalan süre bittiğinde kendini günceller.',
       },
     ],
   },

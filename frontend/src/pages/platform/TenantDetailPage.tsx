@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { App, Button, Card, Descriptions, Form, Input, Modal, Popconfirm, Space, Switch, Tag, Typography } from 'antd'
+import { App, Button, Card, Descriptions, Form, Input, Modal, Popconfirm, Space, Switch, Tag, TimePicker, Typography } from 'antd'
 import { SortableTable } from '../../components/SortableTable'
-import { ArrowLeftOutlined, CommentOutlined, EditOutlined, IdcardOutlined, SafetyCertificateOutlined, UnlockOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, CommentOutlined, EditOutlined, IdcardOutlined, SafetyCertificateOutlined, SaveOutlined, UndoOutlined } from '@ant-design/icons'
+import dayjs from 'dayjs'
 import { AppLayout } from '../../components/AppLayout'
 import { SortableDashboard } from '../../components/SortableDashboard'
 import { useAuth } from '../../auth/AuthContext'
@@ -14,7 +15,10 @@ import {
   resetTenantUserPassword,
   resetTenantUserTwoFactor,
   resetTenantUserSmsLogin,
-  unlockTenantUserLogin,
+  captureDemoBaseline,
+  getDemoResetStatus,
+  runDemoReset,
+  updateDemoResetSchedule,
   updateTenant,
   updateTenantSchoolName,
   updateTenantUser,
@@ -22,7 +26,7 @@ import {
 import { listLicenses } from '../../api/licenses'
 import { getErrorMessage } from '../../api/client'
 import { isAddonPlan, isAiPlan, isSmsPlan } from '../../constants/licensePlans'
-import type { Tenant, TenantSchool, TenantUser, UpdateTenantUserPayload } from '../../types/tenant'
+import type { DemoResetStatus, Tenant, TenantSchool, TenantUser, UpdateTenantUserPayload } from '../../types/tenant'
 import type { License } from '../../types/license'
 import { MOBILE_PHONE_RULE, requiredMobilePhoneRule } from '../../utils/phone'
 
@@ -49,13 +53,21 @@ interface TenantNameForm {
   name: string
 }
 
-function isLoginLocked(user: TenantUser) {
-  if (!user.login_locked_until) return false
-  return new Date(user.login_locked_until).getTime() > Date.now()
+function istanbulDateKey(date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Istanbul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date)
 }
 
-function hasLoginLock(user: TenantUser) {
-  return isLoginLocked(user) || Number(user.login_failed_count || 0) > 0
+function smsRequestsToday(record: TenantUser, today: string): number {
+  const stored = record.sms_login_requests_date
+    ? String(record.sms_login_requests_date).slice(0, 10)
+    : ''
+  if (stored !== today) return 0
+  return Number(record.sms_login_requests_count || 0)
 }
 
 export function TenantDetailPage() {
@@ -67,6 +79,7 @@ export function TenantDetailPage() {
   const [tenant, setTenant] = useState<Tenant | null>(null)
   const [schools, setSchools] = useState<TenantSchool[]>([])
   const [users, setUsers] = useState<TenantUser[]>([])
+  const [smsToday, setSmsToday] = useState(istanbulDateKey)
   const [licenses, setLicenses] = useState<License[]>([])
   const [loading, setLoading] = useState(true)
   const [togglingStatus, setTogglingStatus] = useState(false)
@@ -76,7 +89,6 @@ export function TenantDetailPage() {
   const [resetting2fa, setResetting2fa] = useState(false)
   const [resettingUserId, setResettingUserId] = useState<number | null>(null)
   const [resettingSmsUserId, setResettingSmsUserId] = useState<number | null>(null)
-  const [unlockingUserId, setUnlockingUserId] = useState<number | null>(null)
   const [editingUser, setEditingUser] = useState<TenantUser | null>(null)
   const [passwordUser, setPasswordUser] = useState<TenantUser | null>(null)
   const [savingUser, setSavingUser] = useState(false)
@@ -91,6 +103,11 @@ export function TenantDetailPage() {
   const [contactForm] = Form.useForm<TenantContactForm>()
   const [schoolNameForm] = Form.useForm<SchoolNameForm>()
   const [tenantNameForm] = Form.useForm<TenantNameForm>()
+  const [demoStatus, setDemoStatus] = useState<DemoResetStatus | null>(null)
+  const [demoSchedule, setDemoSchedule] = useState('03:00')
+  const [resettingDemo, setResettingDemo] = useState(false)
+  const [capturingDemo, setCapturingDemo] = useState(false)
+  const [savingDemoSchedule, setSavingDemoSchedule] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -106,6 +123,13 @@ export function TenantDetailPage() {
       setUsers(userData)
       setLicenses(licenseData)
       contactForm.setFieldsValue({ phone: tenantData.phone || undefined })
+      if (tenantData.is_demo) {
+        const status = await getDemoResetStatus()
+        setDemoStatus(status)
+        setDemoSchedule(status.schedule_time || '03:00')
+      } else {
+        setDemoStatus(null)
+      }
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
@@ -152,13 +176,21 @@ export function TenantDetailPage() {
     if (Number.isFinite(tenantId)) void load()
   }, [tenantId, load])
 
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const next = istanbulDateKey()
+      setSmsToday((prev) => (prev === next ? prev : next))
+    }, 30_000)
+    return () => window.clearInterval(id)
+  }, [])
+
   async function handleSaveTenantPhone(values: TenantContactForm) {
     setSavingPhone(true)
     try {
       const { tenant: updated, usersPhoneSynced } = await updateTenant(tenantId, {
         phone: values.phone?.trim() || null,
       })
-      setTenant(updated)
+      setTenant((prev) => ({ ...updated, is_demo: updated.is_demo ?? prev?.is_demo }))
       if (usersPhoneSynced > 0) {
         const userData = await listTenantUsers(tenantId)
         setUsers(userData)
@@ -175,11 +207,65 @@ export function TenantDetailPage() {
     }
   }
 
+  function demoResultText(restored: boolean | undefined, added: string[]) {
+    const extra = added.length ? ` Eklenen: ${added.join(', ')}.` : ''
+    return restored
+      ? `Demo hesabı başlangıç haline döndü.${extra}`
+      : `Başlangıç görüntüsü kaydedildi.${extra}`
+  }
+
+  async function refreshDemoStatus() {
+    const status = await getDemoResetStatus()
+    setDemoStatus(status)
+    setDemoSchedule(status.schedule_time || '03:00')
+  }
+
+  async function saveDemoSchedule() {
+    setSavingDemoSchedule(true)
+    try {
+      const status = await updateDemoResetSchedule(demoSchedule)
+      setDemoStatus(status)
+      setDemoSchedule(status.schedule_time || demoSchedule)
+      message.success(`Geri alma saati ${status.schedule_time} olarak kaydedildi`)
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSavingDemoSchedule(false)
+    }
+  }
+
+  async function resetDemo() {
+    setResettingDemo(true)
+    try {
+      const result = await runDemoReset()
+      message.success(demoResultText(result.restored, result.added))
+      await load()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setResettingDemo(false)
+    }
+  }
+
+  async function captureDemo() {
+    setCapturingDemo(true)
+    try {
+      const result = await captureDemoBaseline()
+      message.success(demoResultText(false, result.added))
+      await refreshDemoStatus()
+      await load()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setCapturingDemo(false)
+    }
+  }
+
   async function handleToggleActive(checked: boolean) {
     setTogglingStatus(true)
     try {
       const { tenant: updated } = await updateTenant(tenantId, { is_active: checked })
-      setTenant(updated)
+      setTenant((prev) => ({ ...updated, is_demo: updated.is_demo ?? prev?.is_demo }))
       message.success(checked ? 'Hesap aktifleştirildi' : 'Hesap askıya alındı')
     } catch (err) {
       message.error(getErrorMessage(err))
@@ -192,7 +278,7 @@ export function TenantDetailPage() {
     setToggling2fa(true)
     try {
       const { tenant: updated } = await updateTenant(tenantId, { two_factor_enabled: checked })
-      setTenant(updated)
+      setTenant((prev) => ({ ...updated, is_demo: updated.is_demo ?? prev?.is_demo }))
       if (!checked) {
         setUsers((prev) => prev.map((user) => ({ ...user, totp_enabled: false })))
       }
@@ -212,7 +298,7 @@ export function TenantDetailPage() {
     setTogglingFeedback(true)
     try {
       const { tenant: updated } = await updateTenant(tenantId, { feedback_enabled: checked })
-      setTenant(updated)
+      setTenant((prev) => ({ ...updated, is_demo: updated.is_demo ?? prev?.is_demo }))
       message.success(checked ? 'Geri bildirim bu hesap için açıldı' : 'Geri bildirim bu hesap için kapatıldı')
     } catch (err) {
       message.error(getErrorMessage(err))
@@ -225,7 +311,7 @@ export function TenantDetailPage() {
     setTogglingSmsLogin(true)
     try {
       const { tenant: updated } = await updateTenant(tenantId, { sms_login_enabled: checked })
-      setTenant(updated)
+      setTenant((prev) => ({ ...updated, is_demo: updated.is_demo ?? prev?.is_demo }))
       if (checked) {
         const userData = await listTenantUsers(tenantId)
         setUsers(userData)
@@ -255,30 +341,11 @@ export function TenantDetailPage() {
             : user,
         ),
       )
-      message.success('SMS giriş istek sayacı ve kilit sıfırlandı')
+      message.success('SMS giriş istek sayacı sıfırlandı')
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
       setResettingSmsUserId(null)
-    }
-  }
-
-  async function handleUnlockUserLogin(userId: number) {
-    setUnlockingUserId(userId)
-    try {
-      await unlockTenantUserLogin(tenantId, userId)
-      setUsers((prev) =>
-        prev.map((user) =>
-          user.id === userId
-            ? { ...user, login_failed_count: 0, login_locked_until: null }
-            : user,
-        ),
-      )
-      message.success('Giriş kilidi kaldırıldı')
-    } catch (err) {
-      message.error(getErrorMessage(err))
-    } finally {
-      setUnlockingUserId(null)
     }
   }
 
@@ -330,7 +397,7 @@ export function TenantDetailPage() {
     setSavingTenantName(true)
     try {
       const { tenant: updated } = await updateTenant(tenantId, { name })
-      setTenant(updated)
+      setTenant((prev) => ({ ...updated, is_demo: updated.is_demo ?? prev?.is_demo }))
       message.success('Hesap adı kaydedildi')
       closeEditTenantName()
     } catch (err) {
@@ -425,6 +492,83 @@ export function TenantDetailPage() {
               Hesaplara dön
             </Button>
           </Link>
+
+          {tenant?.is_demo && (
+            <Card
+              title={
+                <Space>
+                  <UndoOutlined />
+                  Demo hesabı
+                  <Tag color="gold">Demo Eğitim Kurumu</Tag>
+                </Space>
+              }
+            >
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                  Müşteri adayları bu hesapta programı inceler. Yaptıkları değişiklikler her gün
+                  seçilen saatte ve aşağıdaki düğmeyle başlangıç haline döner. Eksik sınıf, öğretmen,
+                  öğrenci ve diğer kayıtlar örnek veriyle tamamlanır. Lisans, hesap durumu ve kurum
+                  telefonu yerinde kalır.
+                </Typography.Paragraph>
+                <Descriptions column={{ xs: 1, md: 2 }} size="small">
+                  <Descriptions.Item label="Başlangıç görüntüsü">
+                    {demoStatus?.snapshot_taken_at
+                      ? new Date(demoStatus.snapshot_taken_at).toLocaleString('tr-TR')
+                      : 'Henüz alınmadı'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Son geri alma">
+                    {demoStatus?.last_reset_at
+                      ? `${new Date(demoStatus.last_reset_at).toLocaleString('tr-TR')} (${
+                          demoStatus.last_reset_trigger === 'scheduled' ? 'zamanlanmış' : 'elle'
+                        })`
+                      : 'Henüz yapılmadı'}
+                  </Descriptions.Item>
+                </Descriptions>
+                {demoStatus?.last_reset_summary?.added?.length ? (
+                  <Typography.Text type="secondary">
+                    Son doldurulanlar: {demoStatus.last_reset_summary.added.join(', ')}
+                  </Typography.Text>
+                ) : null}
+                <Space wrap align="center">
+                  <TimePicker
+                    value={demoSchedule ? dayjs(`2000-01-01T${demoSchedule}:00`) : undefined}
+                    format="HH:mm"
+                    minuteStep={5}
+                    needConfirm={false}
+                    onChange={(value) => setDemoSchedule(value ? value.format('HH:mm') : '03:00')}
+                  />
+                  <Button loading={savingDemoSchedule} onClick={() => void saveDemoSchedule()}>
+                    Saati kaydet
+                  </Button>
+                  <Typography.Text type="secondary">Türkiye saati</Typography.Text>
+                </Space>
+                <Space wrap>
+                  <Popconfirm
+                    title="Demo hesabı başlangıç haline dönsün mü?"
+                    description="Bu hesaptaki değişiklikler silinir. Eksik kayıtlar örnek veriyle tamamlanır."
+                    okText="Geri al"
+                    cancelText="Vazgeç"
+                    onConfirm={() => void resetDemo()}
+                  >
+                    <Button type="primary" danger icon={<UndoOutlined />} loading={resettingDemo}>
+                      Değişiklikleri geri al
+                    </Button>
+                  </Popconfirm>
+                  <Popconfirm
+                    title="Şu anki hali başlangıç olsun mu?"
+                    description="Eksik kayıtlar tamamlanır ve bu hali sonraki geri almaların başlangıcı olur."
+                    okText="Kaydet"
+                    cancelText="Vazgeç"
+                    onConfirm={() => void captureDemo()}
+                  >
+                    <Button icon={<SaveOutlined />} loading={capturingDemo}>
+                      Bu hali başlangıç olarak kaydet
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              </Space>
+            </Card>
+          )}
 
           <SortableDashboard
             layoutKey={`platform-tenant-detail:${session?.user.id ?? 0}`}
@@ -721,7 +865,7 @@ export function TenantDetailPage() {
                           title: 'SMS istek',
                           key: 'sms_req',
                           render: (_: unknown, record: TenantUser) =>
-                            `${record.sms_login_requests_count ?? 0}/3`,
+                            `${smsRequestsToday(record, smsToday)}/3`,
                         },
                         { title: 'Rol', dataIndex: 'role' },
                         {
@@ -743,28 +887,6 @@ export function TenantDetailPage() {
                             enabled ? <Tag color="blue">Açık</Tag> : <Tag>Kapalı</Tag>,
                         },
                         {
-                          title: 'Giriş kilidi',
-                          key: 'login_lock',
-                          render: (_: unknown, record: TenantUser) => {
-                            if (isLoginLocked(record)) {
-                              return (
-                                <Tag color="red">
-                                  {new Date(record.login_locked_until as string).toLocaleString(
-                                    'tr-TR',
-                                  )}
-                                  ’e kadar kilitli
-                                </Tag>
-                              )
-                            }
-                            const failed = Number(record.login_failed_count || 0)
-                            return failed > 0 ? (
-                              <Tag color="orange">{failed} hatalı deneme</Tag>
-                            ) : (
-                              <Tag color="green">Açık</Tag>
-                            )
-                          },
-                        },
-                        {
                           title: 'İşlem',
                           key: 'actions',
                           render: (_: unknown, record: TenantUser) => (
@@ -779,23 +901,6 @@ export function TenantDetailPage() {
                               <Button size="small" onClick={() => openResetPassword(record)}>
                                 Şifre sıfırla
                               </Button>
-                              <Popconfirm
-                                title={`${record.full_name} için giriş kilidi kaldırılsın mı?`}
-                                description="Hatalı şifre sayacı sıfırlanır, kullanıcı hemen giriş yapabilir."
-                                okText="Kaldır"
-                                cancelText="Vazgeç"
-                                disabled={!hasLoginLock(record)}
-                                onConfirm={() => void handleUnlockUserLogin(record.id)}
-                              >
-                                <Button
-                                  size="small"
-                                  icon={<UnlockOutlined />}
-                                  disabled={!hasLoginLock(record)}
-                                  loading={unlockingUserId === record.id}
-                                >
-                                  Kilidi kaldır
-                                </Button>
-                              </Popconfirm>
                               <Popconfirm
                                 title={`${record.full_name} için 2FA sıfırlansın mı?`}
                                 okText="Sıfırla"
@@ -814,7 +919,7 @@ export function TenantDetailPage() {
                               </Popconfirm>
                               <Popconfirm
                                 title={`${record.full_name} için SMS istek sayacı sıfırlansın mı?`}
-                                description="Günlük SMS hakkı ve giriş kilidi temizlenir."
+                                description="Günlük SMS hakkı yenilenir."
                                 okText="Sıfırla"
                                 cancelText="Vazgeç"
                                 onConfirm={() => void handleResetUserSms(record.id)}

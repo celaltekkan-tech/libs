@@ -1,6 +1,9 @@
 import client from './client'
 import type {
+  BannedAccount,
   CreateTenantWizardPayload,
+  DemoResetResult,
+  DemoResetStatus,
   Tenant,
   TenantListItem,
   TenantSchool,
@@ -16,6 +19,11 @@ interface Envelope<T> {
 
 export async function listTenants(): Promise<TenantListItem[]> {
   const { data } = await client.get<Envelope<TenantListItem[]>>('/api/tenants')
+  return data.data
+}
+
+export async function listBannedAccounts(): Promise<BannedAccount[]> {
+  const { data } = await client.get<Envelope<BannedAccount[]>>('/api/tenants/banned-users')
   return data.data
 }
 
@@ -134,4 +142,32 @@ export async function updateTenantUser(
 
 export async function deleteTenant(id: number): Promise<void> {
   await client.delete(`/api/tenants/${id}`)
+}
+
+const DEMO_RESET_TIMEOUT_MS = 120000
+
+export async function getDemoResetStatus(): Promise<DemoResetStatus> {
+  const { data } = await client.get<Envelope<DemoResetStatus>>('/api/tenants/demo-reset')
+  return data.data
+}
+
+export async function updateDemoResetSchedule(scheduleTime: string): Promise<DemoResetStatus> {
+  const { data } = await client.put<Envelope<DemoResetStatus>>('/api/tenants/demo-reset/schedule', {
+    schedule_time: scheduleTime,
+  })
+  return data.data
+}
+
+export async function runDemoReset(): Promise<DemoResetResult> {
+  const { data } = await client.post<Envelope<DemoResetResult>>('/api/tenants/demo-reset/run', null, {
+    timeout: DEMO_RESET_TIMEOUT_MS,
+  })
+  return data.data
+}
+
+export async function captureDemoBaseline(): Promise<DemoResetResult> {
+  const { data } = await client.post<Envelope<DemoResetResult>>('/api/tenants/demo-reset/capture', null, {
+    timeout: DEMO_RESET_TIMEOUT_MS,
+  })
+  return data.data
 }
