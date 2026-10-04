@@ -838,9 +838,6 @@ module.exports = {
       if (!access) {
         return res.status(401).json({ success: false, message: 'Kullanıcı bulunamadı' });
       }
-      if (access.is_platform_admin) {
-        return res.json({ success: true, data: { layout: null } });
-      }
       const tenant = await Tenant.findByPk(access.user.tenant_id, {
         attributes: ['id', 'menu_layout'],
       });
@@ -856,17 +853,11 @@ module.exports = {
   async updateMenuLayout(req, res, next) {
     try {
       const access = req.access || (await accessService.getUserAccess(req.user.user_id));
-      if (!access?.is_global_admin) {
+      if (!access?.is_global_admin && !access?.is_platform_admin) {
         return res.status(403).json({
           success: false,
           code: 'ROLE_DENIED',
           message: 'Menü düzenini yalnızca hesap yöneticisi değiştirebilir',
-        });
-      }
-      if (access.is_platform_admin) {
-        return res.status(400).json({
-          success: false,
-          message: 'Platform hesabında menü düzeni yok',
         });
       }
 
@@ -895,7 +886,13 @@ module.exports = {
         action: 'update',
         entityType: 'tenant',
         entityId: tenant.id,
-        summary: layout ? 'Hesap menü düzeni güncellendi' : 'Hesap menü düzeni varsayılana alındı',
+        summary: layout
+          ? access.is_platform_admin
+            ? 'Platform menü düzeni güncellendi'
+            : 'Hesap menü düzeni güncellendi'
+          : access.is_platform_admin
+            ? 'Platform menü düzeni varsayılana alındı'
+            : 'Hesap menü düzeni varsayılana alındı',
       });
 
       return res.json({

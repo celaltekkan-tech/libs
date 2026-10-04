@@ -101,6 +101,10 @@ async function buildSessionPayload(access) {
     : await Tenant.findByPk(access.user.tenant_id, {
         attributes: ['id', 'two_factor_enabled', 'sms_login_enabled', 'feedback_enabled', 'menu_layout'],
       });
+  const platformTenant =
+    access.user.is_platform_admin && access.user.tenant_id
+      ? await Tenant.findByPk(access.user.tenant_id, { attributes: ['id', 'menu_layout'] })
+      : null;
 
   const modules = tenant?.feedback_enabled
     ? [...access.modules, 'feedback']
@@ -120,7 +124,7 @@ async function buildSessionPayload(access) {
     modules,
     tenant_two_factor_enabled: Boolean(tenant?.two_factor_enabled),
     tenant_sms_login_enabled: Boolean(tenant?.sms_login_enabled),
-    menu_layout: tenant?.menu_layout || null,
+    menu_layout: tenant?.menu_layout || platformTenant?.menu_layout || null,
   };
 }
 

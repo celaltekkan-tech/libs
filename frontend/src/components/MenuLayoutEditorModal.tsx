@@ -324,8 +324,9 @@ export function MenuLayoutEditorModal({
       }
     >
       <Typography.Paragraph type="secondary">
-        Sürükleyerek sırayı ve grupları değiştirin. Ana Sayfa sabittir. Değişiklik tüm hesap
-        kullanıcılarına uygulanır.
+        Sürükleyerek sırayı ve grupları değiştirin. Ana Sayfa sabittir. Değişiklik{' '}
+        {session?.is_platform_admin ? 'tüm platform yöneticilerine' : 'tüm hesap kullanıcılarına'}{' '}
+        uygulanır.
       </Typography.Paragraph>
 
       <div className="menu-layout-home">

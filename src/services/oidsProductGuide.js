@@ -13,7 +13,7 @@ Hangi menülerin açık olduğu lisans planına bağlıdır. Modülü kapalı he
 
 === ARAYÜZ VE GENEL KULLANIM ===
 - Sol menü grupları: Ana Sayfa, Temel Tanımlar, Personel İşleri, Programlar, Öğrenci İşleri, Rehberlik, Sistem. Menünün üstünde "Menülerde ara" kutusu vardır.
-- Sol menünün altındaki "Menüyü düzenle" yalnızca hesap yöneticisinde görünür; menü sırasını, gruplarını ve gizlenecek öğeleri tüm kurum için ayarlar.
+- Sol menünün altındaki "Menüyü düzenle" hesap yöneticisinde ve platform yöneticisinde görünür; menü sırasını, gruplarını ve gizlenecek öğeleri hesapta tüm kurum, platformda tüm yöneticiler için ayarlar.
 - Üst çubuk: sayfa başlığı, soru işareti düğmesi (o sayfanın yardımı), aktif okul seçici, açık/koyu tema, bildirim çanı, Profilim, Çıkış.
 - Sayfalar liste + arama + filtre düzenindedir. Yeni / Düzenle / Sil düğmeleri kullanıcının yetki grubuna göre görünür; görünmüyorsa yetki eksiktir (Sistem > Yetkilendirme).
 - Çoğu ekran seçili okula göre çalışır. Kayıt görünmüyorsa önce üst çubuktan doğru okul seçilmelidir.
