@@ -93,7 +93,6 @@ export function PlatformMobileRegisterRequestsPage() {
       { title: 'T.C.', dataIndex: 'national_id', width: 130 },
       { title: 'Telefon', dataIndex: 'phone', width: 140 },
       { title: 'E-posta', dataIndex: 'email', render: (value: string | null) => value || '—' },
-      { title: 'Okul', dataIndex: 'school_name' },
       {
         title: 'Durum',
         dataIndex: 'status',
