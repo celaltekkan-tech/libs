@@ -1,6 +1,7 @@
 'use strict';
 
 const ExcelJS = require('exceljs');
+const { calendarDate } = require('../utils/calendarDate');
 
 const MONTH_NAMES = [
   '',
@@ -91,10 +92,7 @@ function merge(ws, r1, c1, r2, c2) {
  * - ayda olmayan günler (30/31) her zaman kapatılır
  */
 function personStartIso(person) {
-  const raw = person?.service_start_date || person?.first_duty_date;
-  if (!raw) return null;
-  const text = String(raw).slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
+  return calendarDate(person?.service_start_date || person?.first_duty_date);
 }
 
 function closedDaysForPerson(person, year, month, baseClosed) {
@@ -409,7 +407,9 @@ async function buildTypPuantajWorkbook(opts) {
 
   const attendanceMap = new Map();
   (attendanceRows || []).forEach((row) => {
-    const day = Number(String(row.attendance_date).slice(8, 10));
+    const iso = calendarDate(row.attendance_date);
+    const day = iso ? Number(iso.slice(8, 10)) : 0;
+    if (!day) return;
     if (!attendanceMap.has(row.teacher_id)) attendanceMap.set(row.teacher_id, {});
     attendanceMap.get(row.teacher_id)[day] = row.status;
   });

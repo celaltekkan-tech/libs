@@ -5,6 +5,7 @@ const PDFDocument = require('pdfkit');
 const { StudentAbsence, Student, Classroom, School, Holiday } = require('../models');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
+const { calendarDate } = require('../utils/calendarDate');
 
 const THRESHOLDS = [10, 20, 30];
 
@@ -274,7 +275,9 @@ module.exports = {
       const { format, start_date, end_date, student_ids } = req.validatedBody || req.body || {};
       const where = {};
       if (tenantId) where.tenant_id = tenantId;
-      if (start_date && end_date) where.absence_date = { [Op.gte]: start_date, [Op.lte]: end_date };
+      const start = calendarDate(start_date);
+      const end = calendarDate(end_date);
+      if (start && end) where.absence_date = { [Op.gte]: start, [Op.lte]: end };
       if (Array.isArray(student_ids)) where.student_id = { [Op.in]: student_ids.length ? student_ids : [0] };
 
       const rows = await StudentAbsence.findAll({

@@ -4,6 +4,7 @@ const { Op } = require('sequelize');
 const { Exam, Classroom, Subject, Teacher, ScheduleEntry } = require('../models');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
+const { calendarDate } = require('../utils/calendarDate');
 
 const EXAM_TYPE_LABELS = {
   yazili: 'Yazılı Sınav',
@@ -51,10 +52,13 @@ async function resolveTeacherFromSchedule(tenantId, classroomId, subjectId) {
   return entry?.teacher_id || null;
 }
 
-function addDays(dateStr, days) {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+function addDays(value, days) {
+  const iso = calendarDate(value);
+  if (!iso) return null;
+  const [year, month, day] = iso.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  return calendarDate(date);
 }
 
 module.exports = {
@@ -209,7 +213,9 @@ module.exports = {
       const { format, start_date, end_date } = req.validatedBody || req.body || {};
       const where = {};
       if (tenantId) where.tenant_id = tenantId;
-      if (start_date && end_date) where.exam_date = { [Op.between]: [start_date, end_date] };
+      const start = calendarDate(start_date);
+      const end = calendarDate(end_date);
+      if (start && end) where.exam_date = { [Op.between]: [start, end] };
 
       const rows = await Exam.findAll({
         where,

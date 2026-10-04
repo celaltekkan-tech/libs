@@ -12,6 +12,7 @@ const {
 } = require('../models');
 const audit = require('../services/auditService');
 const { workbookBuffer, monthName } = require('../services/skillDocumentService');
+const { calendarDate } = require('../utils/calendarDate');
 const { documentSchema } = require('../validators/skillTraining.validator');
 
 const STUDENT_ATTRS = ['id', 'first_name', 'last_name', 'student_number', 'national_id', 'class_level', 'section'];
@@ -306,7 +307,7 @@ module.exports = {
       if ('note' in body) body.note = blank(body.note);
       if ('paid_at' in body) body.paid_at = blank(body.paid_at);
       if (body.status === 'odendi' && !body.paid_at && !row.paid_at) {
-        body.paid_at = new Date().toISOString().slice(0, 10);
+        body.paid_at = calendarDate(new Date());
       }
       await row.update(body);
       res.json({ success: true, data: row });

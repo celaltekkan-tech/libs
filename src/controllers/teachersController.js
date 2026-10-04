@@ -12,6 +12,7 @@ const { buildPersonnelDocumentDocx } = require('../services/personnelDocumentSer
 const { applyTitleFields, titleFieldsFromMebbisRow } = require('../utils/teacherTitle');
 const { ensureSubjectFromTeacher, ensureSubjectsForBranches, branchFromTeacher } = require('../services/subjectFromBranchService');
 const { resolvePrincipalName } = require('../services/schoolPrincipalService');
+const { calendarDate } = require('../utils/calendarDate');
 
 const PERSONNEL_DOCUMENT_TITLES = {
   gorevlendirme: 'GÖREVLENDİRME YAZISI',
@@ -637,7 +638,7 @@ module.exports = {
           in_current_period: inCurrentPeriod,
           eight_year_base_date: t.eight_year_base_date || t.first_duty_date || null,
           eight_year_next_checkpoint: eightYear.nextCheckpoint
-            ? eightYear.nextCheckpoint.toISOString().slice(0, 10)
+            ? calendarDate(eightYear.nextCheckpoint)
             : null,
           eight_year_due: eightYear.isCheckpointDue,
           kariyer: t.kariyer || null,
@@ -678,8 +679,8 @@ module.exports = {
           period: {
             month: period.month,
             year: period.year,
-            start: period.start.toISOString().slice(0, 10),
-            end: new Date(period.endExclusive.getTime() - 86400000).toISOString().slice(0, 10),
+            start: calendarDate(period.start),
+            end: calendarDate(new Date(period.endExclusive.getTime() - 86400000)),
             start_label: period.startLabel,
             end_label: period.endLabel,
           },

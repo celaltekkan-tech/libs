@@ -16,6 +16,7 @@ const {
   User,
 } = require('../models');
 const audit = require('../services/auditService');
+const { calendarDate } = require('../utils/calendarDate');
 const { buildDisciplineDocx } = require('../services/disciplineDocumentService');
 
 const SANCTION_LABELS = {
@@ -92,7 +93,7 @@ module.exports = {
       const byMonth = {};
       incidents.forEach((inc) => {
         byStatus[inc.status] = (byStatus[inc.status] || 0) + 1;
-        const month = String(inc.incident_date).slice(0, 7);
+        const month = (calendarDate(inc.incident_date) || '').slice(0, 7);
         byMonth[month] = (byMonth[month] || 0) + 1;
       });
 
