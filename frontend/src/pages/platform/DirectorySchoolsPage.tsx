@@ -1,12 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { App, Input, Select, Space, Typography } from 'antd'
-import { PictureOutlined } from '@ant-design/icons'
+import { App, Button, Form, Input, Modal, Select, Space, Typography } from 'antd'
+import { DeleteOutlined, EditOutlined, PictureOutlined, PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { AppLayout } from '../../components/AppLayout'
 import { ClearFiltersButton } from '../../components/ClearFiltersButton'
 import { FilterBar } from '../../components/FilterBar'
 import { SortableTable } from '../../components/SortableTable'
-import { fetchDirectorySchoolLogoBlob, listDirectorySchools, listDistricts, listProvinces } from '../../api/geo'
+import {
+  createDirectorySchool,
+  deleteDirectorySchool,
+  fetchDirectorySchoolLogoBlob,
+  listDirectorySchools,
+  listDistricts,
+  listProvinces,
+  updateDirectorySchool,
+  type DirectorySchoolPayload,
+} from '../../api/geo'
 import { getErrorMessage } from '../../api/client'
 import {
   DIRECTORY_SCHOOL_TYPE_LABELS,
@@ -77,10 +86,13 @@ function DirectorySchoolLogoThumb({ school }: { school: DirectorySchool }) {
   )
 }
 
+type SchoolFormValues = DirectorySchoolPayload
+
 export function DirectorySchoolsPage() {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const [provinces, setProvinces] = useState<Province[]>([])
   const [districts, setDistricts] = useState<District[]>([])
+  const [formDistricts, setFormDistricts] = useState<District[]>([])
   const [rows, setRows] = useState<DirectorySchool[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -91,6 +103,11 @@ export function DirectorySchoolsPage() {
   const search = useDebouncedValue(searchInput)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editing, setEditing] = useState<DirectorySchool | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [form] = Form.useForm<SchoolFormValues>()
+  const formProvinceId = Form.useWatch('province_id', form)
 
   useEffect(() => {
     void listProvinces()
@@ -147,6 +164,93 @@ export function DirectorySchoolsPage() {
     setPage(1)
   }, [search])
 
+  useEffect(() => {
+    if (!formProvinceId) {
+      setFormDistricts([])
+      return
+    }
+    let cancelled = false
+    void listDistricts(formProvinceId)
+      .then((list) => {
+        if (!cancelled) setFormDistricts(list)
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setFormDistricts([])
+          message.error(getErrorMessage(err))
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [formProvinceId, message])
+
+  const openCreate = () => {
+    setEditing(null)
+    form.resetFields()
+    form.setFieldsValue({
+      province_id: provinceId,
+      district_id: districtId,
+      school_type: schoolType,
+    })
+    setModalOpen(true)
+  }
+
+  const openEdit = (row: DirectorySchool) => {
+    setEditing(row)
+    form.setFieldsValue({
+      name: row.name,
+      province_id: row.province_id,
+      district_id: row.district_id ?? undefined,
+      school_type: row.school_type,
+      code: row.code || undefined,
+      website: row.website || undefined,
+    })
+    setModalOpen(true)
+  }
+
+  const onFinish = async (values: SchoolFormValues) => {
+    setSubmitting(true)
+    try {
+      const payload: DirectorySchoolPayload = {
+        name: values.name.trim(),
+        province_id: values.province_id,
+        district_id: values.district_id || null,
+        school_type: values.school_type,
+        code: values.code?.trim() || null,
+        website: values.website?.trim() || null,
+      }
+      if (editing) {
+        await updateDirectorySchool(editing.id, payload)
+        message.success('Okul güncellendi')
+      } else {
+        await createDirectorySchool(payload)
+        message.success('Okul kataloga eklendi')
+      }
+      setModalOpen(false)
+      void load()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const onDelete = (row: DirectorySchool) => {
+    modal.confirm({
+      title: 'Okulu sil',
+      content: `${row.name} katalogdan silinsin mi? Bu okulu seçmiş kurum kayıtlarında katalog bağlantısı kalkar.`,
+      okText: 'Sil',
+      okButtonProps: { danger: true },
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        await deleteDirectorySchool(row.id)
+        message.success('Okul silindi')
+        void load()
+      },
+    })
+  }
+
   const hasFilters = Boolean(provinceId || districtId || schoolType || search.trim())
 
   const columns: ColumnsType<DirectorySchool> = useMemo(
@@ -195,15 +299,29 @@ export function DirectorySchoolsPage() {
             '—'
           ),
       },
+      {
+        title: 'İşlemler',
+        width: 220,
+        render: (_: unknown, record: DirectorySchool) => (
+          <Space>
+            <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)} title="Düzenle">
+              Değiştir
+            </Button>
+            <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onDelete(record)} title="Sil">
+              Sil
+            </Button>
+          </Space>
+        ),
+      },
     ],
-    [],
+    [openEdit, onDelete],
   )
 
   return (
     <AppLayout title="MEB Okul Kataloğu">
       <Typography.Paragraph type="secondary">
         Türkiye genelindeki ortaokul ve lise referans listesi. Kiracılar okul eklerken bu katalogdan
-        seçer.
+        seçer. Buradan okul ekleyebilir, değiştirebilir veya silebilirsiniz.
       </Typography.Paragraph>
       <FilterBar>
         <Space wrap>
@@ -264,6 +382,9 @@ export function DirectorySchoolsPage() {
               setPage(1)
             }}
           />
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            Yeni okul
+          </Button>
         </Space>
       </FilterBar>
       <SortableTable<DirectorySchool>
@@ -284,6 +405,65 @@ export function DirectorySchoolsPage() {
           },
         }}
       />
+
+      <Modal
+        title={editing ? 'Okulu değiştir' : 'Yeni okul'}
+        open={modalOpen}
+        onCancel={() => setModalOpen(false)}
+        onOk={() => form.submit()}
+        confirmLoading={submitting}
+        okText={editing ? 'Kaydet' : 'Ekle'}
+        cancelText="Vazgeç"
+        destroyOnHidden
+      >
+        <Form form={form} layout="vertical" onFinish={onFinish}>
+          <Form.Item name="province_id" label="İl" rules={[{ required: true, message: 'İl zorunludur' }]}>
+            <Select
+              showSearch
+              placeholder="İl seçin"
+              options={provinces.map((p) => ({ value: p.id, label: p.name }))}
+              filterOption={trFilter}
+              onChange={() => form.setFieldValue('district_id', undefined)}
+            />
+          </Form.Item>
+          <Form.Item name="district_id" label="İlçe">
+            <Select
+              allowClear
+              showSearch
+              placeholder={formProvinceId ? 'İlçe seçin' : 'Önce il seçin'}
+              disabled={!formProvinceId}
+              options={formDistricts.map((d) => ({ value: d.id, label: d.name }))}
+              filterOption={trFilter}
+            />
+          </Form.Item>
+          <Form.Item name="name" label="Okul adı" rules={[{ required: true, message: 'Okul adı zorunludur' }]}>
+            <Input maxLength={250} />
+          </Form.Item>
+          <Form.Item name="school_type" label="Kademe" rules={[{ required: true, message: 'Kademe zorunludur' }]}>
+            <Select options={TYPE_OPTIONS} placeholder="Kademe seçin" />
+          </Form.Item>
+          <Form.Item
+            name="code"
+            label="Okul kodu"
+            rules={[
+              {
+                validator: async (_, value) => {
+                  const text = String(value || '').trim()
+                  if (!text) return
+                  if (!/^\d{6}$/.test(text)) {
+                    throw new Error('Okul kodu 6 haneli sayı olmalıdır')
+                  }
+                },
+              },
+            ]}
+          >
+            <Input maxLength={6} placeholder="Opsiyonel, 6 hane" />
+          </Form.Item>
+          <Form.Item name="website" label="Web">
+            <Input maxLength={300} placeholder="https://..." />
+          </Form.Item>
+        </Form>
+      </Modal>
     </AppLayout>
   )
 }

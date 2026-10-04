@@ -42,6 +42,32 @@ export async function listDirectorySchools(params: {
   }
 }
 
+export interface DirectorySchoolPayload {
+  name: string
+  province_id: number
+  district_id?: number | null
+  school_type: DirectorySchoolType
+  code?: string | null
+  website?: string | null
+}
+
+export async function createDirectorySchool(payload: DirectorySchoolPayload): Promise<DirectorySchool> {
+  const { data } = await client.post<Envelope<DirectorySchool>>('/api/geo/directory-schools', payload)
+  return data.data
+}
+
+export async function updateDirectorySchool(
+  id: number,
+  payload: DirectorySchoolPayload,
+): Promise<DirectorySchool> {
+  const { data } = await client.put<Envelope<DirectorySchool>>(`/api/geo/directory-schools/${id}`, payload)
+  return data.data
+}
+
+export async function deleteDirectorySchool(id: number): Promise<void> {
+  await client.delete(`/api/geo/directory-schools/${id}`)
+}
+
 export async function fetchDirectorySchoolLogoBlob(id: number): Promise<Blob> {
   const { data } = await client.get(`/api/geo/directory-schools/${id}/logo`, {
     responseType: 'blob',
