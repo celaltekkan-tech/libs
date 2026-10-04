@@ -112,7 +112,7 @@ Ana Sayfa: Okul, öğretmen, öğrenci ve yaklaşan iş sayılarını gösteren 
 Profilim (üst çubuktaki kullanıcı adı): Ad soyad ve e-posta güncelleme, şifre değiştirme (mevcut şifre + yeni şifre iki kez), iki adımlı doğrulama. 2FA'yı önce okul yöneticisi Hesap güvenliği kartından açar, sonra her kullanıcı kendi kurulumunu başlatır.
 
 === PLATFORM YÖNETİCİSİ MENÜLERİ (kurum kullanıcılarında görünmez) ===
-Hesap Yönetimi, Global Yetkiler, Lisans Yönetimi, MEB Okul Kataloğu, Hazır Ders Havuzları, Teknik Destek, Geri Bildirimler, Bildirimler, Yedekleme, SMS Test. Lisans tanımlama, hesap açma, şifre sıfırlama ve yedekleme bu menülerden yapılır. Kurum kullanıcısı lisans veya eklenti satın alma isteğini platform yöneticisine iletir.
+Hesap Yönetimi, Global Yetkiler, Lisans Yönetimi, MEB Okul Kataloğu, Hazır Ders Havuzları, Teknik Destek, Geri Bildirimler, Bildirimler, Yedekleme, SMS Test. Lisans tanımlama, hesap açma, şifre sıfırlama ve yedekleme bu menülerden yapılır. MEB Okul Kataloğunda okul eklenir, değiştirilir veya silinir; kurumlar okul eklerken bu listeden seçer. Kurum kullanıcısı lisans veya eklenti satın alma isteğini platform yöneticisine iletir.
 
 === LİSANS VE EKLENTİLER ===
 - Ana planlar: Basic (öğretmen, öğrenci, sınıf), Standart ve Premium (tüm modüller). Okul sayısı: Basic/Standart 1, Premium 3.

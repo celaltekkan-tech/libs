@@ -305,4 +305,5 @@ module.exports = {
   mimeTypeFor,
   ensureDirectorySchoolLogo,
   logoUrlFor,
+  removeStoredFile,
 };

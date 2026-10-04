@@ -609,6 +609,10 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
           'Okul adıyla arama yapın.',
         ],
       },
+      {
+        title: 'Ekleme ve düzenleme',
+        body: 'Yeni okul ile il, ilçe, ad, kademe, kod ve web adresini yazın. Satırdaki Değiştir aynı alanları günceller. Sil, katalog kaydını kaldırır; kuruma bağlı okulun katalog bağlantısı kopar.',
+      },
     ],
   },
   '/platform/licenses': {

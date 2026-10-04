@@ -24,6 +24,45 @@ function serializeDirectorySchool(row) {
   };
 }
 
+function fail(status, message) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
+async function loadDirectorySchool(id) {
+  return DirectorySchool.findByPk(id, {
+    include: [
+      { model: Province, attributes: ['id', 'name'] },
+      { model: District, attributes: ['id', 'name'] },
+    ],
+  });
+}
+
+async function normalizeDirectorySchoolPayload(body) {
+  const provinceId = Number(body.province_id);
+  const districtId = body.district_id == null || body.district_id === '' ? null : Number(body.district_id);
+  const province = await Province.findByPk(provinceId);
+  if (!province) throw fail(400, 'İl bulunamadı');
+  if (districtId) {
+    const district = await District.findByPk(districtId);
+    if (!district || Number(district.province_id) !== provinceId) {
+      throw fail(400, 'İlçe bu ile ait değil');
+    }
+  }
+
+  const code = String(body.code || '').trim() || null;
+  const website = String(body.website || '').trim() || null;
+  return {
+    name: String(body.name || '').trim(),
+    province_id: provinceId,
+    district_id: districtId,
+    school_type: body.school_type,
+    code,
+    website,
+  };
+}
+
 module.exports = {
   async listProvinces(req, res, next) {
     try {
@@ -93,6 +132,78 @@ module.exports = {
         data: rows.map(serializeDirectorySchool),
         meta: { total: count, limit, offset },
       });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async createDirectorySchool(req, res, next) {
+    try {
+      const body = req.validatedBody || req.body;
+      const payload = await normalizeDirectorySchoolPayload(body);
+      const row = await DirectorySchool.create(payload);
+      const full = await loadDirectorySchool(row.id);
+      res.status(201).json({
+        success: true,
+        message: 'Okul kataloga eklendi',
+        data: serializeDirectorySchool(full),
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async updateDirectorySchool(req, res, next) {
+    try {
+      const id = parsePositiveInt(req.params.id);
+      if (!id) {
+        return res.status(400).json({ success: false, message: 'Geçersiz okul' });
+      }
+      const school = await DirectorySchool.findByPk(id);
+      if (!school) {
+        return res.status(404).json({ success: false, message: 'Okul bulunamadı' });
+      }
+
+      const body = req.validatedBody || req.body;
+      const merged = {
+        name: body.name ?? school.name,
+        province_id: body.province_id ?? school.province_id,
+        district_id: Object.prototype.hasOwnProperty.call(body, 'district_id')
+          ? body.district_id
+          : school.district_id,
+        school_type: body.school_type ?? school.school_type,
+        code: Object.prototype.hasOwnProperty.call(body, 'code') ? body.code : school.code,
+        website: Object.prototype.hasOwnProperty.call(body, 'website') ? body.website : school.website,
+      };
+      const payload = await normalizeDirectorySchoolPayload(merged);
+      if (payload.website !== school.website) {
+        payload.logo_checked_at = null;
+      }
+      await school.update(payload);
+      const full = await loadDirectorySchool(school.id);
+      res.json({
+        success: true,
+        message: 'Okul güncellendi',
+        data: serializeDirectorySchool(full),
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async deleteDirectorySchool(req, res, next) {
+    try {
+      const id = parsePositiveInt(req.params.id);
+      if (!id) {
+        return res.status(400).json({ success: false, message: 'Geçersiz okul' });
+      }
+      const school = await DirectorySchool.findByPk(id);
+      if (!school) {
+        return res.status(404).json({ success: false, message: 'Okul bulunamadı' });
+      }
+      directorySchoolLogo.removeStoredFile(school.logo_path);
+      await school.destroy();
+      res.json({ success: true, message: 'Okul katalogdan silindi' });
     } catch (err) {
       next(err);
     }
