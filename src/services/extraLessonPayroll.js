@@ -9,6 +9,7 @@ const {
   DutyAssignment,
   TimetableProject,
 } = require('../models');
+const { calendarDate } = require('../utils/calendarDate');
 
 const DAY_LABELS = ['', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
 const SALARY_HOURS = 15;
@@ -135,9 +136,11 @@ async function buildPayroll({ tenantId, teacherId, year, month, mode }) {
   const absences = await ExtraLessonAbsence.findAll({
     where: { tenant_id: tenantId, teacher_id: teacherId, absence_date: { [Op.between]: [start, end] } },
   });
-  const absenceByDate = new Map(
-    absences.map((row) => [String(row.absence_date).slice(0, 10), row]),
-  );
+  const absenceByDate = new Map();
+  for (const row of absences) {
+    const date = calendarDate(row.absence_date);
+    if (date) absenceByDate.set(date, row);
+  }
 
   const slots = [];
   for (let day = 1; day <= daysInMonth; day += 1) {
@@ -191,7 +194,8 @@ async function buildPayroll({ tenantId, teacherId, year, month, mode }) {
       where: { tenant_id: tenantId, teacher_id: teacherId, duty_date: { [Op.between]: [start, end] } },
     });
     for (const duty of duties) {
-      const date = String(duty.duty_date).slice(0, 10);
+      const date = calendarDate(duty.duty_date);
+      if (!date) continue;
       const dow = weekday(date);
       const code = dow >= 6 ? CODES.dutyNight : CODES.dutyDay;
       addLine(lines, code.code, code.label, 1);

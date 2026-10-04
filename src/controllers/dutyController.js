@@ -4,6 +4,7 @@ const { Op } = require('sequelize');
 const { DutyLocation, DutyAssignment, Teacher, LeaveRecord, TimetableProject, TimetableConstraint, School, sequelize } = require('../models');
 const audit = require('../services/auditService');
 const { sendDutyGrid } = require('../services/dutyGridExport');
+const { calendarDate } = require('../utils/calendarDate');
 
 function assertTenantAccess(req, row) {
   if (req.user && req.user.tenant_id && row.tenant_id !== req.user.tenant_id) return false;
@@ -23,7 +24,7 @@ const locationInclude = {
 };
 
 function dateStr(d) {
-  return new Date(d).toISOString().slice(0, 10);
+  return calendarDate(d) || '';
 }
 
 function addDays(dateStr_, days) {
@@ -593,7 +594,7 @@ module.exports = {
       const endDateStr = dateStr(end_date);
       let cursor = dateStr(start_date);
       while (cursor <= endDateStr) {
-        const dow = new Date(cursor).getDay(); // 0=Pazar, 6=Cumartesi
+        const dow = new Date(`${cursor}T12:00:00`).getDay(); // 0=Pazar, 6=Cumartesi
         const isWeekend = dow === 0 || dow === 6;
         if (!isWeekend || include_weekends) {
           const assignedToday = new Set();
@@ -812,9 +813,11 @@ module.exports = {
     try {
       const tenantId = req.user && req.user.tenant_id;
       const { format, start_date, end_date } = req.validatedBody || req.body || {};
+      const start = start_date ? dateStr(start_date) : null;
+      const end = end_date ? dateStr(end_date) : null;
       const where = {};
       if (tenantId) where.tenant_id = tenantId;
-      if (start_date && end_date) where.duty_date = { [Op.gte]: start_date, [Op.lte]: end_date };
+      if (start && end) where.duty_date = { [Op.gte]: start, [Op.lte]: end };
 
       const rows = await DutyAssignment.findAll({
         where,
@@ -845,7 +848,8 @@ module.exports = {
 
       const byKey = new Map();
       for (const row of rows) {
-        const date = String(row.duty_date).slice(0, 10);
+        const date = calendarDate(row.duty_date);
+        if (!date) continue;
         const key = `${row.duty_location_id}|${date}`;
         const name = row.Teacher ? `${row.Teacher.first_name} ${row.Teacher.last_name}` : '';
         const list = byKey.get(key) || [];
@@ -853,12 +857,12 @@ module.exports = {
         byKey.set(key, list);
       }
 
-      const start = start_date ? String(start_date).slice(0, 10) : rows[0] ? String(rows[0].duty_date).slice(0, 10) : null;
-      const end = end_date ? String(end_date).slice(0, 10) : start;
+      const rangeStart = start || (rows[0] ? calendarDate(rows[0].duty_date) : null);
+      const rangeEnd = end || rangeStart;
       const days = [];
-      if (start && end) {
-        const cursor = new Date(`${start}T12:00:00`);
-        const last = new Date(`${end}T12:00:00`);
+      if (rangeStart && rangeEnd) {
+        const cursor = new Date(`${rangeStart}T12:00:00`);
+        const last = new Date(`${rangeEnd}T12:00:00`);
         const labels = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
         while (cursor <= last) {
           const date = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
@@ -871,7 +875,9 @@ module.exports = {
         }
       }
 
-      const rangeLabel = start && end ? `${start.split('-').reverse().join('.')} – ${end.split('-').reverse().join('.')}` : '';
+      const rangeLabel = rangeStart && rangeEnd
+        ? `${rangeStart.split('-').reverse().join('.')} – ${rangeEnd.split('-').reverse().join('.')}`
+        : '';
       await sendDutyGrid(res, {
         format,
         title: rangeLabel ? `Nöbet Çizelgesi (${rangeLabel})` : 'Nöbet Çizelgesi',

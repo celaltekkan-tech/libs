@@ -3,13 +3,10 @@
 const { Op } = require('sequelize');
 const { Teacher, PromotionHistory, School } = require('../models');
 const { advanceDegreeRank, isAtCeiling } = require('../utils/promotionEngine');
+const { calendarDate } = require('../utils/calendarDate');
 
 function dateOnly(value) {
-  if (!value) return null;
-  if (typeof value === 'string') return value.slice(0, 10);
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString().slice(0, 10);
+  return calendarDate(value);
 }
 
 function anniversaryInRange(baseIso, range) {
@@ -88,7 +85,7 @@ async function collectSalaryPromotionEntries(tenantId, range) {
     where: { tenant_id: tenantId, personnel_type: { [Op.in]: ['ogretmen', 'memur'] } },
     include: [{ model: School, required: false }],
   });
-  const today = new Date().toISOString().slice(0, 10);
+  const today = calendarDate(new Date());
   const pending = [];
   for (const teacher of teachers) {
     if (covered.has(teacher.id) || isAtCeiling(teacher.degree, teacher.rank)) continue;

@@ -4,6 +4,7 @@ const { Op } = require('sequelize');
 const { LeaveRecord, Teacher, SalaryFormDraft, sequelize } = require('../models');
 const { formatDateTR } = require('./promotionFormService');
 const { getSalaryPeriodForDate } = require('../utils/salaryPeriod');
+const { calendarDate } = require('../utils/calendarDate');
 
 const FREE_REPORT_DAYS = 7;
 
@@ -46,8 +47,8 @@ function eachDate(startIso, endIso) {
 }
 
 function yearsBetween(startIso, endIso) {
-  const start = Number(String(startIso).slice(0, 4));
-  const end = Number(String(endIso).slice(0, 4));
+  const start = Number((calendarDate(startIso) || '').slice(0, 4));
+  const end = Number((calendarDate(endIso) || '').slice(0, 4));
   if (!start || !end) return [];
   const years = [];
   for (let year = Math.min(start, end); year <= Math.max(start, end); year += 1) years.push(year);
