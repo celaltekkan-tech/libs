@@ -5,6 +5,6 @@ alwaysApply: true
 
 # Git push
 
-Kullanıcı `git push`, `git şut` veya `git full push` dediğinde yalnızca push yapma. Önce çalışma ağacındaki değişiklikleri commit et, sonra mevcut dalı uzak depoya gönder.
+Kullanıcı `git push`, `git şut`, `git full push` veya commit-and-push dediğinde yalnızca push yapma. Önce çalışma ağacındaki değişiklikleri commit et, mevcut dalı uzak depoya gönder, sonra `dev` ise `master`'a birleştirip `origin/master`'ı da güncelle. Her seferinde merge demesini bekleme.
 
-Commit mesajı yapılan işi anlatsın. Gizli dosya (.env, kimlik bilgisi) commit etme. Kullanıcı yalnızca push istemiş gibi görünse de commit atlamayı tekrar sorma.
+Commit mesajı yapılan işi anlatsın. Gizli dosya (.env, kimlik bilgisi) commit etme. Kullanıcı yalnızca push istemiş gibi görünse de commit ve merge atlamayı tekrar sorma.
