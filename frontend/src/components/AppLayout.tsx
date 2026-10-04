@@ -169,9 +169,8 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
   }, [session, hasModule, hasPermission])
 
   const navNodes: NavNode[] = useMemo(() => {
-    if (session?.is_platform_admin) return PLATFORM_ADMIN_ITEMS
     return applyMenuLayout(catalogNodes, session?.menu_layout)
-  }, [session?.is_platform_admin, session?.menu_layout, catalogNodes])
+  }, [session?.menu_layout, catalogNodes])
 
   const leaves = useMemo(() => flattenNavLeaves(navNodes), [navNodes])
 
@@ -225,7 +224,7 @@ export function AppLayout({ title = 'Okul İdare Sistemi', children }: AppLayout
     })
   }
 
-  const canEditMenu = Boolean(session?.is_global_admin && !session?.is_platform_admin)
+  const canEditMenu = Boolean(session?.is_global_admin || session?.is_platform_admin)
 
   return (
     <Layout className="app-shell">

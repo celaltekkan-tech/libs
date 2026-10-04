@@ -561,6 +561,10 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
     summary: 'Platform yöneticisi olarak tenant (kurum) hesaplarını listeler ve yönetirsiniz.',
     topics: [
       {
+        title: 'Menü düzeni',
+        body: 'Sol menünün altındaki Menüyü düzenle ile platform menüsünün sırasını, gruplarını ve gizlenen öğelerini tüm platform yöneticileri için ayarlayabilirsiniz.',
+      },
+      {
         title: 'Yeni hesap',
         body: 'Sihirbaz ile kurum, okul ve yönetici kullanıcısını oluşturabilirsiniz. Yönetici müdür veya müdür yardımcısı olabilir. Müdür adı okul kaydına yazılır. Plan ve süre Lisans Yönetimi sayfasından tanımlanır.',
       },
