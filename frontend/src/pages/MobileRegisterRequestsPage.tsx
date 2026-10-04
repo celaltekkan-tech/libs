@@ -13,7 +13,7 @@ import {
   rejectMobileRegisterRequest,
   setMobileRegisterVisibility,
 } from '../api/mobileRegisterRequests'
-import { ApiError, getErrorMessage } from '../api/client'
+import { getErrorMessage } from '../api/client'
 import type { AssignableRole, LinkableTeacher, MobileRegisterRequest } from '../types/mobileRegisterRequest'
 import { tablePagination } from '../utils/tablePagination'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
@@ -55,9 +55,6 @@ export function MobileRegisterRequestsPage() {
   const searchQuery = useDebouncedValue(search)
   const [approveOpen, setApproveOpen] = useState(false)
   const [rejectOpen, setRejectOpen] = useState(false)
-  const [warningOpen, setWarningOpen] = useState(false)
-  const [warningText, setWarningText] = useState('')
-  const [pendingPassword, setPendingPassword] = useState('')
   const [current, setCurrent] = useState<MobileRegisterRequest | null>(null)
   const [teachers, setTeachers] = useState<LinkableTeacher[]>([])
   const [roles, setRoles] = useState<AssignableRole[]>([])
@@ -124,7 +121,7 @@ export function MobileRegisterRequestsPage() {
     setRejectOpen(true)
   }
 
-  const completeApprove = async (password: string, confirmMismatch: boolean) => {
+  const onApprove = async (values: { password: string }) => {
     if (!current) return
     if (!selectedTeacherId && !selectedRoleId) {
       message.warning('Eşleşmeyen talep için yetki grubu seçin')
@@ -134,34 +131,19 @@ export function MobileRegisterRequestsPage() {
     try {
       await approveMobileRegisterRequest(
         current.id,
-        password,
-        confirmMismatch,
+        values.password,
+        true,
         selectedTeacherId,
         selectedTeacherId ? null : selectedRoleId,
       )
       message.success('Kayıt onaylandı. Öğretmene T.C. ve bu şifreyi söyleyin.')
       setApproveOpen(false)
-      setWarningOpen(false)
-      setPendingPassword('')
       void load()
     } catch (err) {
-      if (
-        err instanceof ApiError
-        && (err.code === 'MISMATCH_CONFIRMATION_REQUIRED' || err.code === 'TEACHER_NOT_REGISTERED')
-      ) {
-        setPendingPassword(password)
-        setWarningText(getErrorMessage(err))
-        setWarningOpen(true)
-        return
-      }
       message.error(getErrorMessage(err))
     } finally {
       setSubmitting(false)
     }
-  }
-
-  const onApprove = async (values: { password: string }) => {
-    await completeApprove(values.password, false)
   }
 
   const onVisibility = async (row: MobileRegisterRequest, hidden: boolean) => {
@@ -198,7 +180,6 @@ export function MobileRegisterRequestsPage() {
       { title: 'T.C.', dataIndex: 'national_id', width: 130 },
       { title: 'Telefon', dataIndex: 'phone', width: 140 },
       { title: 'E-posta', dataIndex: 'email', render: (value: string | null) => value || '—' },
-      { title: 'Okul', dataIndex: 'school_name' },
       {
         title: 'Eşleşen öğretmen',
         render: (_: unknown, record: MobileRegisterRequest) => {
@@ -206,10 +187,12 @@ export function MobileRegisterRequestsPage() {
           if (!name) return <Tag>Kayıtlı değil</Tag>
           const fields = (record.matched_fields || []).map((field) => MATCH_FIELD_LABELS[field] || field)
           return (
-            <span>
-              {name}
-              {fields.length > 0 ? <Typography.Text type="secondary"> · {fields.join(', ')}</Typography.Text> : null}
-            </span>
+            <div>
+              <div>{name}</div>
+              {fields.length > 0 ? (
+                <Typography.Text type="secondary">{fields.join(', ')}</Typography.Text>
+              ) : null}
+            </div>
           )
         },
       },
@@ -217,19 +200,22 @@ export function MobileRegisterRequestsPage() {
         title: 'Onaylayan',
         dataIndex: 'reviewed_by_name',
         render: (value: string | null, record: MobileRegisterRequest) =>
-          value ? `${value}${record.reviewed_by_email ? ` · ${record.reviewed_by_email}` : ''}` : '—',
+          value ? (
+            <div>
+              <div>{value}</div>
+              {record.reviewed_by_email ? (
+                <Typography.Text type="secondary">{record.reviewed_by_email}</Typography.Text>
+              ) : null}
+            </div>
+          ) : (
+            '—'
+          ),
       },
       {
         title: 'Durum',
         dataIndex: 'status',
         width: 120,
         render: (status: MobileRegisterRequest['status']) => statusTag(status),
-      },
-      {
-        title: 'Tarih',
-        dataIndex: 'created_at',
-        width: 170,
-        render: (value: string) => new Date(value).toLocaleString('tr-TR'),
       },
       ...(canUpdate
         ? [
@@ -274,8 +260,7 @@ export function MobileRegisterRequestsPage() {
         </Typography.Title>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
           Uygulamadan gelen öğretmen kayıt isteklerini onaylayın. Onaylarken şifreyi siz belirlersiniz; öğretmen T.C.
-          kimlik numarası ve bu şifreyle girer. Onayda öğretmen kaydındaki telefon ve e-posta güncellenir. T.C. veya
-          telefon sistemde boşsa ya da taleple uyuşmuyorsa önce öğretmenle teyit edin.
+          kimlik numarası ve bu şifreyle girer. Onayda öğretmen kaydındaki telefon ve e-posta güncellenir.
         </Typography.Paragraph>
 
         <Space style={{ marginBottom: 16 }} wrap>
@@ -416,25 +401,6 @@ export function MobileRegisterRequestsPage() {
             <Input.TextArea rows={3} maxLength={400} />
           </Form.Item>
         </Form>
-      </Modal>
-
-      <Modal
-        title="Uyarı"
-        open={warningOpen}
-        onCancel={() => {
-          setWarningOpen(false)
-          setSubmitting(false)
-        }}
-        onOk={() => void completeApprove(pendingPassword, true)}
-        confirmLoading={submitting}
-        okText="Tamam"
-        cancelText="Vazgeç"
-        closable={!submitting}
-      >
-        <Typography.Paragraph>{warningText}</Typography.Paragraph>
-        <Typography.Paragraph type="secondary">
-          Tamam derseniz kayıt sizin adınıza oluşturulur ve bu işlem yasal loga yazılır.
-        </Typography.Paragraph>
       </Modal>
     </AppLayout>
   )

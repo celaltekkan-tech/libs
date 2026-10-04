@@ -378,14 +378,6 @@ function buildMismatches(request, teacher) {
   return mismatches;
 }
 
-function warningMessage(fullName) {
-  return `Lütfen ${fullName} öğretmen ile irtibata geçiniz; "talebi siz mi oluşturdunuz".`;
-}
-
-function unregisteredWarningMessage() {
-  return 'Bu öğretmen kayıtlı bir öğretmen değil! Yine de onaylamak istiyor musunuz?';
-}
-
 async function notifyTenantApprovers(tenantId, title, body) {
   const users = await User.findAll({
     where: { tenant_id: tenantId, is_active: true, is_platform_admin: false },
@@ -455,11 +447,7 @@ async function serializeRequestWithMatch(row) {
     matched_fields: match.matched_fields,
     not_registered: !match.registered,
     mismatches,
-    warning_message: !match.registered
-      ? unregisteredWarningMessage()
-      : mismatches.length
-        ? warningMessage(base.full_name)
-        : null,
+    warning_message: null,
   };
 }
 
@@ -764,7 +752,6 @@ async function loadTenantRequest(tenantId, id) {
 
 async function approveRequest(tenantId, id, {
   password,
-  confirmMismatch = false,
   teacherId: selectedTeacherId,
   roleId,
   reviewerUserId,
@@ -788,25 +775,6 @@ async function approveRequest(tenantId, id, {
   const teacherBefore = snapshotTeacher(teacher);
   const mismatches = match.registered ? buildMismatches(request, teacher) : [];
   const warnings = [];
-  if (!match.registered) {
-    warnings.push({
-      code: 'TEACHER_NOT_REGISTERED',
-      message: unregisteredWarningMessage(),
-    });
-  } else if (mismatches.length) {
-    warnings.push({
-      code: 'MISMATCH_CONFIRMATION_REQUIRED',
-      message: warningMessage(fullName),
-      mismatches,
-    });
-  }
-  if (warnings.length && !confirmMismatch) {
-    const warning = warnings[0];
-    const err = fail(409, warning.code, warning.message);
-    err.mismatches = mismatches;
-    err.warning_message = warning.message;
-    throw err;
-  }
 
   let actorName = reviewerName || null;
   let actorEmail = reviewerEmail || null;
