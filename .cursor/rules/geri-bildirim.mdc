@@ -14,3 +14,4 @@ Her kayıt için:
 - `FeedbackUpdates` içine `is_from_platform: true` bir gelişme ekle.
 - `user_id` varsa ilgili kullanıcıya bildirim yaz.
 - Geçici sorgu betiklerini bırakma.
+- Türkçe metni PowerShell borusundan (`@'...'@ | node`) geçirme. Ş, ı, ğ, ü, ö, ç bu yolda `?` olur. Metni UTF-8 dosyaya yaz, `node` ile o dosyayı çalıştır, iş bitince dosyayı sil.
