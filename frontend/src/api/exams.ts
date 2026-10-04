@@ -15,6 +15,47 @@ interface Envelope<T> {
   warning?: string | null
 }
 
+export interface ExamPeriod {
+  id: number
+  tenant_id: number
+  academic_year_id: number
+  exam_type: string
+  label: string | null
+  start_date: string
+  end_date: string
+  is_active: boolean
+}
+
+export async function listExamPeriods(examType = 'ortak'): Promise<ExamPeriod[]> {
+  const { data } = await client.get<Envelope<ExamPeriod[]>>('/api/exams/periods', {
+    params: { exam_type: examType },
+  })
+  return data.data
+}
+
+export async function createExamPeriod(payload: {
+  label?: string | null
+  start_date: string
+  end_date: string
+  exam_type?: string
+}): Promise<ExamPeriod> {
+  const { data } = await client.post<Envelope<ExamPeriod>>('/api/exams/periods', payload)
+  return data.data
+}
+
+export async function updateExamPeriod(
+  id: number,
+  payload: { label?: string | null; start_date?: string; end_date?: string; is_active?: boolean },
+): Promise<ExamPeriod> {
+  const { data } = await client.put<Envelope<ExamPeriod>>(`/api/exams/periods/${id}`, payload)
+  return data.data
+}
+
+export async function deleteExamPeriod(id: number): Promise<number> {
+  const { data } = await client.delete<Envelope<{ deleted_exams: number }>>(`/api/exams/periods/${id}`)
+  return data.data?.deleted_exams ?? 0
+}
+
 export async function listExams(params?: { classroom_id?: number; start_date?: string; end_date?: string }): Promise<Exam[]> {
   const { data } = await client.get<Envelope<Exam[]>>('/api/exams', { params })
   return data.data

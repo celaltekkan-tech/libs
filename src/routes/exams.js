@@ -2,8 +2,13 @@ const express = require('express');
 const multer = require('multer');
 const router = express.Router();
 const ctrl = require('../controllers/examsController');
+const periodCtrl = require('../controllers/examPeriodsController');
 const sorumlulukCtrl = require('../controllers/sorumlulukExamsController');
 const validate = require('../middlewares/validate');
+const {
+  createExamPeriodSchema,
+  updateExamPeriodSchema,
+} = require('../validators/examPeriod.validator');
 const {
   createExamSchema,
   updateExamSchema,
@@ -33,6 +38,25 @@ const importUpload = multer({
     return cb(null, true);
   },
 });
+
+router.get('/periods', auth, moduleGuard, permission('exams.read'), periodCtrl.list);
+router.post(
+  '/periods',
+  auth,
+  moduleGuard,
+  permission('exams.create'),
+  validate(createExamPeriodSchema),
+  periodCtrl.create,
+);
+router.put(
+  '/periods/:id',
+  auth,
+  moduleGuard,
+  permission.any(['exams.create', 'exams.update']),
+  validate(updateExamPeriodSchema),
+  periodCtrl.update,
+);
+router.delete('/periods/:id', auth, moduleGuard, permission('exams.delete'), periodCtrl.remove);
 
 router.get('/', auth, moduleGuard, permission('exams.read'), ctrl.list);
 router.post('/export', auth, moduleGuard, permission('exams.read'), validate(exportExamSchema), ctrl.exportFile);

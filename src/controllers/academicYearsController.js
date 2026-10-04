@@ -1,7 +1,9 @@
 'use strict';
 
-const { AcademicYear, sequelize } = require('../models');
+const { Op } = require('sequelize');
+const { AcademicYear, ExamPeriod, sequelize } = require('../models');
 const audit = require('../services/auditService');
+const { calendarDate } = require('../utils/calendarDate');
 
 function assertTenantAccess(req, row) {
   if (req.user && req.user.tenant_id && row.tenant_id !== req.user.tenant_id) return false;
@@ -75,6 +77,36 @@ module.exports = {
 
       const payload = { ...(req.validatedBody || req.body) };
       if (req.user && req.user.tenant_id) payload.tenant_id = req.user.tenant_id;
+
+      if (payload.start_date !== undefined || payload.end_date !== undefined) {
+        const nextStart =
+          payload.start_date != null ? calendarDate(payload.start_date) : calendarDate(row.start_date);
+        const nextEnd = payload.end_date != null ? calendarDate(payload.end_date) : calendarDate(row.end_date);
+        if (!nextStart || !nextEnd) {
+          const placed = await ExamPeriod.count({ where: { academic_year_id: row.id } });
+          if (placed > 0) {
+            return res.status(400).json({
+              success: false,
+              message: 'Sınav tarihi varken eğitim öğretim yılı aralığı boş bırakılamaz.',
+            });
+          }
+        } else if (nextEnd < nextStart) {
+          return res.status(400).json({ success: false, message: 'Bitiş tarihi başlangıçtan önce olamaz.' });
+        } else {
+          const outside = await ExamPeriod.findOne({
+            where: {
+              academic_year_id: row.id,
+              [Op.or]: [{ start_date: { [Op.lt]: nextStart } }, { end_date: { [Op.gt]: nextEnd } }],
+            },
+          });
+          if (outside) {
+            return res.status(400).json({
+              success: false,
+              message: 'Eğitim öğretim yılı aralığı, kayıtlı sınav tarihlerinden birini dışarıda bırakıyor.',
+            });
+          }
+        }
+      }
 
       await sequelize.transaction(async (t) => {
         if (payload.is_current) {
