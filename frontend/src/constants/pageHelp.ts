@@ -437,7 +437,6 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
           'Bekleyen isteği açın.',
           'Önerilen kolay şifreyi kullanın veya kendiniz yazın (en az 6 karakter, 1 harf 1 rakam).',
           'Onaylayın. Öğretmen T.C. kimlik numarası ve bu şifreyle girer. Öğretmen kaydındaki telefon ve e-posta da güncellenir.',
-          'T.C. veya telefon sistemde boşsa ya da taleple uyuşmuyorsa uyarı çıkar. Öğretmenle teyit edip Tamam derseniz kayıt sizin adınıza oluşur.',
         ],
       },
       {
