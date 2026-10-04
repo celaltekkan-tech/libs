@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  Alert,
   App,
   Button,
   DatePicker,
   Empty,
+  Input,
   List,
   Modal,
   Radio,
@@ -11,20 +13,38 @@ import {
   Space,
   Spin,
   Tag,
+  theme,
   Typography,
 } from 'antd'
 import {
+  CloseOutlined,
   DeleteOutlined,
   DownloadOutlined,
   LeftOutlined,
+  PlusOutlined,
   RightOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons'
 import dayjs, { type Dayjs } from 'dayjs'
+import 'dayjs/locale/tr'
 import isoWeek from 'dayjs/plugin/isoWeek'
 import { toJpeg } from 'html-to-image'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import { createExam, deleteExam, exportExams, listExams, updateExam } from '../api/exams'
+import { listAcademicYears, updateAcademicYear } from '../api/academicYears'
+import {
+  createExam,
+  createExamPeriod,
+  deleteExam,
+  deleteExamPeriod,
+  exportExams,
+  listExamPeriods,
+  listExams,
+  updateExam,
+  updateExamPeriod,
+  type ExamPeriod,
+} from '../api/exams'
+import type { AcademicYear } from '../types/academicYear'
 import { listScheduleEntries, listScheduleTeachers } from '../api/schedule'
 import type { ScheduleTeacherOption } from '../api/schedule'
 import { listSubjects } from '../api/subjects'
@@ -37,9 +57,25 @@ import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 import { useObjectColors } from '../theme/ObjectPaletteContext'
 
 dayjs.extend(isoWeek)
+dayjs.locale('tr')
 
 const DAY_NAMES = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar']
 const MAX_EXAMS_PER_LEVEL = 4
+
+const LEVEL_COLORS: Record<string, string> = {
+  '5': '#0369a1',
+  '6': '#0f766e',
+  '7': '#7c3aed',
+  '8': '#be123c',
+  '9': '#1d4e89',
+  '10': '#0f766e',
+  '11': '#b45309',
+  '12': '#9f1239',
+}
+
+function levelColor(level: string): string {
+  return LEVEL_COLORS[level] || '#334155'
+}
 
 function sortClassLevels(levels: string[]): string[] {
   return [...levels].sort((a, b) => {
@@ -71,9 +107,22 @@ function startOfTwoWeekWindow(d: Dayjs): Dayjs {
   return d.startOf('isoWeek')
 }
 
+function formatTr(iso: string): string {
+  return dayjs(iso).format('DD.MM.YYYY')
+}
+
+function dateInPeriod(dateStr: string, period: { start_date: string; end_date: string } | null): boolean {
+  if (!period) return false
+  const start = period.start_date.slice(0, 10)
+  const end = period.end_date.slice(0, 10)
+  return dateStr >= start && dateStr <= end
+}
+
 export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps) {
   const { message, modal } = App.useApp()
-  const { session } = useAuth()
+  const { session, hasPermission } = useAuth()
+  const canEditYear = hasPermission('academic_years.update')
+  const { token } = theme.useToken()
   const colors = useObjectColors()
   const gridRef = useRef<HTMLDivElement>(null)
 
@@ -82,7 +131,11 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
   const [exams, setExams] = useState<Exam[]>([])
   const [subjects, setSubjects] = useState<ScheduleSubjectSlot[]>([])
   const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(null)
-  const [autoRange, setAutoRange] = useState<[Dayjs, Dayjs] | null>(null)
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>([])
+  const [academicYear, setAcademicYear] = useState<AcademicYear | null>(null)
+  const [periods, setPeriods] = useState<ExamPeriod[]>([])
+  const [periodRange, setPeriodRange] = useState<[Dayjs, Dayjs] | null>(null)
+  const [periodLabel, setPeriodLabel] = useState('')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [dayModalDate, setDayModalDate] = useState<string | null>(null)
@@ -94,19 +147,29 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
     () => Array.from({ length: 14 }, (_, i) => windowStart.add(i, 'day')),
     [windowStart],
   )
+  const weeks = useMemo(() => {
+    const rows: Dayjs[][] = []
+    for (let i = 0; i < dayRows.length; i += 7) rows.push(dayRows.slice(i, i + 7))
+    return rows
+  }, [dayRows])
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [examRows, scheduleRows, subjectRows, scheduleTeacherRows] = await Promise.all([
+      const [examRows, scheduleRows, subjectRows, scheduleTeacherRows, yearRows, periodRows] = await Promise.all([
         listExams(),
         listScheduleEntries().catch(() => []),
         listSubjects({ is_active: true }).catch(() => []),
         listScheduleTeachers().catch(() => []),
+        listAcademicYears().catch(() => []),
+        listExamPeriods('ortak').catch(() => []),
       ])
 
       setExams(examRows.filter((e) => e.exam_type === 'ortak'))
       setScheduleTeachers(scheduleTeacherRows)
+      setAcademicYears(yearRows)
+      setAcademicYear(yearRows.find((year) => year.is_current) || null)
+      setPeriods(periodRows)
 
       const difficultyById = new Map(subjectRows.map((s) => [s.id, s.difficulty_level]))
 
@@ -198,12 +261,42 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
     return map
   }, [exams])
 
-  const placedSubjectIds = useMemo(() => new Set(exams.map((e) => e.subject_id)), [exams])
+  const activePeriod = periods.find((period) => period.is_active) || null
+
+  useEffect(() => {
+    if (!activePeriod) return
+    const start = dayjs(activePeriod.start_date)
+    const end = dayjs(activePeriod.end_date)
+    const today = dayjs()
+    const focus = today.isBefore(start, 'day') || today.isAfter(end, 'day') ? start : today
+    setWindowStart(startOfTwoWeekWindow(focus))
+  }, [activePeriod?.id, activePeriod?.start_date, activePeriod?.end_date])
+
+  const placedSubjectIds = useMemo(() => {
+    if (!activePeriod) return new Set<number>()
+    return new Set(
+      exams
+        .filter((exam) => dateInPeriod(exam.exam_date.slice(0, 10), activePeriod))
+        .map((exam) => exam.subject_id),
+    )
+  }, [exams, activePeriod])
 
   const selectedSubject = subjects.find((s) => s.subject_id === selectedSubjectId) || null
 
+  const yearStart = academicYear?.start_date ? dayjs(academicYear.start_date) : null
+  const yearEnd = academicYear?.end_date ? dayjs(academicYear.end_date) : null
+  const yearReady = Boolean(yearStart?.isValid() && yearEnd?.isValid())
+
   const placeSubjectOnDate = async (slot: ScheduleSubjectSlot, dateStr: string) => {
     if (!session) return
+    if (!activePeriod) {
+      message.warning('Önce eğitim öğretim yılı içinde bir sınav tarihi oluşturun')
+      return
+    }
+    if (!dateInPeriod(dateStr, activePeriod)) {
+      message.warning('Ders sınavı yalnızca aktif sınav tarihi aralığına konabilir')
+      return
+    }
     if (slot.classroom_ids.length === 0) {
       message.warning('Bu ders için ders programında sınıf bulunamadı')
       return
@@ -280,6 +373,14 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
   const onSelectDay = (date: Dayjs) => {
     const dateStr = date.format('YYYY-MM-DD')
     if (mode === 'manuel' && canCreate && selectedSubject) {
+      if (!activePeriod) {
+        message.warning('Önce eğitim öğretim yılı içinde bir sınav tarihi oluşturun')
+        return
+      }
+      if (!dateInPeriod(dateStr, activePeriod)) {
+        message.warning('Ders sınavı yalnızca aktif sınav tarihi aralığına konabilir')
+        return
+      }
       void placeSubjectOnDate(selectedSubject, dateStr)
       return
     }
@@ -295,9 +396,81 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
     })
   }
 
+  const onSelectYear = async (id: number) => {
+    const year = academicYears.find((item) => item.id === id)
+    if (!year || year.is_current || !canEditYear) return
+    setSubmitting(true)
+    try {
+      await updateAcademicYear(year.id, { label: year.label, is_current: true })
+      message.success(`${year.label} eğitim öğretim yılı seçildi`)
+      await load()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const onCreatePeriod = async () => {
+    if (!periodRange) {
+      message.warning('Sınav tarihi aralığı seçin')
+      return
+    }
+    setSubmitting(true)
+    try {
+      await createExamPeriod({
+        label: periodLabel.trim() || null,
+        start_date: periodRange[0].format('YYYY-MM-DD'),
+        end_date: periodRange[1].format('YYYY-MM-DD'),
+        exam_type: 'ortak',
+      })
+      setPeriodRange(null)
+      setPeriodLabel('')
+      message.success('Sınav tarihi oluşturuldu')
+      await load()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const onActivatePeriod = async (period: ExamPeriod) => {
+    if (period.is_active || !canCreate) return
+    try {
+      await updateExamPeriod(period.id, { is_active: true })
+      await load()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    }
+  }
+
+  const onDeletePeriod = (period: ExamPeriod) => {
+    modal.confirm({
+      title: 'Sınav tarihini sil',
+      content: `${formatTr(period.start_date)} – ${formatTr(period.end_date)} aralığı silinecek. Bu aralığa konmuş ders sınavları da silinir.`,
+      okText: 'Sil',
+      okButtonProps: { danger: true },
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        try {
+          const deleted = await deleteExamPeriod(period.id)
+          message.success(
+            deleted > 0
+              ? `Sınav tarihi ve ${deleted} sınav kaydı silindi`
+              : 'Sınav tarihi silindi',
+          )
+          await load()
+        } catch (err) {
+          message.error(getErrorMessage(err))
+        }
+      },
+    })
+  }
+
   const onAutoGenerate = async () => {
-    if (!session || !autoRange) {
-      message.warning('Tarih aralığı seçin')
+    if (!session || !activePeriod) {
+      message.warning('Önce eğitim öğretim yılı içinde bir sınav tarihi oluşturun')
       return
     }
     const pending = subjects.filter((s) => !placedSubjectIds.has(s.subject_id))
@@ -314,8 +487,8 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
     )
 
     const weekdays: string[] = []
-    let cursor = autoRange[0].startOf('day')
-    const end = autoRange[1].startOf('day')
+    let cursor = dayjs(activePeriod.start_date).startOf('day')
+    const end = dayjs(activePeriod.end_date).startOf('day')
     while (cursor.isBefore(end) || cursor.isSame(end, 'day')) {
       const dow = cursor.day()
       if (dow >= 1 && dow <= 5) weekdays.push(cursor.format('YYYY-MM-DD'))
@@ -580,36 +753,137 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
 
       {mode === 'manuel' && (
         <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          Ders programından gelen bir dersi seçin, ardından satırdaki güne tıklayarak ortak sınavı
-          yerleştirin. Üst sütunlar sınıf seviyeleridir; her seviyeye günde en fazla{' '}
-          {MAX_EXAMS_PER_LEVEL} sınav konabilir. Öğretmen ataması ders programından otomatik
-          gelir; gün detayından değiştirilebilir.
+          Önce eğitim öğretim yılı içinde bir sınav tarihi oluşturun. Ardından dersi seçip bu aralıktaki
+          bir güne tıklayın. Her sınıf seviyesine günde en fazla {MAX_EXAMS_PER_LEVEL} sınav konabilir.
+          Kalın kenarlık, yalnızca aktif tarih aralığına konmuş derslerde görünür.
         </Typography.Paragraph>
       )}
 
       {mode === 'otomatik' && (
         <Space wrap style={{ marginBottom: 16 }}>
-          <DatePicker.RangePicker
-            value={autoRange}
-            onChange={(v) => setAutoRange(v as [Dayjs, Dayjs] | null)}
-            format="DD.MM.YYYY"
-          />
           {canCreate && (
             <Button
               type="primary"
               icon={<ThunderboltOutlined />}
               loading={submitting}
+              disabled={!activePeriod}
               onClick={() => void onAutoGenerate()}
             >
               Otomatik Oluştur
             </Button>
           )}
           <Typography.Text type="secondary">
-            Dersler hafta içi günlere dağıtılır; seviye başına günde en fazla {MAX_EXAMS_PER_LEVEL}{' '}
-            sınav, zor dersler ardışık günlere konmaz.
+            {activePeriod
+              ? `Dersler ${formatTr(activePeriod.start_date)} – ${formatTr(activePeriod.end_date)} aralığındaki hafta içi günlere dağıtılır; seviye başına günde en fazla ${MAX_EXAMS_PER_LEVEL} sınav, zor dersler ardışık günlere konmaz.`
+              : 'Otomatik yerleştirme için önce bir sınav tarihi oluşturun.'}
           </Typography.Text>
         </Space>
       )}
+
+      <div style={{ marginBottom: 16 }}>
+        <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
+          Eğitim öğretim yılı
+        </Typography.Text>
+        {academicYears.length === 0 ? (
+          <Alert
+            type="warning"
+            showIcon
+            message={
+              <span>
+                Tanımlı eğitim öğretim yılı yok.{' '}
+                <Link to="/academic-years">Eğitim öğretim yılı tanımlayın</Link>.
+              </span>
+            }
+          />
+        ) : (
+          <Space wrap>
+            <Select
+              value={academicYear?.id}
+              placeholder="Eğitim öğretim yılı seçin"
+              style={{ minWidth: 200 }}
+              disabled={!canEditYear}
+              loading={submitting}
+              onChange={(id) => void onSelectYear(id)}
+              options={academicYears.map((year) => ({
+                value: year.id,
+                label: year.label,
+              }))}
+            />
+            {academicYear && yearReady && yearStart && yearEnd && (
+              <Typography.Text type="secondary">
+                {yearStart.format('DD.MM.YYYY')} – {yearEnd.format('DD.MM.YYYY')}
+              </Typography.Text>
+            )}
+            {academicYear && !yearReady && (
+              <Typography.Text type="secondary">
+                Bu yılın tarihi yok.{' '}
+                <Link to="/academic-years">Eğitim öğretim yıllarından girin</Link>.
+              </Typography.Text>
+            )}
+          </Space>
+        )}
+      </div>
+
+      <div style={{ marginBottom: 16 }}>
+        <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
+          Sınav tarihleri
+        </Typography.Text>
+        {academicYear && !yearReady && (
+          <Typography.Text type="secondary">
+            Seçili eğitim öğretim yılının başlangıç ve bitiş tarihi tanımlı değil.
+          </Typography.Text>
+        )}
+        {academicYear && yearReady && yearStart && yearEnd && (
+          <Space direction="vertical" size={8} style={{ width: '100%' }}>
+            <Space wrap size={[8, 8]}>
+              {periods.map((period) => (
+                <Tag
+                  key={period.id}
+                  color={period.is_active ? 'blue' : undefined}
+                  onClick={() => void onActivatePeriod(period)}
+                  style={{
+                    cursor: canCreate && !period.is_active ? 'pointer' : 'default',
+                    padding: '4px 8px',
+                    fontSize: 13,
+                  }}
+                  closable={canDelete}
+                  onClose={(event) => {
+                    event.preventDefault()
+                    onDeletePeriod(period)
+                  }}
+                >
+                  {period.label ? `${period.label} · ` : ''}
+                  {formatTr(period.start_date)} – {formatTr(period.end_date)}
+                  {period.is_active ? ' · aktif' : ''}
+                </Tag>
+              ))}
+            </Space>
+            {canCreate && (
+              <Space wrap>
+                <Input
+                  value={periodLabel}
+                  onChange={(event) => setPeriodLabel(event.target.value)}
+                  placeholder="Ad (isteğe bağlı)"
+                  style={{ width: 180 }}
+                  maxLength={80}
+                />
+                <DatePicker.RangePicker
+                  value={periodRange}
+                  onChange={(value) => setPeriodRange(value as [Dayjs, Dayjs] | null)}
+                  format="DD.MM.YYYY"
+                  disabledDate={(current) =>
+                    !!current &&
+                    (current.isBefore(yearStart, 'day') || current.isAfter(yearEnd, 'day'))
+                  }
+                />
+                <Button icon={<PlusOutlined />} loading={submitting} onClick={() => void onCreatePeriod()}>
+                  Tarih ekle
+                </Button>
+              </Space>
+            )}
+          </Space>
+        )}
+      </div>
 
       <div style={{ marginBottom: 16 }}>
         <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
@@ -637,10 +911,11 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
                     cursor: mode === 'manuel' && canCreate ? 'pointer' : 'default',
                     background: active ? tone.text : tone.bg,
                     color: active ? tone.bg : tone.text,
+                    borderStyle: 'solid',
+                    borderWidth: placed ? 3 : 1,
                     borderColor: tone.border,
                     padding: '4px 10px',
                     fontSize: 13,
-                    opacity: placed && !active ? 0.75 : 1,
                   }}
                 >
                   {s.subject_name}
@@ -661,7 +936,13 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
         )}
         {mode === 'manuel' && selectedSubject && (
           <Typography.Text style={{ display: 'block', marginTop: 8 }} type="success">
-            Seçili: {selectedSubject.subject_name} — takvimde bir güne tıklayın
+            Seçili: {selectedSubject.subject_name} — aktif tarih aralığında bir güne tıklayın
+          </Typography.Text>
+        )}
+        {activePeriod && (
+          <Typography.Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+            Kalın kenarlık, {formatTr(activePeriod.start_date)} – {formatTr(activePeriod.end_date)} aralığına
+            konmuş dersleri gösterir.
           </Typography.Text>
         )}
       </div>
@@ -693,165 +974,196 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
           </Button>
         </div>
 
-        {classLevels.length === 0 ? (
-          <Empty description="Sınıf seviyesi bulunamadı" />
-        ) : (
+        <div
+          ref={gridRef}
+          style={{
+            border: `1px solid ${token.colorBorderSecondary}`,
+            borderRadius: 12,
+            overflow: 'hidden',
+            background: token.colorBgContainer,
+          }}
+        >
           <div
-            ref={gridRef}
             style={{
-              overflowX: 'auto',
-              border: '1px solid #e2e8f0',
-              borderRadius: 8,
-              background: '#fff',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+              background: token.colorFillAlter,
+              borderBottom: `1px solid ${token.colorBorderSecondary}`,
             }}
           >
-            <table
+            {DAY_NAMES.map((name, index) => (
+              <div
+                key={name}
+                style={{
+                  padding: '10px 8px',
+                  textAlign: 'center',
+                  fontWeight: 600,
+                  fontSize: 13,
+                  color: index >= 5 ? token.colorTextTertiary : token.colorTextSecondary,
+                  borderRight: index < 6 ? `1px solid ${token.colorBorderSecondary}` : undefined,
+                }}
+              >
+                {name}
+              </div>
+            ))}
+          </div>
+          {weeks.map((week, weekIndex) => (
+            <div
+              key={week[0]?.format('YYYY-MM-DD') || weekIndex}
               style={{
-                width: '100%',
-                minWidth: 640 + classLevels.length * 140,
-                borderCollapse: 'collapse',
-                tableLayout: 'fixed',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+                borderTop: weekIndex ? `1px solid ${token.colorBorderSecondary}` : undefined,
               }}
             >
-              <thead>
-                <tr>
-                  <th
+              {week.map((day, dayIndex) => {
+                const dateStr = day.format('YYYY-MM-DD')
+                const isWeekend = day.day() === 0 || day.day() === 6
+                const isToday = day.isSame(dayjs(), 'day')
+                const inRange = dateInPeriod(dateStr, activePeriod)
+                const canDrop =
+                  mode === 'manuel' &&
+                  !!selectedSubject &&
+                  canCreate &&
+                  inRange &&
+                  canPlaceSlotOnDate(selectedSubject, dateStr)
+                const groups = classLevels
+                  .map((level) => ({
+                    level,
+                    chips: subjectsByDateLevel.get(`${dateStr}|${level}`) || [],
+                  }))
+                  .filter((group) => group.chips.length > 0)
+                const examCount = groups.reduce((n, group) => n + group.chips.length, 0)
+
+                return (
+                  <div
+                    key={dateStr}
+                    onClick={() => onSelectDay(day)}
                     style={{
-                      position: 'sticky',
-                      left: 0,
-                      zIndex: 2,
-                      background: '#f8fafc',
-                      borderBottom: '1px solid #e2e8f0',
-                      borderRight: '1px solid #e2e8f0',
-                      padding: '12px 14px',
-                      textAlign: 'left',
-                      width: 168,
-                      fontWeight: 600,
+                      minHeight: 168,
+                      padding: 8,
+                      cursor: 'pointer',
+                      background:
+                        activePeriod && !inRange
+                          ? token.colorFillSecondary
+                          : isWeekend
+                            ? token.colorFillQuaternary
+                            : token.colorBgContainer,
+                      opacity: activePeriod && !inRange ? 0.55 : 1,
+                      borderRight: dayIndex < 6 ? `1px solid ${token.colorBorderSecondary}` : undefined,
+                      boxShadow: canDrop ? `inset 0 0 0 2px ${token.colorPrimary}` : undefined,
+                      outline: isToday ? `2px solid ${token.colorPrimary}` : undefined,
+                      outlineOffset: -2,
                     }}
                   >
-                    Gün
-                  </th>
-                  {classLevels.map((level) => (
-                    <th
-                      key={level}
+                    <div
                       style={{
-                        background: '#f1f5f9',
-                        borderBottom: '1px solid #e2e8f0',
-                        borderRight: '1px solid #e2e8f0',
-                        padding: '12px 10px',
-                        textAlign: 'center',
-                        fontWeight: 700,
-                        fontSize: 14,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'baseline',
+                        marginBottom: 8,
                       }}
                     >
-                      {/^\d+$/.test(level) ? `${level}. Sınıf` : level}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {dayRows.map((day) => {
-                  const dateStr = day.format('YYYY-MM-DD')
-                  const dow = day.isoWeekday() - 1 // 0=Pzt … 6=Paz
-                  const isWeekend = day.day() === 0 || day.day() === 6
-                  const canDrop =
-                    mode === 'manuel' &&
-                    !!selectedSubject &&
-                    canCreate &&
-                    canPlaceSlotOnDate(selectedSubject, dateStr)
-
-                  return (
-                    <tr key={dateStr} style={{ background: isWeekend ? '#fafafa' : undefined }}>
-                      <td
-                        onClick={() => onSelectDay(day)}
+                      <span
                         style={{
-                          position: 'sticky',
-                          left: 0,
-                          zIndex: 1,
-                          background: isWeekend ? '#f1f5f9' : '#fff',
-                          borderBottom: '1px solid #e2e8f0',
-                          borderRight: '1px solid #e2e8f0',
-                          padding: '10px 14px',
-                          cursor: 'pointer',
-                          verticalAlign: 'top',
-                          outline:
-                            canDrop ? '2px dashed rgba(29, 78, 137, 0.45)' : undefined,
-                          outlineOffset: -2,
+                          fontWeight: 700,
+                          fontSize: 16,
+                          color: isToday ? token.colorPrimary : token.colorText,
                         }}
                       >
-                        <div style={{ fontWeight: 700, fontSize: 13 }}>{DAY_NAMES[dow]}</div>
-                        <div style={{ color: '#64748b', fontSize: 12 }}>{day.format('DD.MM.YYYY')}</div>
-                      </td>
-                      {classLevels.map((level) => {
-                        const chips = subjectsByDateLevel.get(`${dateStr}|${level}`) || []
-                        const full = chips.length >= MAX_EXAMS_PER_LEVEL
-                        return (
-                          <td
-                            key={`${dateStr}|${level}`}
-                            onClick={() => onSelectDay(day)}
+                        {day.format('D')}
+                      </span>
+                      <span style={{ fontSize: 11, color: token.colorTextTertiary }}>
+                        {examCount > 0 ? `${examCount} ders` : day.format('MMM')}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {groups.map((group) => (
+                        <div key={group.level}>
+                          <div
                             style={{
-                              borderBottom: '1px solid #e2e8f0',
-                              borderRight: '1px solid #e2e8f0',
-                              padding: 8,
-                              verticalAlign: 'top',
-                              minHeight: 72,
-                              cursor: 'pointer',
-                              background: full ? colors.swatch('gold').bg : undefined,
+                              fontSize: 10,
+                              fontWeight: 700,
+                              letterSpacing: 0.3,
+                              color: levelColor(group.level),
+                              marginBottom: 3,
                             }}
                           >
-                            <div
-                              style={{
-                                display: 'flex',
-                                flexDirection: 'row',
-                                flexWrap: 'wrap',
-                                gap: 6,
-                                minHeight: 56,
-                                alignItems: 'flex-start',
-                              }}
-                            >
-                              {chips.map((e) => {
-                                const tone = colors.swatchForId(e.subject_id)
-                                return (
+                            {/^\d+$/.test(group.level) ? `${group.level}. sınıf` : group.level}
+                            <span style={{ marginLeft: 6, fontWeight: 600, color: token.colorTextTertiary }}>
+                              {group.chips.length}/{MAX_EXAMS_PER_LEVEL}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            {group.chips.map((exam) => {
+                              const tone = colors.swatchForId(exam.subject_id)
+                              const name = exam.Subject?.name || `#${exam.subject_id}`
+                              return (
                                 <div
-                                  key={e.subject_id}
-                                  title={e.Subject?.name || ''}
+                                  key={exam.subject_id}
+                                  title={name}
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    setDayModalDate(dateStr)
+                                  }}
                                   style={{
                                     background: tone.bg,
                                     color: tone.text,
-                                    border: `1px solid ${tone.border}`,
+                                    borderLeft: `3px solid ${tone.border}`,
                                     borderRadius: 4,
-                                    padding: '4px 8px',
+                                    padding: '3px 6px',
                                     fontSize: 12,
                                     lineHeight: 1.3,
-                                    whiteSpace: 'nowrap',
                                   }}
                                 >
-                                  {e.Subject?.name || `#${e.subject_id}`}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <span
+                                      style={{
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap',
+                                        flex: 1,
+                                      }}
+                                    >
+                                      {name}
+                                    </span>
+                                    {canDelete && (
+                                      <button
+                                        type="button"
+                                        aria-label={`${name} dersini bu günden kaldır`}
+                                        title="Bu günden kaldır"
+                                        onClick={(event) => {
+                                          event.stopPropagation()
+                                          void onDeleteDaySubject(dateStr, exam.subject_id)
+                                        }}
+                                        style={{
+                                          border: 'none',
+                                          background: 'transparent',
+                                          color: tone.text,
+                                          cursor: 'pointer',
+                                          padding: 0,
+                                          lineHeight: 1,
+                                          flexShrink: 0,
+                                          opacity: 0.75,
+                                        }}
+                                      >
+                                        <CloseOutlined style={{ fontSize: 10 }} />
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
-                                )
-                              })}
-                              {chips.length === 0 && (
-                                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                                  —
-                                </Typography.Text>
-                              )}
-                            </div>
-                            <Typography.Text
-                              type="secondary"
-                              style={{ fontSize: 10, display: 'block', marginTop: 4 }}
-                            >
-                              {chips.length}/{MAX_EXAMS_PER_LEVEL}
-                            </Typography.Text>
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+        </div>
       </Spin>
 
       <Modal

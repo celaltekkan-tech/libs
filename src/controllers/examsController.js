@@ -1,7 +1,7 @@
 'use strict';
 
 const { Op } = require('sequelize');
-const { Exam, Classroom, Subject, Teacher, ScheduleEntry } = require('../models');
+const { AcademicYear, Exam, ExamPeriod, Classroom, Subject, Teacher, ScheduleEntry } = require('../models');
 const audit = require('../services/auditService');
 const { sendTableExport } = require('../services/exportService');
 const { calendarDate } = require('../utils/calendarDate');
@@ -99,6 +99,35 @@ module.exports = {
       const subject = await Subject.findByPk(payload.subject_id);
       if (!subject || (tenantId && subject.tenant_id !== tenantId)) {
         return res.status(400).json({ success: false, message: 'Seçilen ders bulunamadı' });
+      }
+
+      if (payload.exam_type === 'ortak' && tenantId) {
+        const year = await AcademicYear.findOne({ where: { tenant_id: tenantId, is_current: true } });
+        const period = year
+          ? await ExamPeriod.findOne({
+              where: {
+                tenant_id: tenantId,
+                academic_year_id: year.id,
+                exam_type: 'ortak',
+                is_active: true,
+              },
+            })
+          : null;
+        if (!period) {
+          return res.status(400).json({
+            success: false,
+            message: 'Önce eğitim öğretim yılı içinde bir sınav tarihi oluşturun.',
+          });
+        }
+        const examDate = calendarDate(payload.exam_date);
+        const periodStart = calendarDate(period.start_date);
+        const periodEnd = calendarDate(period.end_date);
+        if (!examDate || examDate < periodStart || examDate > periodEnd) {
+          return res.status(400).json({
+            success: false,
+            message: 'Ders sınavı yalnızca aktif sınav tarihi aralığına konabilir.',
+          });
+        }
       }
 
       if (payload.teacher_id) {

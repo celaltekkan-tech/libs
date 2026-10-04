@@ -332,9 +332,11 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       {
         title: 'Ortak sınav',
         steps: [
-          'Ders programından gelen bir dersi seçin.',
-          'Takvimde güne tıklayarak ortak sınavı yerleştirin.',
-          'İsterseniz tarih aralığı seçip otomatik program oluşturun.',
+          'Tanımlı eğitim öğretim yıllarından birini seçin.',
+          'Aktif eğitim öğretim yılı içinde bir sınav tarihi oluşturun.',
+          'Ders programından gelen bir dersi seçip bu tarih aralığındaki güne tıklayın.',
+          'Kalın kenarlık, yalnızca seçili (aktif) tarih aralığına konmuş derslerde görünür.',
+          'İsterseniz otomatik program, aktif tarih aralığındaki hafta içi günlere dağıtır.',
         ],
       },
       {
