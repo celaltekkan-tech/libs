@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Calendar, InputNumber, List, Modal, Select, Space, Tag, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
-import { mebItemsOnDay, type MebCalendarItem } from '../data/mebWorkCalendar2026'
+import { mebItemsOnDay, type MebCalendarItem } from '../constants/mebWorkCalendar2026'
 import { useObjectColors } from '../theme/ObjectPaletteContext'
 
 const MONTH_NAMES = [
