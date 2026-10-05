@@ -14,6 +14,7 @@ import {
   setMobileRegisterVisibility,
 } from '../api/mobileRegisterRequests'
 import { getErrorMessage } from '../api/client'
+import { warnAttention } from '../utils/attention'
 import type { AssignableRole, LinkableTeacher, MobileRegisterRequest } from '../types/mobileRegisterRequest'
 import { tablePagination } from '../utils/tablePagination'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
@@ -124,7 +125,7 @@ export function MobileRegisterRequestsPage() {
   const onApprove = async (values: { password: string }) => {
     if (!current) return
     if (!selectedTeacherId && !selectedRoleId) {
-      message.warning('Eşleşmeyen talep için yetki grubu seçin')
+      warnAttention(message, 'Eşleşmeyen talep için yetki grubu seçin', 'register-role')
       return
     }
     setSubmitting(true)
@@ -344,6 +345,7 @@ export function MobileRegisterRequestsPage() {
             <Typography.Paragraph type="warning">
               Öğretmen eşleşmedi. Hesabı bağlamak için bir yetki grubu seçin.
             </Typography.Paragraph>
+            <div data-attention="register-role">
             <Select
               showSearch
               optionFilterProp="label"
@@ -356,6 +358,7 @@ export function MobileRegisterRequestsPage() {
                 label: role.description ? `${role.name} — ${role.description}` : role.name,
               }))}
             />
+            </div>
           </>
         )}
         <Form form={approveForm} layout="vertical" onFinish={onApprove}>

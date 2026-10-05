@@ -27,6 +27,7 @@ import type { AttendanceMonthlySummaryRow, AttendanceRecord } from '../types/att
 import type { Holiday } from '../types/holiday'
 import type { Teacher } from '../types/teacher'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+import { warnAttention } from '../utils/attention'
 import { tablePagination } from '../utils/tablePagination'
 import { nestedPersonNameSorter, personNameSorter, SORT_AZ } from '../utils/tableSort'
 import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
@@ -297,7 +298,7 @@ export function AttendancePage() {
         notes: ABSENCE_STATUSES.has(v.status) ? v.notes?.trim() || null : null,
       }))
     if (entries.length === 0) {
-      message.warning('En az bir personel için durum seçin')
+      warnAttention(message, 'En az bir personel için durum seçin', 'attendance-daily')
       return
     }
     setSubmitting(true)
@@ -336,7 +337,7 @@ export function AttendancePage() {
     try {
       const values = await exportForm.validateFields()
       if (exportFormat === 'xlsx' && exportTeacherIds.length === 0) {
-        message.warning('Forma yazılacak en az bir personel seçin')
+        warnAttention(message, 'Forma yazılacak en az bir personel seçin', 'attendance-export-people')
         return
       }
       const blob = await exportAttendance({
@@ -525,6 +526,7 @@ export function AttendancePage() {
           kategoride personel ekleyin.
         </Typography.Text>
       ) : (
+        <div data-attention="attendance-daily">
         <SortableTable
           rowKey="id"
           loading={loading}
@@ -533,6 +535,7 @@ export function AttendancePage() {
           pagination={false}
           scroll={{ x: 'max-content' }}
         />
+        </div>
       )}
 
       {todayAbsences.length > 0 && (
@@ -766,6 +769,7 @@ export function AttendancePage() {
                 Seçimi temizle
               </Button>
             </Space>
+            <div data-attention="attendance-export-people">
             <Checkbox.Group
               value={exportTeacherIds}
               onChange={(vals) => setExportTeacherIds(vals as number[])}
@@ -779,6 +783,7 @@ export function AttendancePage() {
                   label: `${t.first_name} ${t.last_name}${t.typ_subject || t.title_branch ? ` — ${t.typ_subject || t.title_branch}` : ''}`,
                 }))}
             />
+            </div>
 
             <Typography.Text strong style={{ display: 'block', marginTop: 16 }}>
               Önizleme

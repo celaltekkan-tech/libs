@@ -55,6 +55,7 @@ import { downloadBlob, exportFilename, type ExportFormat } from '../utils/downlo
 import { TypedPhraseConfirmModal } from './TypedPhraseConfirmModal'
 import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 import { useObjectColors } from '../theme/ObjectPaletteContext'
+import { warnAttention } from '../utils/attention'
 
 dayjs.extend(isoWeek)
 dayjs.locale('tr')
@@ -287,18 +288,26 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
   const yearEnd = academicYear?.end_date ? dayjs(academicYear.end_date) : null
   const yearReady = Boolean(yearStart?.isValid() && yearEnd?.isValid())
 
+  const point = (text: string, target: string) => warnAttention(message, text, target)
+
+  const pointExamPeriod = () =>
+    point(
+      'Önce eğitim öğretim yılı içinde bir sınav tarihi oluşturun',
+      academicYears.length === 0 || !yearReady ? 'exam-year' : 'exam-periods',
+    )
+
   const placeSubjectOnDate = async (slot: ScheduleSubjectSlot, dateStr: string) => {
     if (!session) return
     if (!activePeriod) {
-      message.warning('Önce eğitim öğretim yılı içinde bir sınav tarihi oluşturun')
+      pointExamPeriod()
       return
     }
     if (!dateInPeriod(dateStr, activePeriod)) {
-      message.warning('Ders sınavı yalnızca aktif sınav tarihi aralığına konabilir')
+      point('Ders sınavı yalnızca aktif sınav tarihi aralığına konabilir', 'exam-periods')
       return
     }
     if (slot.classroom_ids.length === 0) {
-      message.warning('Bu ders için ders programında sınıf bulunamadı')
+      point('Bu ders için ders programında sınıf bulunamadı', `exam-subject-${slot.subject_id}`)
       return
     }
 
@@ -317,9 +326,10 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
     }
 
     if (allowedClassroomIds.length === 0) {
-      message.warning(
+      point(
         `Bu tarihte sınıf seviyesi başına en fazla ${MAX_EXAMS_PER_LEVEL} sınav yerleştirilebilir` +
           (blockedLevels.length ? ` (${blockedLevels.join(', ')})` : ''),
+        `exam-day-${dateStr}`,
       )
       return
     }
@@ -357,7 +367,7 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
               : ''),
         )
       } else if (skipped > 0) {
-        message.warning('Seçilen tarihte bu sınıflar için zaten sınav var')
+        point('Seçilen tarihte bu sınıflar için zaten sınav var', `exam-day-${dateStr}`)
       }
       if (lastWarning) {
         modal.warning({ title: 'Uyarı', content: lastWarning })
@@ -374,11 +384,11 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
     const dateStr = date.format('YYYY-MM-DD')
     if (mode === 'manuel' && canCreate && selectedSubject) {
       if (!activePeriod) {
-        message.warning('Önce eğitim öğretim yılı içinde bir sınav tarihi oluşturun')
+        pointExamPeriod()
         return
       }
       if (!dateInPeriod(dateStr, activePeriod)) {
-        message.warning('Ders sınavı yalnızca aktif sınav tarihi aralığına konabilir')
+        point('Ders sınavı yalnızca aktif sınav tarihi aralığına konabilir', 'exam-periods')
         return
       }
       void placeSubjectOnDate(selectedSubject, dateStr)
@@ -413,7 +423,7 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
 
   const onCreatePeriod = async () => {
     if (!periodRange) {
-      message.warning('Sınav tarihi aralığı seçin')
+      point('Sınav tarihi aralığı seçin', 'exam-period-range')
       return
     }
     setSubmitting(true)
@@ -470,7 +480,7 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
 
   const onAutoGenerate = async () => {
     if (!session || !activePeriod) {
-      message.warning('Önce eğitim öğretim yılı içinde bir sınav tarihi oluşturun')
+      pointExamPeriod()
       return
     }
     const pending = subjects.filter((s) => !placedSubjectIds.has(s.subject_id))
@@ -496,7 +506,7 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
     }
 
     if (weekdays.length === 0) {
-      message.warning('Seçilen aralıkta hafta içi gün yok')
+      point('Seçilen aralıkta hafta içi gün yok', 'exam-periods')
       return
     }
 
@@ -565,8 +575,9 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
     }
 
     if (assignments.length === 0) {
-      message.warning(
+      point(
         `Uygun gün bulunamadı (sınıf seviyesi başına günde en fazla ${MAX_EXAMS_PER_LEVEL} sınav)`,
+        'exam-calendar',
       )
       return
     }
@@ -780,7 +791,7 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
         </Space>
       )}
 
-      <div style={{ marginBottom: 16 }}>
+      <div data-attention="exam-year" style={{ marginBottom: 16 }}>
         <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
           Eğitim öğretim yılı
         </Typography.Text>
@@ -824,7 +835,7 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
         )}
       </div>
 
-      <div style={{ marginBottom: 16 }}>
+      <div data-attention="exam-periods" style={{ marginBottom: 16 }}>
         <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
           Sınav tarihleri
         </Typography.Text>
@@ -867,15 +878,17 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
                   style={{ width: 180 }}
                   maxLength={80}
                 />
-                <DatePicker.RangePicker
-                  value={periodRange}
-                  onChange={(value) => setPeriodRange(value as [Dayjs, Dayjs] | null)}
-                  format="DD.MM.YYYY"
-                  disabledDate={(current) =>
-                    !!current &&
-                    (current.isBefore(yearStart, 'day') || current.isAfter(yearEnd, 'day'))
-                  }
-                />
+                <span data-attention="exam-period-range">
+                  <DatePicker.RangePicker
+                    value={periodRange}
+                    onChange={(value) => setPeriodRange(value as [Dayjs, Dayjs] | null)}
+                    format="DD.MM.YYYY"
+                    disabledDate={(current) =>
+                      !!current &&
+                      (current.isBefore(yearStart, 'day') || current.isAfter(yearEnd, 'day'))
+                    }
+                  />
+                </span>
                 <Button icon={<PlusOutlined />} loading={submitting} onClick={() => void onCreatePeriod()}>
                   Tarih ekle
                 </Button>
@@ -885,7 +898,7 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
         )}
       </div>
 
-      <div style={{ marginBottom: 16 }}>
+      <div data-attention="exam-subjects" style={{ marginBottom: 16 }}>
         <Typography.Text strong style={{ display: 'block', marginBottom: 8 }}>
           Ders programından dersler
         </Typography.Text>
@@ -903,6 +916,7 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
               return (
                 <Tag
                   key={s.subject_id}
+                  data-attention={`exam-subject-${s.subject_id}`}
                   onClick={() => {
                     if (mode !== 'manuel' || !canCreate) return
                     setSelectedSubjectId(active ? null : s.subject_id)
@@ -976,6 +990,7 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
 
         <div
           ref={gridRef}
+          data-attention="exam-calendar"
           style={{
             border: `1px solid ${token.colorBorderSecondary}`,
             borderRadius: 12,
@@ -1038,6 +1053,7 @@ export function OrtakExamPlanner({ canCreate, canDelete }: OrtakExamPlannerProps
                 return (
                   <div
                     key={dateStr}
+                    data-attention={`exam-day-${dateStr}`}
                     onClick={() => onSelectDay(day)}
                     style={{
                       minHeight: 168,

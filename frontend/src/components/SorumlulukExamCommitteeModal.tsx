@@ -4,6 +4,7 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { scheduleSorumlulukSubject } from '../api/exams'
 import type { ScheduleTeacherOption } from '../api/schedule'
 import { getErrorMessage } from '../api/client'
+import { warnAttention } from '../utils/attention'
 import type { CommitteeMember } from '../types/exam'
 import { sorumlulukSubjectLabel } from '../types/exam'
 import {
@@ -112,15 +113,15 @@ export function SorumlulukExamCommitteeModal({
     }
     const [firstMember, secondMember] = memberIds
     if (!firstMember || !secondMember) {
-      message.warning('Komisyon için iki üye seçin')
+      warnAttention(message, 'Komisyon için iki üye seçin', 'committee-members')
       return
     }
     if (firstMember === secondMember) {
-      message.warning('İki üye farklı olmalıdır')
+      warnAttention(message, 'İki üye farklı olmalıdır', 'committee-members')
       return
     }
     if (firstMember === principalTeacherId || secondMember === principalTeacherId) {
-      message.warning('Üyeler, başkandan farklı olmalıdır')
+      warnAttention(message, 'Üyeler, başkandan farklı olmalıdır', 'committee-members')
       return
     }
     const written = writtenDate ? writtenDate.format('YYYY-MM-DD') : null
@@ -130,11 +131,11 @@ export function SorumlulukExamCommitteeModal({
       return
     }
     if (dual && written && !oral) {
-      message.warning('Sözlü sınavın gününü de seçin')
+      warnAttention(message, 'Sözlü sınavın gününü de seçin', 'committee-oral')
       return
     }
     if (dual && oral && !written) {
-      message.warning('Yazılı sınavın gününü de seçin')
+      warnAttention(message, 'Yazılı sınavın gününü de seçin', 'committee-written')
       return
     }
 
@@ -213,6 +214,7 @@ export function SorumlulukExamCommitteeModal({
               : 'Bu dersin branşına uyan öğretmen bulunamadı'}
           </Typography.Text>
         </div>
+        <div data-attention="committee-members">
         {([0, 1] as const).map((index) => (
           <div key={index}>
             <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
@@ -237,6 +239,7 @@ export function SorumlulukExamCommitteeModal({
             />
           </div>
         ))}
+        </div>
         <div>
           <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
             Gözetmen
@@ -267,7 +270,7 @@ export function SorumlulukExamCommitteeModal({
         </div>
         {dual && (
           <Space wrap size={12}>
-            <div>
+            <div data-attention="committee-written">
               <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
                 Yazılı günü
               </Typography.Text>
@@ -279,7 +282,7 @@ export function SorumlulukExamCommitteeModal({
               </Typography.Text>
               <TimePicker value={writtenTime} onChange={setWrittenTime} format="HH:mm" minuteStep={5} />
             </div>
-            <div>
+            <div data-attention="committee-oral">
               <Typography.Text strong style={{ display: 'block', marginBottom: 6 }}>
                 Sözlü günü
               </Typography.Text>

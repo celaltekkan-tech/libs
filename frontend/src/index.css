@@ -16,6 +16,7 @@
   --app-login-panel-bg: #fff;
   --app-login-subtitle: #6b7280;
   --app-muted: #6b7280;
+  --attention-outline: #1d4e89;
 }
 
 [data-theme='dark'] {
@@ -29,6 +30,7 @@
   --app-login-panel-bg: #111827;
   --app-login-subtitle: #9ca3af;
   --app-muted: #9ca3af;
+  --attention-outline: #69b1ff;
 }
 
 html,
@@ -921,32 +923,40 @@ body {
   outline-offset: 3px;
 }
 
-.profile-2fa-qr-pulse {
-  animation: profile-2fa-qr-blink 1.8s ease;
+.profile-2fa-qr-pulse,
+.attention-pulse {
+  outline: 3px solid transparent;
+  outline-offset: 4px;
+  animation: attention-blink 1.8s ease;
+  scroll-margin: 80px;
 }
 
-@keyframes profile-2fa-qr-blink {
+[data-attention] {
+  scroll-margin: 80px;
+}
+
+@keyframes attention-blink {
   0%,
   100% {
     outline-color: transparent;
   }
   12%,
   22% {
-    outline-color: #1d4e89;
+    outline-color: var(--attention-outline);
   }
   32% {
     outline-color: transparent;
   }
   42%,
   52% {
-    outline-color: #1d4e89;
+    outline-color: var(--attention-outline);
   }
   62% {
     outline-color: transparent;
   }
   72%,
   82% {
-    outline-color: #1d4e89;
+    outline-color: var(--attention-outline);
   }
   92% {
     outline-color: transparent;

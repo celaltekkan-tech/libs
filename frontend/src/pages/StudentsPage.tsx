@@ -58,6 +58,7 @@ import {
   STUDENT_IMPORT_FIELD_OPTIONS,
 } from '../types/student'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+import { warnAttention } from '../utils/attention'
 import { tablePagination } from '../utils/tablePagination'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
 import type { SorterResult } from 'antd/es/table/interface'
@@ -564,7 +565,7 @@ export function StudentsPage() {
   const applyImportPreview = async (headerRow?: number | null) => {
     const file = importFile?.originFileObj
     if (!file) {
-      message.warning('Lütfen bir .xls veya .xlsx dosyası seçin')
+      warnAttention(message, 'Lütfen bir .xls veya .xlsx dosyası seçin', 'student-import-file')
       return
     }
     setPreviewLoading(true)
@@ -602,7 +603,7 @@ export function StudentsPage() {
   const onImport = async () => {
     const file = importFile?.originFileObj
     if (!file) {
-      message.warning('Lütfen bir .xls veya .xlsx dosyası seçin')
+      warnAttention(message, 'Lütfen bir .xls veya .xlsx dosyası seçin', 'student-import-file')
       return
     }
 
@@ -643,11 +644,11 @@ export function StudentsPage() {
 
     const fields = Object.values(importMapping)
     if (!fields.includes('first_name') || !fields.includes('last_name')) {
-      message.warning('Ad ve Soyad sütunlarını eşleştirin')
+      warnAttention(message, 'Ad ve Soyad sütunlarını eşleştirin', 'student-import-map')
       return
     }
     if (!fields.includes('student_number')) {
-      message.warning('Öğrenci No sütununu eşleştirin')
+      warnAttention(message, 'Öğrenci No sütununu eşleştirin', 'student-import-map')
       return
     }
     if (
@@ -655,7 +656,7 @@ export function StudentsPage() {
       !importClassroomId &&
       !(importPreview?.format === 'table' && importPreview.detected_class?.class_level)
     ) {
-      message.warning('Excelde sınıf/şube yoksa varsayılan sınıf/şube seçin')
+      warnAttention(message, 'Excelde sınıf/şube yoksa varsayılan sınıf/şube seçin', 'student-import-class')
       return
     }
 
@@ -724,11 +725,11 @@ export function StudentsPage() {
 
   const onExport = async () => {
     if (exportColumns.length === 0) {
-      message.warning('En az bir sütun seçin')
+      warnAttention(message, 'En az bir sütun seçin', 'student-export-columns')
       return
     }
     if (hasActiveFilters && filteredStudents.length === 0) {
-      message.warning('Seçili filtreye uyan öğrenci yok')
+      warnAttention(message, 'Seçili filtreye uyan öğrenci yok', 'student-filters')
       return
     }
     setSubmitting(true)
@@ -760,11 +761,11 @@ export function StudentsPage() {
   const onSaveTemplate = async () => {
     if (!session) return
     if (!saveTemplateName.trim()) {
-      message.warning('Şablon adı girin')
+      warnAttention(message, 'Şablon adı girin', 'student-template-name')
       return
     }
     if (exportColumns.length === 0) {
-      message.warning('En az bir sütun seçin')
+      warnAttention(message, 'En az bir sütun seçin', 'student-export-columns')
       return
     }
     try {
@@ -909,7 +910,7 @@ export function StudentsPage() {
           </Space>
         </Space>
 
-        <FilterBar>
+        <FilterBar attention="student-filters">
           <Input
             allowClear
             prefix={<SearchOutlined />}
@@ -1354,6 +1355,7 @@ export function StudentsPage() {
                   }}
                 />
               </Form.Item>
+              <div data-attention="student-import-file">
               <Form.Item label="Excel dosyası (.xls / .xlsx)" required>
                 <Upload.Dragger
                   accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -1376,6 +1378,7 @@ export function StudentsPage() {
                   <p className="ant-upload-hint">Excel (.xls, .xlsx)</p>
                 </Upload.Dragger>
               </Form.Item>
+              </div>
             </Form>
           </>
         )}
@@ -1413,7 +1416,7 @@ export function StudentsPage() {
                     </Space.Compact>
                   </Form.Item>
                 </Col>
-                <Col span={16}>
+                <Col span={16} data-attention="student-import-class">
                   <Form.Item
                     label="Sınıf / şube (isteğe bağlı)"
                     required={!mappingHasClassColumns && !importPreview.detected_class}
@@ -1454,6 +1457,7 @@ export function StudentsPage() {
               geldiğini "Öneriniz" kutusuna yazabilirsiniz; bu bilgi yöneticiye geri bildirim olarak iletilir.
             </Typography.Paragraph>
 
+            <div data-attention="student-import-map">
             <SortableTable
               size="small"
               pagination={false}
@@ -1525,6 +1529,7 @@ export function StudentsPage() {
                 },
               ]}
             />
+            </div>
 
             {importPreview.sample_rows.length > 0 && (
               <>
@@ -1642,6 +1647,7 @@ export function StudentsPage() {
               ]}
             />
           </Form.Item>
+          <div data-attention="student-export-columns">
           <Form.Item label="Sütunlar">
             <Checkbox
               checked={
@@ -1664,6 +1670,8 @@ export function StudentsPage() {
               onChange={(vals) => setExportColumns(vals as string[])}
             />
           </Form.Item>
+          </div>
+          <div data-attention="student-template-name">
           <Form.Item label="Bu sütun seçimini şablon olarak kaydet">
             <Space.Compact style={{ width: '100%' }}>
               <Input
@@ -1674,6 +1682,7 @@ export function StudentsPage() {
               <Button onClick={() => void onSaveTemplate()}>Kaydet</Button>
             </Space.Compact>
           </Form.Item>
+          </div>
           <Typography.Text type="secondary">
             Varsayılan olarak kimlik, sınıf, veli, iletişim ve kayıt alanlarının tümü seçilidir. Arama ve tablo filtreleri dışa aktarmaya da uygulanır.
           </Typography.Text>

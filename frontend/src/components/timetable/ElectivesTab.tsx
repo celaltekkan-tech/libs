@@ -4,6 +4,7 @@ import { SaveOutlined, UndoOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { getElectives, listTimetableAssignments, saveElectives } from '../../api/timetable'
 import { getErrorMessage } from '../../api/client'
+import { warnAttention } from '../../utils/attention'
 import type { ElectiveStudent, TimetableAssignment } from '../../types/timetable'
 import { assignmentTeacherIds, shortClassroom, teacherFullName, type TimetableCtx } from './shared'
 
@@ -201,7 +202,7 @@ export function ElectivesTab({ ctx }: { ctx: TimetableCtx }) {
                 onRow={(c) => ({
                   onClick: () => {
                     if (dirty && c.id !== classId) {
-                      message.warning('Önce bu şubenin seçimlerini kaydedin veya geri alın')
+                      warnAttention(message, 'Önce bu şubenin seçimlerini kaydedin veya geri alın', 'elective-save')
                       return
                     }
                     setClassId(c.id)
@@ -226,7 +227,7 @@ export function ElectivesTab({ ctx }: { ctx: TimetableCtx }) {
               title={classId ? `${shortClassroom(ctx.classrooms.find((c) => c.id === classId))} — ${students.length} öğrenci` : ''}
               extra={
                 editable && (
-                  <Space>
+                  <Space data-attention="elective-save">
                     <Button icon={<UndoOutlined />} disabled={!dirty} onClick={() => setChoices(saved)}>
                       Geri al
                     </Button>

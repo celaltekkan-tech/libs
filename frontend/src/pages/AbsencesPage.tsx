@@ -29,6 +29,7 @@ import { AbsenceCalendarView } from '../components/AbsenceCalendarView'
 import { StudentAbsenceHistory } from '../components/StudentAbsenceHistory'
 import { DykAttendancePanel } from './DykPage'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+import { warnAttention } from '../utils/attention'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { tablePagination } from '../utils/tablePagination'
 import { nestedPersonNameSorter, personNameSorter, SORT_AZ } from '../utils/tableSort'
@@ -142,7 +143,7 @@ export function AbsencesPage() {
       reason: v.reason || null,
     }))
     if (entries.length === 0) {
-      message.warning('En az bir öğrenci için durum seçin')
+      warnAttention(message, 'En az bir öğrenci için durum seçin', 'absence-entry')
       return
     }
     setSubmitting(true)
@@ -198,7 +199,7 @@ export function AbsencesPage() {
     try {
       const filtered = Boolean(search.trim() || classroomFilter)
       if (filtered && filteredStudents.length === 0) {
-        message.warning('Seçili filtreye uyan öğrenci yok')
+        warnAttention(message, 'Seçili filtreye uyan öğrenci yok', 'absence-filters')
         return
       }
       const blob = await exportAbsences({
@@ -297,7 +298,7 @@ export function AbsencesPage() {
                     children: (
                       <>
                         <Space wrap style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-                          <FilterBar style={{ marginBottom: 0, flex: 1 }}>
+                          <FilterBar attention="absence-filters" style={{ marginBottom: 0, flex: 1 }}>
                             <DatePicker value={date} onChange={(v) => v && setDate(v)} format="DD.MM.YYYY" />
                             <Input
                               allowClear
@@ -343,6 +344,7 @@ export function AbsencesPage() {
                             />
                           </Card>
                         )}
+                        <div data-attention="absence-entry">
                         <SortableTable
                           rowKey="id"
                           loading={loading}
@@ -351,6 +353,7 @@ export function AbsencesPage() {
                           pagination={tablePagination(20)}
                           scroll={{ x: 'max-content' }}
                         />
+                        </div>
                         {records.length > 0 && canDelete && (
                           <>
                             <Space style={{ width: '100%', justifyContent: 'space-between', marginTop: 24 }} wrap>
