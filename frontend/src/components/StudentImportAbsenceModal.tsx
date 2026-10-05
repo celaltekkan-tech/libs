@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { App, Button, Modal, Select, Space, Typography } from 'antd'
 import { bulkRegistrationStatus } from '../api/students'
 import { getErrorMessage } from '../api/client'
+import { warnAttention } from '../utils/attention'
 import type { ImportMissingClass, RegistrationStatus } from '../types/student'
 
 const STATUS_OPTIONS: Array<{ value: Exclude<RegistrationStatus, 'aktif'>; label: string }> = [
@@ -43,7 +44,7 @@ export function StudentImportAbsenceModal({ open, groups, onClose, onSaved }: St
       .filter((entry): entry is [string, Exclude<RegistrationStatus, 'aktif'>] => Boolean(entry[1]))
       .map(([id, registration_status]) => ({ id: Number(id), registration_status }))
     if (updates.length === 0) {
-      message.warning('En az bir öğrenci için durum seçin')
+      warnAttention(message, 'En az bir öğrenci için durum seçin', 'import-absence-list')
       return
     }
     setSaving(true)
@@ -79,7 +80,7 @@ export function StudentImportAbsenceModal({ open, groups, onClose, onSaved }: St
         Dosyada geçen sınıflarda kayıtlı olup Excelde bulunmayan {total} aktif öğrenci var. Karar her sınıf
         için ayrı verilir. İşaretlenmeyen öğrenciler aktif kalır.
       </Typography.Paragraph>
-      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Space direction="vertical" size={16} style={{ width: '100%' }} data-attention="import-absence-list">
         {groups.map((group) => (
           <div key={group.classroom_id}>
             <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 8 }} wrap>

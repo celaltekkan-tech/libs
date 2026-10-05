@@ -4,6 +4,7 @@ import { createSorumlulukItem } from '../api/exams'
 import { listStudents } from '../api/students'
 import { listSubjects } from '../api/subjects'
 import { getErrorMessage } from '../api/client'
+import { warnAttention } from '../utils/attention'
 import type { Student } from '../types/student'
 import type { Subject } from '../types/subject'
 
@@ -50,7 +51,7 @@ export function SorumlulukExamAddModal({ open, onCancel, onCreated }: Sorumluluk
     const values = await form.validateFields()
     const subjectName = String(values.subject_name || '').trim()
     if (!values.subject_id && !subjectName) {
-      message.warning('Katalogdan ders seçin veya yeni ders adı yazın')
+      warnAttention(message, 'Katalogdan ders seçin veya yeni ders adı yazın', 'sorumluluk-new-subject')
       return
     }
     setSaving(true)
@@ -106,6 +107,7 @@ export function SorumlulukExamAddModal({ open, onCancel, onCreated }: Sorumluluk
         >
           <Select options={GRADE_OPTIONS} placeholder="Örn. 9. sınıf" />
         </Form.Item>
+        <div data-attention="sorumluluk-new-subject">
         <Form.Item name="subject_id" label="Ders">
           <Select
             allowClear
@@ -118,6 +120,7 @@ export function SorumlulukExamAddModal({ open, onCancel, onCreated }: Sorumluluk
         <Form.Item name="subject_name" label="Katalogda yoksa ders adı">
           <Input placeholder="Yeni ders adı yazılırsa kataloga eklenir" />
         </Form.Item>
+        </div>
       </Form>
     </Modal>
   )

@@ -31,6 +31,7 @@ import type { Dayjs } from 'dayjs'
 import { AppLayout } from '../../components/AppLayout'
 import { FeedbackUpdatesBlock, FeedbackThreadBody } from '../../components/FeedbackUpdatesBlock'
 import { FeedbackMessageHtml, RichTextEditor, sanitizeFeedbackHtml, stripHtml } from '../../components/RichTextEditor'
+import { warnAttention } from '../../utils/attention'
 import {
   addFeedbackUpdate,
   deleteFeedback,
@@ -213,7 +214,7 @@ export function FeedbackListPage({ mode = 'feedback' }: { mode?: 'feedback' | 's
       if (values.status !== replyTarget.status) {
         await (isSupport ? updateSupport : updateFeedback)(replyTarget.id, { status: values.status })
       } else if (!hasBody) {
-        message.warning('Durum değişmedi ve gelişme metni girilmedi')
+        warnAttention(message, 'Durum değişmedi ve gelişme metni girilmedi', 'feedback-reply')
         return
       }
       message.success(hasBody ? 'Gelişme eklendi' : 'Durum güncellendi')
@@ -564,6 +565,7 @@ export function FeedbackListPage({ mode = 'feedback' }: { mode?: 'feedback' | 's
                 ))}
               </Space>
             )}
+            <div data-attention="feedback-reply">
             <Form form={replyForm} layout="vertical" onFinish={submitReply}>
               <Form.Item name="status" label="Durum" rules={[{ required: true }]}>
                 <Select
@@ -593,6 +595,7 @@ export function FeedbackListPage({ mode = 'feedback' }: { mode?: 'feedback' | 's
                 />
               </Form.Item>
             </Form>
+            </div>
           </>
         )}
       </Modal>

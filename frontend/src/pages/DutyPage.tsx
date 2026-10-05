@@ -50,6 +50,7 @@ import type { DutyAssignment, DutyLocation } from '../types/duty'
 import type { Teacher } from '../types/teacher'
 import type { ScheduleEntry } from '../types/scheduleEntry'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+import { warnAttention } from '../utils/attention'
 
 dayjs.extend(isoWeek)
 dayjs.locale('tr')
@@ -336,7 +337,7 @@ export function DutyPage() {
       .filter(Boolean)
 
     if (names.length === 0) {
-      message.warning('En az bir nöbet yeri adı girin')
+      warnAttention(message, 'En az bir nöbet yeri adı girin', 'duty-locations')
       return
     }
 
@@ -1113,6 +1114,7 @@ export function DutyPage() {
           layout="vertical"
           onFinish={onSetup}
         >
+          <div data-attention="duty-locations">
           <Form.Item
             name="location_names"
             label="Nöbet yerleri"
@@ -1121,6 +1123,7 @@ export function DutyPage() {
           >
             <Input.TextArea rows={5} placeholder={'Nöbetçi İdareci\nGiriş\nKoridor\nBahçe'} />
           </Form.Item>
+          </div>
           <Form.Item
             name="capacity"
             label="Günlük nöbetçi kapasitesi"

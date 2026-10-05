@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Alert,
   App,
@@ -20,6 +20,7 @@ import { SortableDashboard } from '../components/SortableDashboard'
 import { useAuth } from '../auth/AuthContext'
 import { useThemeMode } from '../theme/ThemeContext'
 import { ObjectColorSettings } from '../components/ObjectColorSettings'
+import { pulseAttention } from '../utils/attention'
 import {
   changePassword,
   confirm2fa,
@@ -70,7 +71,7 @@ export function ProfilePage() {
   const [setupData, setSetupData] = useState<TwoFactorSetup | null>(null)
   const [backupCodes, setBackupCodes] = useState<string[] | null>(null)
   const [guideOpen, setGuideOpen] = useState(false)
-  const [qrPulse, setQrPulse] = useState(0)
+  const qrRef = useRef<HTMLImageElement>(null)
   const [profileForm] = Form.useForm<ProfileForm>()
   const [passwordForm] = Form.useForm<PasswordForm>()
   const [confirm2faForm] = Form.useForm<Confirm2faForm>()
@@ -180,7 +181,7 @@ export function ProfilePage() {
   }
 
   function pulseQr() {
-    window.setTimeout(() => setQrPulse((n) => n + 1), 280)
+    window.setTimeout(() => pulseAttention(qrRef.current), 280)
   }
 
   function dismissGuide() {
@@ -545,8 +546,8 @@ export function ProfilePage() {
                         <>
                           <div className="profile-2fa-qr-row">
                             <img
-                              key={qrPulse}
-                              className={qrPulse > 0 ? 'profile-2fa-qr profile-2fa-qr-pulse' : 'profile-2fa-qr'}
+                              ref={qrRef}
+                              className="profile-2fa-qr"
                               src={setupData.qr_data_url}
                               alt="2FA QR kodu"
                               width={180}

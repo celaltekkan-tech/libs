@@ -17,6 +17,7 @@ import {
   updateManagedUser,
 } from '../api/managedUsers'
 import { getErrorMessage } from '../api/client'
+import { warnAttention } from '../utils/attention'
 import type { ManagedUser, ManagedUserPayload, UserFormOptions } from '../types/managedUser'
 import { tablePagination } from '../utils/tablePagination'
 import { bulkDeleteByIds, bulkDeleteResultMessage } from '../utils/bulkDelete'
@@ -159,7 +160,7 @@ export function UsersPage() {
     try {
       const isSelf = Boolean(editing && session.user.id === editing.id)
       if (isSelf && values.is_active === false) {
-        message.warning('Kendi hesabınızı pasife alamazsınız')
+        warnAttention(message, 'Kendi hesabınızı pasife alamazsınız', 'user-active')
         setSubmitting(false)
         return
       }
@@ -167,7 +168,11 @@ export function UsersPage() {
       const roleMeta = options.school_roles.find((r) => r.id === values.role_id)
       const alreadyCounted = Boolean(editing && !isExemptRole(editing.school_role))
       if (atUserLimit && !isExemptRole(roleMeta?.name) && !alreadyCounted) {
-        message.warning('Yönetici kullanıcı limiti doldu. Öğretmen veya rehber öğretmen seçebilirsiniz.')
+        warnAttention(
+          message,
+          'Yönetici kullanıcı limiti doldu. Öğretmen veya rehber öğretmen seçebilirsiniz.',
+          'user-role',
+        )
         setSubmitting(false)
         return
       }
@@ -526,6 +531,7 @@ export function UsersPage() {
               options={options.schools.map((school) => ({ value: school.id, label: school.name }))}
             />
           </Form.Item>
+          <div data-attention="user-role">
           <Form.Item
             name="role_id"
             label="Yetki grubu"
@@ -534,11 +540,13 @@ export function UsersPage() {
           >
             <Select showSearch optionFilterProp="label" options={roleOptions} />
           </Form.Item>
+          </div>
           {selectedBlockedByQuota && (
             <Typography.Paragraph type="warning">
               Bu planın kullanıcı kotası doldu. Öğretmen, rehber öğretmen, müdür veya müdür yardımcısı seçebilirsiniz.
             </Typography.Paragraph>
           )}
+          <div data-attention="user-active">
           <Form.Item
             name="is_active"
             label="Aktif"
@@ -549,6 +557,7 @@ export function UsersPage() {
           >
             <Switch disabled={Boolean(editing && session?.user.id === editing.id)} />
           </Form.Item>
+          </div>
         </Form>
       </Modal>
       <TypedPhraseConfirmModal

@@ -3,6 +3,7 @@ import { App, Button, Card, Col, Empty, Input, InputNumber, Row, Select, Space, 
 import { CloseOutlined, PlusOutlined, UsergroupAddOutlined } from '@ant-design/icons'
 import { getLessonPool, listTimetableAssignments, updateTimetableAssignment, updateTimetableProject } from '../../api/timetable'
 import { getErrorMessage } from '../../api/client'
+import { warnAttention } from '../../utils/attention'
 import type { LessonPool, TeacherDistributionOverride, TimetableAssignment, TimetableAssignmentPayload } from '../../types/timetable'
 import type { Teacher } from '../../types/teacher'
 import { useActiveSchool } from '../../auth/ActiveSchoolContext'
@@ -277,7 +278,7 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
     if (!row.teacher_id) return assignMain(row)
     if (assignmentTeacherIds(row).includes(teacherId)) return
     if (assignmentTeacherIds(row).length >= MAX_TEACHERS) {
-      message.warning(`Bir derse en fazla ${MAX_TEACHERS} öğretmen atanabilir`)
+      warnAttention(message, `Bir derse en fazla ${MAX_TEACHERS} öğretmen atanabilir`, `assign-row-${row.id}`)
       return
     }
     void patch(row, { co_teacher_ids: [...(row.co_teacher_ids || []), teacherId] })
@@ -529,6 +530,7 @@ export function TeacherAssignTab({ ctx }: { ctx: TimetableCtx }) {
                         dataSource={classLessons}
                         scroll={{ y: 330 }}
                         onRow={(r) => ({
+                          'data-attention': `assign-row-${r.id}`,
                           onClick: () => setLessonId(r.id),
                           style: { cursor: 'pointer', background: r.id === lessonId ? token.colorWarningBg : undefined, color: token.colorText },
                         })}

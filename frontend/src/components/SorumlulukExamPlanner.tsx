@@ -48,6 +48,7 @@ import { getErrorMessage } from '../api/client'
 import type { CommitteeMember, ResponsibilityExamItem } from '../types/exam'
 import { sorumlulukSubjectKey, sorumlulukSubjectLabel } from '../types/exam'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+import { warnAttention } from '../utils/attention'
 import { tablePagination } from '../utils/tablePagination'
 import { TypedPhraseConfirmModal } from './TypedPhraseConfirmModal'
 import { SorumlulukExamImportModal } from './SorumlulukExamImportModal'
@@ -394,7 +395,7 @@ export function SorumlulukExamPlanner({ canCreate, canUpdate, canDelete }: Sorum
 
   const applyDayTime = async (dateStr: string) => {
     if (!draftTime) {
-      message.warning('Saat seçin')
+      warnAttention(message, 'Saat seçin', `sorumluluk-day-time-${dateStr}`)
       return
     }
     const time = draftTime.format('HH:mm')
@@ -447,11 +448,15 @@ export function SorumlulukExamPlanner({ canCreate, canUpdate, canDelete }: Sorum
 
   const onAutoGenerate = async () => {
     if (!autoRange) {
-      message.warning('Tarih aralığı seçin')
+      warnAttention(message, 'Tarih aralığı seçin', 'sorumluluk-auto-range')
       return
     }
     if (!autoSkipTime && !autoStartTime) {
-      message.warning('Sınav saatini seçin veya "Saat bilgisi girmeyeceğim" seçeneğini işaretleyin')
+      warnAttention(
+        message,
+        'Sınav saatini seçin veya "Saat bilgisi girmeyeceğim" seçeneğini işaretleyin',
+        'sorumluluk-auto-time',
+      )
       return
     }
     const startTime = !autoSkipTime && autoStartTime ? autoStartTime.format('HH:mm') : null
@@ -470,7 +475,7 @@ export function SorumlulukExamPlanner({ canCreate, canUpdate, canDelete }: Sorum
       cursor = cursor.add(1, 'day')
     }
     if (weekdays.length === 0) {
-      message.warning('Seçilen aralıkta hafta içi gün yok')
+      warnAttention(message, 'Seçilen aralıkta hafta içi gün yok', 'sorumluluk-auto-range')
       return
     }
 
@@ -915,26 +920,31 @@ export function SorumlulukExamPlanner({ canCreate, canUpdate, canDelete }: Sorum
           {mode === 'otomatik' && (
             <Space direction="vertical" size={8} style={{ marginBottom: 16, width: '100%' }}>
               <Space wrap>
-                <DatePicker.RangePicker
-                  value={autoRange}
-                  onChange={(v) => setAutoRange(v as [Dayjs, Dayjs] | null)}
-                  format="DD.MM.YYYY"
-                />
-                <Checkbox
-                  checked={autoSkipTime}
-                  onChange={(e) => setAutoSkipTime(e.target.checked)}
-                >
-                  Saat bilgisi girmeyeceğim
-                </Checkbox>
-                {!autoSkipTime && (
-                  <TimePicker
-                    value={autoStartTime}
-                    onChange={setAutoStartTime}
-                    format="HH:mm"
-                    minuteStep={5}
-                    placeholder="Sınav saati"
+                <span data-attention="sorumluluk-auto-range">
+                  <DatePicker.RangePicker
+                    value={autoRange}
+                    onChange={(v) => setAutoRange(v as [Dayjs, Dayjs] | null)}
+                    format="DD.MM.YYYY"
                   />
-                )}
+                </span>
+                <span data-attention="sorumluluk-auto-time">
+                  <Checkbox
+                    checked={autoSkipTime}
+                    onChange={(e) => setAutoSkipTime(e.target.checked)}
+                  >
+                    Saat bilgisi girmeyeceğim
+                  </Checkbox>
+                  {!autoSkipTime && (
+                    <TimePicker
+                      value={autoStartTime}
+                      onChange={setAutoStartTime}
+                      format="HH:mm"
+                      minuteStep={5}
+                      placeholder="Sınav saati"
+                      style={{ marginLeft: 8 }}
+                    />
+                  )}
+                </span>
                 {(canCreate || canUpdate) && (
                   <Button
                     type="primary"
@@ -1166,7 +1176,10 @@ export function SorumlulukExamPlanner({ canCreate, canUpdate, canDelete }: Sorum
                                 if (open) setDraftTime(null)
                               }}
                               content={
-                                <Space onClick={(event) => event.stopPropagation()}>
+                                <Space
+                                  data-attention={`sorumluluk-day-time-${dateStr}`}
+                                  onClick={(event) => event.stopPropagation()}
+                                >
                                   <TimePicker
                                     value={draftTime}
                                     onChange={setDraftTime}

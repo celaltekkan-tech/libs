@@ -34,6 +34,7 @@ import type { TeacherDocumentType } from '../api/teachers'
 import { getErrorMessage } from '../api/client'
 import type { Teacher, TeacherPayload } from '../types/teacher'
 import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+import { warnAttention } from '../utils/attention'
 import { listPersonnelCategories } from '../api/personnelCategories'
 import type { PersonnelCategory } from '../types/personnelCategory'
 import { tablePagination } from '../utils/tablePagination'
@@ -513,11 +514,11 @@ export function TeachersPage() {
 
   const onExport = async () => {
     if (exportColumns.length === 0) {
-      message.warning('En az bir sütun seçin')
+      warnAttention(message, 'En az bir sütun seçin', 'teacher-export-columns')
       return
     }
     if (hasActiveFilters && filteredTeachers.length === 0) {
-      message.warning('Seçili filtreye uyan öğretmen yok')
+      warnAttention(message, 'Seçili filtreye uyan öğretmen yok', 'teacher-filters')
       return
     }
     setSubmitting(true)
@@ -559,7 +560,7 @@ export function TeachersPage() {
 
   const onMove = async () => {
     if (!moveTarget || !moveCategoryId) {
-      message.warning('Kategori seçin')
+      warnAttention(message, 'Kategori seçin', 'teacher-move-category')
       return
     }
     setMoving(true)
@@ -715,7 +716,7 @@ export function TeachersPage() {
           </Space>
         </Space>
 
-        <FilterBar>
+        <FilterBar attention="teacher-filters">
           <Input
             allowClear
             prefix={<SearchOutlined />}
@@ -1102,6 +1103,7 @@ export function TeachersPage() {
           >
             Tüm bilgi sütunları
           </Checkbox>
+          <div data-attention="teacher-export-columns">
           <Checkbox.Group
             value={exportColumns}
             onChange={(vals) => setExportColumns(vals as string[])}
@@ -1110,6 +1112,7 @@ export function TeachersPage() {
               (column) => ({ label: column.label, value: column.value }),
             )}
           />
+          </div>
           <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
             İmza, sabah / öğle / akşam imza ve saatli imza sütunları boş gelir; liste çıktısına imza
             alanı eklemek içindir.
@@ -1138,6 +1141,7 @@ export function TeachersPage() {
             ? `"${moveTarget.first_name} ${moveTarget.last_name}" öğretmen listesinden çıkarılıp seçilen kategoriye alınacak.`
             : null}
         </Typography.Paragraph>
+        <div data-attention="teacher-move-category">
         <Select
           style={{ width: '100%' }}
           placeholder="Kategori seçin"
@@ -1145,6 +1149,7 @@ export function TeachersPage() {
           value={moveCategoryId ?? undefined}
           onChange={(v) => setMoveCategoryId(v)}
         />
+        </div>
       </Modal>
       <TypedPhraseConfirmModal
         open={bulkOpen}
