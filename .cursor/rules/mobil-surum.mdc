@@ -1,0 +1,14 @@
+---
+description: Mobilde her değişiklikte sürümü arttırıp Play Console için AAB al
+alwaysApply: true
+---
+
+# Mobil sürüm
+
+`mobile/` altında kullanıcıya giden bir değişiklik yaptığında sürümü aynı işin içinde mutlaka arttır, ardından Play Console'a yüklenecek Android paketini al. Kullanıcıya sorma, unutma, sonra hatırlatma.
+
+- `mobile/app.json` içindeki `expo.version` ve `mobile/package.json` içindeki `version` birlikte bir yama sürümü artsın (`1.0.4` → `1.0.5`).
+- Aynı değişiklik turunda bir kez arttır. Sürüm zaten bu turda yükseldiyse tekrar yükseltme.
+- Android `versionCode` depoya yazılmaz; EAS derlemesinde kendiliğinden artar.
+- Yalnızca `mobile/` dışındaki dosyalar değiştiyse sürüm durur ve derleme alınmaz.
+- Sürüm arttıysa `mobile/` içinde `npx eas-cli build --profile production --platform android --non-interactive` çalıştır. Çıktı Play Console'a yüklenecek `.aab` dosyasıdır. APK (preview) alma. Derleme linkini kullanıcıya yaz. Aynı sürüm için ikinci derleme başlatma.
