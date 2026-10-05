@@ -1,7 +1,7 @@
 const Joi = require('joi');
 
 const STATEMENT_TYPES = ['yazili_ifade', 'sozlu_ifade', 'savunma'];
-const INFO_SOURCE_TYPES = ['ogretmen', 'rehberlik', 'arkadas', 'genel'];
+const INFO_SOURCE_TYPES = ['ogretmen', 'sinif_rehber', 'rehberlik', 'arkadas', 'genel'];
 const NOTICE_TYPES = ['ogrenciye_cagri', 'kurul_toplantisi'];
 
 const createStatementSchema = Joi.object({

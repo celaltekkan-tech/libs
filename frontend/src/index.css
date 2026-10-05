@@ -579,6 +579,7 @@ body {
 }
 
 .duty-grid-cell {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -613,6 +614,45 @@ body {
 
 .duty-grid-cell.is-locked:disabled {
   cursor: default;
+}
+
+.duty-grid-cell.is-pinned {
+  box-shadow: inset 0 0 0 2px #d4380d;
+}
+
+.duty-pin {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  z-index: 1;
+  border: none;
+  background: transparent;
+  color: var(--app-muted);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  font-size: 12px;
+}
+
+.duty-pin.is-on {
+  color: #d4380d;
+}
+
+.duty-place-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.timetable-step-tabs .ant-tabs-nav-more {
+  color: #1d4e89;
+  font-size: 16px;
+  padding-inline: 10px;
+}
+
+[data-theme='dark'] .timetable-step-tabs .ant-tabs-nav-more {
+  color: #93c5fd;
 }
 
 .duty-day-start td,

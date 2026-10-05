@@ -98,7 +98,11 @@ export function DisciplineIncidentDrawer({ incident, open, onClose, onChanged }:
   const [loadingForms, setLoadingForms] = useState(false);
 
   const [statementModal, setStatementModal] = useState<{ participant: DisciplineParticipant; editing: DisciplineStatement | null } | null>(null)
-  const [infoModal, setInfoModal] = useState<{ participant: DisciplineParticipant; editing: DisciplineInfoRequest | null } | null>(null)
+  const [infoModal, setInfoModal] = useState<{
+    participant: DisciplineParticipant
+    editing: DisciplineInfoRequest | null
+    sourceType?: string
+  } | null>(null)
   const [meetingModal, setMeetingModal] = useState<{ editing: DisciplineMeetingNotice | null } | null>(null)
   const [decisionModal, setDecisionModal] = useState<{ editing: DisciplineDecision | null } | null>(null)
   const [notificationModal, setNotificationModal] = useState<{ decisionId: number; participantId: number; editing: DisciplineNotification | null } | null>(null)
@@ -425,6 +429,13 @@ export function DisciplineIncidentDrawer({ incident, open, onClose, onChanged }:
                         <Button key="bilgi" size="small" onClick={() => setInfoModal({ participant: p, editing: null })}>
                           Bilgi Toplama
                         </Button>,
+                        <Button
+                          key="rehber"
+                          size="small"
+                          onClick={() => setInfoModal({ participant: p, editing: null, sourceType: 'sinif_rehber' })}
+                        >
+                          Rehber Görüşü
+                        </Button>,
                         p.role === 'suclanan' && (
                           <Button key="karar" size="small" onClick={() => setDecisionModal({ editing: null })}>
                             Karar Oluştur
@@ -479,11 +490,36 @@ export function DisciplineIncidentDrawer({ incident, open, onClose, onChanged }:
                 />
 
                 <Typography.Title level={5} style={{ marginTop: 24 }}>
+                  Sınıf Rehber Öğretmeni Görüşleri
+                </Typography.Title>
+                <List
+                  loading={loadingForms}
+                  dataSource={infoRequests.filter((r) => r.source_type === 'sinif_rehber')}
+                  locale={{ emptyText: <Empty description="Görüş formu yok" /> }}
+                  renderItem={(r) => (
+                    <List.Item
+                      actions={[
+                        <Button key="indir" size="small" icon={<DownloadOutlined />} onClick={() => download(() => downloadInfoRequestDocument(r.id), `rehber-gorus-${r.id}.docx`)} />,
+                        <Button key="duzenle" size="small" icon={<EditOutlined />} onClick={() => r.Participant && setInfoModal({ participant: r.Participant, editing: r, sourceType: 'sinif_rehber' })} />,
+                        <Popconfirm key="sil" title="Silinsin mi?" onConfirm={async () => { await deleteInfoRequest(r.id); void loadForms() }}>
+                          <Button size="small" danger icon={<DeleteOutlined />} />
+                        </Popconfirm>,
+                      ]}
+                    >
+                      <List.Item.Meta
+                        title={`${r.Participant ? studentLabel(r.Participant) : ''} - ${r.source_name || 'Sınıf rehber öğretmeni'}`}
+                        description={r.response_date || ''}
+                      />
+                    </List.Item>
+                  )}
+                />
+
+                <Typography.Title level={5} style={{ marginTop: 24 }}>
                   Bilgi Toplama Formları
                 </Typography.Title>
                 <List
                   loading={loadingForms}
-                  dataSource={infoRequests}
+                  dataSource={infoRequests.filter((r) => r.source_type !== 'sinif_rehber')}
                   locale={{ emptyText: <Empty description="Kayıt yok" /> }}
                   renderItem={(r) => (
                     <List.Item
@@ -656,6 +692,7 @@ export function DisciplineIncidentDrawer({ incident, open, onClose, onChanged }:
         open={!!infoModal}
         participant={infoModal?.participant || null}
         editing={infoModal?.editing || null}
+        preferredSource={infoModal?.sourceType}
         submitting={submitting}
         onCancel={() => setInfoModal(null)}
         onSubmit={onSaveInfoRequest}

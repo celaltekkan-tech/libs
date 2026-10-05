@@ -23,16 +23,19 @@ export interface DutyLocation {
   /** @deprecated UI'da kullanılmıyor; API uyumu için tutuluyor */
   sort_order?: number
   is_active: boolean
+  is_locked?: boolean
   created_at: string
   updated_at: string
 }
 
 export interface DutyLocationPayload {
+  tenant_id?: number
   school_id?: number | null
   name: string
   floor_level?: number
   sort_order?: number
   is_active?: boolean
+  is_locked?: boolean
 }
 
 export interface DutyTeacher {
@@ -51,6 +54,7 @@ export interface DutyAssignment {
   duty_date: string
   notes: string | null
   incident_note: string | null
+  is_locked?: boolean
   Teacher?: DutyTeacher | null
   DutyLocation?: { id: number; name: string; floor_level?: number; sort_order?: number } | null
   created_at: string
@@ -63,6 +67,7 @@ export interface DutyAssignmentPayload {
   duty_location_id: number
   duty_date: string
   notes?: string | null
+  is_locked?: boolean
 }
 
 export interface DutyFairnessRow {

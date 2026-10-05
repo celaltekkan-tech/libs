@@ -100,6 +100,56 @@ export function suggestProctors(
   return [...others, ...same].slice(0, count)
 }
 
+export type DutyTerm = 'eylul_subat' | 'subat_haziran'
+
+export function dutyTerm(date: string | null | undefined): DutyTerm | null {
+  if (!date) return null
+  const iso = date.slice(0, 10)
+  const month = Number(iso.slice(5, 7))
+  const day = Number(iso.slice(8, 10))
+  if (!month || !day) return null
+  if (month >= 9 || month === 1) return 'eylul_subat'
+  if (month === 2) return day < 8 ? 'eylul_subat' : 'subat_haziran'
+  if (month >= 3 && month <= 8) return 'subat_haziran'
+  return null
+}
+
+export function dutyCountsByTerm(slots: DutySlot[]): {
+  eylulSubat: Map<number, number>
+  subatHaziran: Map<number, number>
+} {
+  const eylulSubat = new Map<number, number>()
+  const subatHaziran = new Map<number, number>()
+  const add = (map: Map<number, number>, id?: number | null) => {
+    if (!id) return
+    map.set(id, (map.get(id) || 0) + 1)
+  }
+  const bump = (slot: DutySlot, date: string | null | undefined, spokenOnly: boolean) => {
+    const term = dutyTerm(date)
+    if (!term) return
+    const map = term === 'eylul_subat' ? eylulSubat : subatHaziran
+    const members = slot.committee_members || []
+    const people = spokenOnly ? members.filter((member) => member.role !== 'gozetmen') : members
+    if (people.length) people.forEach((member) => add(map, member.teacher_id))
+    else add(map, slot.teacher_id)
+  }
+  for (const slot of slots) {
+    bump(slot, slot.exam_date, false)
+    bump(slot, slot.oral_exam_date, true)
+  }
+  return { eylulSubat, subatHaziran }
+}
+
+export function dutyCountLabel(
+  teacherId: number,
+  terms: { eylulSubat: Map<number, number>; subatHaziran: Map<number, number> },
+): string {
+  const first = terms.eylulSubat.get(teacherId) || 0
+  const second = terms.subatHaziran.get(teacherId) || 0
+  if (!first && !second) return ''
+  return `Eyl–Şub ${first} · Şub–Haz ${second}`
+}
+
 export function dutyCounts(slots: DutySlot[]): Map<number, number> {
   const counts = new Map<number, number>()
   const add = (id?: number | null) => {

@@ -7,7 +7,8 @@ import { getErrorMessage } from '../api/client'
 import type { CommitteeMember } from '../types/exam'
 import { sorumlulukSubjectLabel } from '../types/exam'
 import {
-  dutyCounts,
+  dutyCountLabel,
+  dutyCountsByTerm,
   isDualSubject,
   proctorCount,
   roleLabel,
@@ -30,13 +31,16 @@ interface SorumlulukExamCommitteeModalProps {
   onSaved: () => void
 }
 
-function teacherOptionLabel(teacher: ScheduleTeacherOption, duties: Map<number, number>): string {
-  const count = duties.get(teacher.id) || 0
+function teacherOptionLabel(
+  teacher: ScheduleTeacherOption,
+  terms: { eylulSubat: Map<number, number>; subatHaziran: Map<number, number> },
+): string {
   const branch = teacher.subject_names[0]
-  const duty = count > 0 ? ` · ${count} görev` : ''
+  const duty = dutyCountLabel(teacher.id, terms)
+  const suffix = duty ? ` · ${duty}` : ''
   return branch
-    ? `${teacher.first_name} ${teacher.last_name} (${branch})${duty}`
-    : `${teacher.first_name} ${teacher.last_name}${duty}`
+    ? `${teacher.first_name} ${teacher.last_name} (${branch})${suffix}`
+    : `${teacher.first_name} ${teacher.last_name}${suffix}`
 }
 
 function toDay(value: string | null | undefined): Dayjs | null {
@@ -71,7 +75,7 @@ export function SorumlulukExamCommitteeModal({
   const [oralTime, setOralTime] = useState<Dayjs | null>(null)
   const [saving, setSaving] = useState(false)
 
-  const duties = useMemo(() => dutyCounts(slots), [slots])
+  const duties = useMemo(() => dutyCountsByTerm(slots), [slots])
   const dual = slot ? isDualSubject(slot.subject_name) : false
   const neededProctors = slot ? proctorCount(slot.student_count) : 0
   const suggestions = slot

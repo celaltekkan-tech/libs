@@ -17,6 +17,8 @@ import {
 import {
   DownloadOutlined,
   LeftOutlined,
+  LockFilled,
+  LockOutlined,
   RightOutlined,
   SettingOutlined,
 } from '@ant-design/icons'
@@ -38,6 +40,7 @@ import {
   listDutyAssignments,
   listDutyLocations,
   saveDutyRules,
+  updateDutyAssignment,
   updateDutyLocation,
 } from '../api/duty'
 import { listScheduleEntries } from '../api/schedule'
@@ -486,6 +489,28 @@ export function DutyPage() {
     })
   }
 
+  const toggleLocationLock = async (location: DutyLocation) => {
+    try {
+      await updateDutyLocation(location.id, {
+        tenant_id: location.tenant_id,
+        name: location.name,
+        is_locked: !location.is_locked,
+      })
+      await load()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    }
+  }
+
+  const toggleAssignmentLock = async (assignment: DutyAssignment) => {
+    try {
+      await updateDutyAssignment(assignment.id, { is_locked: !assignment.is_locked })
+      await load()
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    }
+  }
+
   const onCopyWeek = async (replace = false) => {
     setSubmitting(true)
     try {
@@ -901,7 +926,22 @@ export function DutyPage() {
                 <tr>
                   <th className="duty-grid-corner">Gün</th>
                   {locations.map((loc) => (
-                    <th key={loc.id}>{loc.name}</th>
+                    <th key={loc.id}>
+                      <span className="duty-place-head">
+                        <span>{loc.name}</span>
+                        {canUpdate && (
+                          <span
+                            className={`duty-pin${loc.is_locked ? ' is-on' : ''}`}
+                            style={{ position: 'static' }}
+                            role="button"
+                            title={loc.is_locked ? 'Yer kilidini aç' : 'Yeri kilitle'}
+                            onClick={() => void toggleLocationLock(loc)}
+                          >
+                            {loc.is_locked ? <LockFilled /> : <LockOutlined />}
+                          </span>
+                        )}
+                      </span>
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -958,7 +998,7 @@ export function DutyPage() {
                           const cellButton = (
                             <button
                               type="button"
-                              className={`duty-grid-cell${cellAssignment ? ' has-teacher' : ''}${locked ? ' is-locked' : ''}${isActive ? ' is-active' : ''}`}
+                              className={`duty-grid-cell${cellAssignment ? ' has-teacher' : ''}${locked ? ' is-locked' : ''}${cellAssignment?.is_locked || loc.is_locked ? ' is-pinned' : ''}${isActive ? ' is-active' : ''}`}
                               style={
                                 cellAssignment ? { boxShadow: `inset 3px 0 0 ${color}` } : undefined
                               }
@@ -969,13 +1009,28 @@ export function DutyPage() {
                               }}
                             >
                               {cellAssignment?.Teacher ? (
-                                <TeacherDutyName
-                                  name={teacherLabel(cellAssignment.Teacher)}
-                                  dayIndexes={
-                                    teacherDayMap.get(cellAssignment.teacher_id) || [dayIndex]
-                                  }
-                                  count={dutyCountByTeacher.get(cellAssignment.teacher_id) || 0}
-                                />
+                                <>
+                                  {canUpdate && (
+                                    <span
+                                      className={`duty-pin${cellAssignment.is_locked ? ' is-on' : ''}`}
+                                      role="button"
+                                      title={cellAssignment.is_locked ? 'Kişi kilidini aç' : 'Kişiyi kilitle'}
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                        void toggleAssignmentLock(cellAssignment)
+                                      }}
+                                    >
+                                      {cellAssignment.is_locked ? <LockFilled /> : <LockOutlined />}
+                                    </span>
+                                  )}
+                                  <TeacherDutyName
+                                    name={teacherLabel(cellAssignment.Teacher)}
+                                    dayIndexes={
+                                      teacherDayMap.get(cellAssignment.teacher_id) || [dayIndex]
+                                    }
+                                    count={dutyCountByTeacher.get(cellAssignment.teacher_id) || 0}
+                                  />
+                                </>
                               ) : locked ? (
                                 <span className="duty-grid-placeholder is-muted">—</span>
                               ) : (
@@ -1099,7 +1154,7 @@ export function DutyPage() {
           Nöbet yerlerini bir sütun kaydır
         </Checkbox>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 0, marginTop: 8 }}>
-          İşaretlenmezse kişiler aynı yerde kalır. İşaretlenirse günleri değişmez, tuttukları yer bir sonraki sütuna kayar.
+          İşaretlenmezse kişiler aynı yerde kalır. İşaretlenirse günleri değişmez, tuttukları yer bir sonraki sütuna kayar. Kilitli kişi ve kilitli yer kaymaz.
         </Typography.Paragraph>
       </Modal>
 

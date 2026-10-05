@@ -56,7 +56,8 @@ import { SorumlulukExamCommitteeModal } from './SorumlulukExamCommitteeModal'
 import { FilterBar } from './FilterBar'
 import { ClearFiltersButton } from './ClearFiltersButton'
 import {
-  dutyCounts,
+  dutyCountLabel,
+  dutyCountsByTerm,
   foldName,
   isDualSubject,
   roleLabel,
@@ -575,11 +576,19 @@ export function SorumlulukExamPlanner({ canCreate, canUpdate, canDelete }: Sorum
     return committeeTeachers.find((teacher) => foldName(`${teacher.first_name} ${teacher.last_name}`) === target)?.id ?? null
   }, [committeeTeachers, principalName])
 
+  const namedWithDuty = (id: number, name: string) => {
+    const label = dutyCountLabel(id, termDuties)
+    return label ? `${name} (${label})` : name
+  }
+
   const suggestedName = (slot: SorumlulukSubjectSlot): string => {
     const members = (slot.committee_members || []).filter((item) => item.role === 'uye')
     if (members.length) {
       return members
-        .map((member) => teacherNameById.get(member.teacher_id) || '')
+        .map((member) => {
+          const name = teacherNameById.get(member.teacher_id) || ''
+          return name ? namedWithDuty(member.teacher_id, name) : ''
+        })
         .filter(Boolean)
         .join(', ')
     }
@@ -589,7 +598,7 @@ export function SorumlulukExamPlanner({ canCreate, canUpdate, canDelete }: Sorum
       principalTeacherId ? [principalTeacherId] : [],
       schoolLanguages,
     )
-      .map((teacher) => `${teacher.first_name} ${teacher.last_name}`)
+      .map((teacher) => namedWithDuty(teacher.id, `${teacher.first_name} ${teacher.last_name}`))
       .join(', ')
   }
 
@@ -608,8 +617,10 @@ export function SorumlulukExamPlanner({ canCreate, canUpdate, canDelete }: Sorum
     return ''
   }
 
+  const termDuties = useMemo(() => dutyCountsByTerm(subjects), [subjects])
+
   const downloadDutyReport = () => {
-    const counts = dutyCounts(subjects)
+    const counts = termDuties
     const lines = ['Tarih;Tür;Sınıf;Ders;Öğrenci sayısı;Rol;Öğretmen']
     const pushRow = (
       date: string | null,
@@ -639,10 +650,18 @@ export function SorumlulukExamPlanner({ canCreate, canUpdate, canDelete }: Sorum
       }
     }
     lines.push('')
-    lines.push('Öğretmen;Tarihli sınav sayısı')
-    const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1])
-    for (const [id, count] of ranked) {
-      lines.push(`${teacherNameById.get(id) || id};${count}`)
+    lines.push('Öğretmen;Eylül-Şubat;Şubat-Haziran')
+    const ids = new Set([...counts.eylulSubat.keys(), ...counts.subatHaziran.keys()])
+    const ranked = [...ids].sort(
+      (a, b) =>
+        (counts.eylulSubat.get(b) || 0) +
+        (counts.subatHaziran.get(b) || 0) -
+        ((counts.eylulSubat.get(a) || 0) + (counts.subatHaziran.get(a) || 0)),
+    )
+    for (const id of ranked) {
+      lines.push(
+        `${teacherNameById.get(id) || id};${counts.eylulSubat.get(id) || 0};${counts.subatHaziran.get(id) || 0}`,
+      )
     }
     const blob = new Blob([`\uFEFF${lines.join('\n')}`], { type: 'text/csv;charset=utf-8' })
     downloadBlob(blob, exportFilename('sorumluluk-gorev-sayilari', 'csv'))

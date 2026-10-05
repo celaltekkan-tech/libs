@@ -84,6 +84,7 @@ export const STATEMENT_TYPE_LABELS: Record<string, string> = Object.fromEntries(
 
 export const INFO_SOURCE_TYPE_OPTIONS = [
   { value: 'ogretmen', label: 'Öğretmen' },
+  { value: 'sinif_rehber', label: 'Sınıf Rehber Öğretmeni' },
   { value: 'rehberlik', label: 'Rehber Öğretmen' },
   { value: 'arkadas', label: 'Öğrenci (Arkadaşı)' },
   { value: 'genel', label: 'Genel' },

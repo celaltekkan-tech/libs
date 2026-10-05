@@ -14,7 +14,11 @@ function paintCell(cell, { bold = false, center = true } = {}) {
   cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
 }
 
-async function sendDutyGrid(res, { format, title, locations, days, rules }) {
+function signatureLines(principalName, signedAt) {
+  return [signedAt || '', principalName || '', 'Okul Müdürü'];
+}
+
+async function sendDutyGrid(res, { format, title, locations, days, rules, principalName, signedAt }) {
   const headers = ['Gün', ...locations.map((location) => location.name)];
   const body = days.map((day) => [day.label, ...day.cells]);
 
@@ -25,12 +29,6 @@ async function sendDutyGrid(res, { format, title, locations, days, rules }) {
     sheet.mergeCells(1, 1, 1, headers.length);
     paintCell(sheet.getCell(1, 1), { bold: true });
     let rowIndex = 2;
-    if (rules) {
-      sheet.addRow([`Açıklama: ${rules}`]);
-      sheet.mergeCells(rowIndex, 1, rowIndex, headers.length);
-      paintCell(sheet.getCell(rowIndex, 1), { center: false });
-      rowIndex += 1;
-    }
     sheet.addRow(headers);
     headers.forEach((_, index) => paintCell(sheet.getRow(rowIndex).getCell(index + 1), { bold: true }));
     body.forEach((line) => {
@@ -40,6 +38,20 @@ async function sendDutyGrid(res, { format, title, locations, days, rules }) {
     });
     sheet.getColumn(1).width = 22;
     for (let index = 2; index <= headers.length; index += 1) sheet.getColumn(index).width = 18;
+    sheet.addRow([]);
+    const explanation = String(rules || '').trim();
+    const explainRow = sheet.addRow([explanation ? `Açıklamalar: ${explanation}` : 'Açıklamalar:']);
+    sheet.mergeCells(explainRow.number, 1, explainRow.number, headers.length);
+    paintCell(explainRow.getCell(1), { center: false, bold: false });
+    explainRow.height = 36;
+    sheet.addRow([]);
+    const signCol = Math.max(headers.length, 1);
+    signatureLines(principalName, signedAt).forEach((line) => {
+      const row = sheet.addRow([]);
+      row.getCell(signCol).value = line;
+      row.getCell(signCol).font = { name: 'Calibri', size: 11, bold: line === 'Okul Müdürü' };
+      row.getCell(signCol).alignment = { horizontal: 'center', vertical: 'middle' };
+    });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename="nobet-cizelgesi.xlsx"');
     await workbook.xlsx.write(res);
@@ -51,7 +63,15 @@ async function sendDutyGrid(res, { format, title, locations, days, rules }) {
       const text = value == null ? '' : String(value);
       return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
     };
-    const lines = [headers, ...body].map((line) => line.map(escape).join(','));
+    const explanation = String(rules || '').trim();
+    const lines = [
+      headers,
+      ...body,
+      [],
+      [explanation ? `Açıklamalar: ${explanation}` : 'Açıklamalar:'],
+      [],
+      ...signatureLines(principalName, signedAt).map((line) => ['', line]),
+    ].map((line) => line.map(escape).join(','));
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="nobet-cizelgesi.csv"');
     return res.send(`\uFEFF${lines.join('\r\n')}`);
@@ -63,10 +83,6 @@ async function sendDutyGrid(res, { format, title, locations, days, rules }) {
   res.setHeader('Content-Disposition', 'attachment; filename="nobet-cizelgesi.pdf"');
   doc.pipe(res);
   doc.font(fonts.bold).fontSize(14).fillColor('#000000').text(title, { align: 'center' });
-  if (rules) {
-    doc.moveDown(0.4);
-    doc.font(fonts.regular).fontSize(9).text(rules, { align: 'left' });
-  }
   doc.moveDown(0.6);
 
   const tableWidth = 780;
@@ -94,6 +110,23 @@ async function sendDutyGrid(res, { format, title, locations, days, rules }) {
 
   drawRow(headers, true, 22);
   body.forEach((line) => drawRow(line, false, 36));
+  const explanation = String(rules || '').trim();
+  doc.y = y + 16;
+  doc.font(fonts.bold).fontSize(10).fillColor('#000000').text('Açıklamalar', 28, doc.y, { width: tableWidth });
+  doc.moveDown(0.3);
+  doc.font(fonts.regular).fontSize(9).text(explanation || ' ', 28, doc.y, { width: tableWidth });
+  const blockWidth = 180;
+  const signX = 28 + tableWidth - blockWidth;
+  let signY = doc.y + 28;
+  if (signY > 520) {
+    doc.addPage();
+    signY = 48;
+  }
+  signatureLines(principalName, signedAt).forEach((line, index) => {
+    doc.font(index === 2 ? fonts.bold : fonts.regular).fontSize(10).fillColor('#000000');
+    doc.text(line || ' ', signX, signY, { width: blockWidth, align: 'center' });
+    signY += 16;
+  });
   doc.end();
   return undefined;
 }

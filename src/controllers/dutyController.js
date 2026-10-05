@@ -245,6 +245,17 @@ async function generateWeeklyRotate({ tenantId, locations, start_date, end_date,
   }
 
   const templateMonday = weekMonday(templateDate);
+  const lockedAssignments = await DutyAssignment.findAll({
+    where: {
+      tenant_id: tenantId,
+      is_locked: true,
+      duty_location_id: { [Op.in]: locationIds },
+    },
+  });
+  const pinnedTeacherByLocation = new Map();
+  for (const row of lockedAssignments) {
+    pinnedTeacherByLocation.set(row.duty_location_id, row.teacher_id);
+  }
 
   // Aralık içindeki her gün için ilgili hafta ofsetini hesapla ve yaz
   let cursor = startDateStr;
@@ -269,7 +280,8 @@ async function generateWeeklyRotate({ tenantId, locations, start_date, end_date,
           continue;
         }
 
-        let teacherId = dayMap.get(loc.id);
+        const pinnedTeacher = pinnedTeacherByLocation.get(loc.id) || (loc.is_locked ? baseMap.get(loc.id) : null);
+        let teacherId = pinnedTeacher != null ? pinnedTeacher : dayMap.get(loc.id);
         if (teacherId != null && skippedDuty.has(teacherId)) {
           skipped.push({ date: cursor, location: loc.name, reason: 'Öğretmen nöbet tutmuyor' });
           continue;
@@ -719,9 +731,11 @@ module.exports = {
           (a.sort_order || 0) - (b.sort_order || 0) ||
           String(a.name).localeCompare(String(b.name), 'tr'),
       );
+      const lockedLocationIds = new Set(ordered.filter((loc) => loc.is_locked).map((loc) => loc.id));
+      const rotatable = ordered.filter((loc) => !loc.is_locked);
       const nextLocation = new Map();
-      ordered.forEach((loc, index) => {
-        const target = ordered[(index + 1) % ordered.length];
+      rotatable.forEach((loc, index) => {
+        const target = rotatable[(index + 1) % rotatable.length];
         nextLocation.set(loc.id, target ? target.id : loc.id);
       });
 
@@ -760,11 +774,13 @@ module.exports = {
           tenant_id: tenantId,
           school_id: row.school_id,
           teacher_id: row.teacher_id,
-          duty_location_id: shift_locations
-            ? nextLocation.get(row.duty_location_id) || row.duty_location_id
-            : row.duty_location_id,
+          duty_location_id:
+            shift_locations && !row.is_locked && !lockedLocationIds.has(row.duty_location_id)
+              ? nextLocation.get(row.duty_location_id) || row.duty_location_id
+              : row.duty_location_id,
           duty_date: plusDays(dateStr(row.duty_date), 7),
           notes: row.notes,
+          is_locked: Boolean(row.is_locked),
         }));
         return DutyAssignment.bulkCreate(payload, { transaction });
       });
@@ -845,6 +861,13 @@ module.exports = {
         ? await School.findAll({ where: { id: schoolIds } })
         : [];
       const rules = schools.map((school) => String(school.meta?.duty_rules || '').trim()).filter(Boolean).join('\n');
+      const principalName = [...new Set(schools.map((school) => String(school.principal_name || '').trim()).filter(Boolean))].join(', ');
+      const signedAt = new Intl.DateTimeFormat('tr-TR', {
+        timeZone: 'Europe/Istanbul',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      }).format(new Date());
 
       const byKey = new Map();
       for (const row of rows) {
@@ -884,6 +907,8 @@ module.exports = {
         locations: placeList,
         days,
         rules,
+        principalName,
+        signedAt,
       });
     } catch (err) {
       next(err);

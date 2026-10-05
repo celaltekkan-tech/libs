@@ -9,6 +9,11 @@ module.exports = (sequelize, DataTypes) => {
       duty_date: DataTypes.DATEONLY,
       notes: DataTypes.STRING,
       incident_note: DataTypes.TEXT,
+      is_locked: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
     },
     {
       tableName: 'DutyAssignments',
