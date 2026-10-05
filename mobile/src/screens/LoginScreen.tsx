@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SvgXml } from 'react-native-svg';
+import Svg, { Path, SvgXml } from 'react-native-svg';
 import * as SecureStore from 'expo-secure-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -55,7 +55,23 @@ export function LoginScreen({ navigation }: Props) {
   const [captchaLoading, setCaptchaLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reconnecting, setReconnecting] = useState(false);
+  const [reconnectNote, setReconnectNote] = useState<string | null>(null);
   const captchaEase = useRef(0);
+  const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showReconnectNote = (text: string) => {
+    if (noteTimer.current) clearTimeout(noteTimer.current);
+    setReconnectNote(text);
+    noteTimer.current = setTimeout(() => setReconnectNote(null), 4000);
+  };
+
+  useEffect(
+    () => () => {
+      if (noteTimer.current) clearTimeout(noteTimer.current);
+    },
+    [],
+  );
 
   const loadCaptcha = async (ease: number) => {
     setCaptchaLoading(true);
@@ -64,12 +80,29 @@ export function LoginScreen({ navigation }: Props) {
       setCaptchaId(next.id);
       setCaptchaSvg(next.svg);
       setCaptchaCode('');
+      return true;
     } catch (err) {
       setCaptchaId(null);
       setCaptchaSvg(null);
       setError(getErrorMessage(err));
+      return false;
     } finally {
       setCaptchaLoading(false);
+    }
+  };
+
+  const reconnect = async () => {
+    if (reconnecting || captchaLoading || submitting) return;
+    setReconnecting(true);
+    setError(null);
+    if (noteTimer.current) clearTimeout(noteTimer.current);
+    setReconnectNote(null);
+    captchaEase.current = 0;
+    try {
+      const ok = await loadCaptcha(0);
+      if (ok) showReconnectNote('Sunucu ile bağlantı kuruldu');
+    } finally {
+      setReconnecting(false);
     }
   };
 
@@ -124,11 +157,26 @@ export function LoginScreen({ navigation }: Props) {
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={[styles.themeRow, { top: insets.top + 12 }]}>
+      <View style={[styles.topRow, { top: insets.top + 8 }]} pointerEvents="box-none">
+        <TouchableOpacity
+          style={styles.reconnectButton}
+          onPress={() => void reconnect()}
+          disabled={reconnecting || captchaLoading || submitting}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Sunucu ile tekrar bağlantı kur"
+        >
+          {reconnecting ? (
+            <ActivityIndicator color={colors.headerLink} />
+          ) : (
+            <ReconnectIcon color={captchaLoading || submitting ? colors.textMuted : colors.headerLink} />
+          )}
+        </TouchableOpacity>
         <ThemeToggle compact />
       </View>
 
-      <Text style={styles.title}>Öğretmen Girişi</Text>
+      <Text style={[styles.title, !reconnectNote && styles.titleAlone]}>Öğretmen Girişi</Text>
+      {reconnectNote ? <Text style={styles.reconnectNote}>{reconnectNote}</Text> : null}
 
       <TextInput
         style={styles.input}
@@ -202,11 +250,39 @@ export function LoginScreen({ navigation }: Props) {
   );
 }
 
+function ReconnectIcon({ color }: { color: string }) {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 24 24">
+      <Path
+        fill={color}
+        d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"
+      />
+    </Svg>
+  );
+}
+
 function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: colors.background },
-    themeRow: { position: 'absolute', top: 48, right: 24 },
-    title: { fontSize: 24, fontWeight: '700', marginBottom: 32, textAlign: 'center', color: colors.text },
+    topRow: {
+      position: 'absolute',
+      left: 12,
+      right: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      zIndex: 1,
+    },
+    reconnectButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+    title: { fontSize: 24, fontWeight: '700', marginBottom: 16, textAlign: 'center', color: colors.text },
+    titleAlone: { marginBottom: 32 },
+    reconnectNote: {
+      color: colors.headerLink,
+      fontSize: 14,
+      fontWeight: '600',
+      textAlign: 'center',
+      marginBottom: 16,
+    },
     input: {
       borderWidth: 1,
       borderColor: colors.border,

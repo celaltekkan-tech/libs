@@ -21,6 +21,7 @@ const STATEMENT_TITLES = {
 
 const INFO_TITLES = {
   ogretmen: 'OKUL ÖĞRENCİ ÖDÜL VE DİSİPLİN KURULU BİLGİ TOPLAMA FORMU (ÖĞRETMEN)',
+  sinif_rehber: 'SINIF REHBER ÖĞRETMENİ GÖRÜŞ FORMU',
   rehberlik: 'OKUL ÖĞRENCİ ÖDÜL VE DİSİPLİN KURULU BİLGİ TOPLAMA FORMU (REHBERLİK)',
   arkadas: 'OKUL ÖĞRENCİ ÖDÜL VE DİSİPLİN KURULU BİLGİ TOPLAMA FORMU (ÖĞRENCİ)',
   genel: 'OKUL ÖĞRENCİ ÖDÜL VE DİSİPLİN KURULU BİLGİ TOPLAMA FORMU',
@@ -276,6 +277,13 @@ module.exports = {
           ['Ders Dışı Faaliyetleri', content.ders_disi],
           ['Arkadaşları İle İlişkisi', content.arkadas_iliski],
         ],
+        sinif_rehber: [
+          ['Derslerdeki Başarı Durumu', content.ders_basari],
+          ['Devam-Devamsızlık Durumu', content.devam],
+          ['Okul İçi Davranışları', content.davranis],
+          ['Aile ve Çevre ile İlgili Bilgiler', content.aile],
+          ['Olay Hakkındaki Görüşü', content.gorus],
+        ],
         rehberlik: [
           ['Kişisel Özellikleri', content.kisisel],
           ['Sosyal Özellikleri', content.sosyal],
@@ -303,7 +311,12 @@ module.exports = {
         ].filter(Boolean),
         paragraphs: sections.flatMap(([label, value]) => [{ text: label, bold: true, after: 60 }, value || '']),
         dateLabel,
-        signatures: [{ name: row.source_name || '…………………………………', label: 'İmza' }],
+        signatures: [
+          {
+            name: row.source_name || '…………………………………',
+            label: row.source_type === 'sinif_rehber' ? 'Sınıf Rehber Öğretmeni' : 'İmza',
+          },
+        ],
       });
 
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');

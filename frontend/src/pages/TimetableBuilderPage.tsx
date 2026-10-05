@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, App, Button, Checkbox, Empty, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Spin, Tabs, Tag, Typography } from 'antd'
+import { RightOutlined } from '@ant-design/icons'
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { AppLayout } from '../components/AppLayout'
 import { useAuth } from '../auth/AuthContext'
@@ -306,9 +307,11 @@ export function TimetableBuilderPage() {
             />
           )}
           <Tabs
+            className="timetable-step-tabs"
             activeKey={tab}
             onChange={setTab}
             destroyOnHidden
+            more={{ icon: <RightOutlined />, trigger: 'click' }}
             items={[
               { key: 'settings', label: '1. Okul saatleri', children: <ProjectSettingsTab ctx={ctx} /> },
               { key: 'rooms', label: `Özel derslik (${rooms.length})`, children: <RoomsTab ctx={ctx} /> },

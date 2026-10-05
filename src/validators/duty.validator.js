@@ -7,6 +7,7 @@ const createDutyLocationSchema = Joi.object({
   floor_level: Joi.number().integer().min(0).max(50).allow(null),
   sort_order: Joi.number().integer().min(0).max(1000).allow(null),
   is_active: Joi.boolean().allow(null),
+  is_locked: Joi.boolean().allow(null),
 });
 
 const updateDutyLocationSchema = createDutyLocationSchema.keys({
@@ -30,6 +31,7 @@ const updateDutyAssignmentSchema = Joi.object({
   duty_date: Joi.date().iso().optional(),
   notes: Joi.string().allow('', null).max(255),
   incident_note: Joi.string().allow('', null).max(2000),
+  is_locked: Joi.boolean().allow(null),
 }).min(1);
 
 const generateDutySchema = Joi.object({

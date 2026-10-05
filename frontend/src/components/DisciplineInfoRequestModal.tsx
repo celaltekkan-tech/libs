@@ -9,6 +9,13 @@ const FIELD_CONFIG: Record<string, Array<{ key: string; label: string }>> = {
     { key: 'ders_disi', label: 'Ders Dışı Faaliyetleri' },
     { key: 'arkadas_iliski', label: 'Arkadaşları İle İlişkisi' },
   ],
+  sinif_rehber: [
+    { key: 'ders_basari', label: 'Derslerdeki Başarı Durumu' },
+    { key: 'devam', label: 'Devam-Devamsızlık Durumu' },
+    { key: 'davranis', label: 'Okul İçi Davranışları' },
+    { key: 'aile', label: 'Aile ve Çevre ile İlgili Bilgiler' },
+    { key: 'gorus', label: 'Olay Hakkındaki Görüşü' },
+  ],
   rehberlik: [
     { key: 'kisisel', label: 'Kişisel Özellikleri' },
     { key: 'sosyal', label: 'Sosyal Özellikleri' },
@@ -28,12 +35,13 @@ interface DisciplineInfoRequestModalProps {
   open: boolean
   participant: DisciplineParticipant | null
   editing: DisciplineInfoRequest | null
+  preferredSource?: string | null
   submitting: boolean
   onCancel: () => void
   onSubmit: (values: { source_type: string; source_name?: string; source_branch?: string; content: Record<string, string>; response_date?: string }) => void
 }
 
-export function DisciplineInfoRequestModal({ open, participant, editing, submitting, onCancel, onSubmit }: DisciplineInfoRequestModalProps) {
+export function DisciplineInfoRequestModal({ open, participant, editing, preferredSource, submitting, onCancel, onSubmit }: DisciplineInfoRequestModalProps) {
   const [form] = Form.useForm()
   const sourceType = Form.useWatch('source_type', form) || 'ogretmen'
 
@@ -49,9 +57,9 @@ export function DisciplineInfoRequestModal({ open, participant, editing, submitt
       })
     } else {
       form.resetFields()
-      form.setFieldsValue({ source_type: 'ogretmen' })
+      form.setFieldsValue({ source_type: preferredSource || 'ogretmen' })
     }
-  }, [open, editing, form])
+  }, [open, editing, form, preferredSource])
 
   const fields = FIELD_CONFIG[sourceType] || FIELD_CONFIG.genel
   const studentName = participant?.Student ? `${participant.Student.first_name} ${participant.Student.last_name}` : '—'
@@ -67,7 +75,11 @@ export function DisciplineInfoRequestModal({ open, participant, editing, submitt
 
   return (
     <Modal
-      title={`Bilgi Toplama Formu - ${studentName}`}
+      title={
+        sourceType === 'sinif_rehber'
+          ? `Sınıf Rehber Öğretmeni Görüş Formu - ${studentName}`
+          : `Bilgi Toplama Formu - ${studentName}`
+      }
       open={open}
       onCancel={onCancel}
       onOk={() => form.submit()}
@@ -81,11 +93,20 @@ export function DisciplineInfoRequestModal({ open, participant, editing, submitt
         <Form.Item name="source_type" label="Kimden" rules={[{ required: true }]}>
           <Select options={INFO_SOURCE_TYPE_OPTIONS} disabled={!!editing} />
         </Form.Item>
-        <Form.Item name="source_name" label={sourceType === 'arkadas' ? 'Öğrenci Adı Soyadı' : 'Adı Soyadı'}>
+        <Form.Item
+          name="source_name"
+          label={
+            sourceType === 'arkadas'
+              ? 'Öğrenci Adı Soyadı'
+              : sourceType === 'sinif_rehber'
+                ? 'Sınıf Rehber Öğretmeni'
+                : 'Adı Soyadı'
+          }
+        >
           <Input />
         </Form.Item>
-        {(sourceType === 'ogretmen' || sourceType === 'rehberlik') && (
-          <Form.Item name="source_branch" label="Branşı">
+        {(sourceType === 'ogretmen' || sourceType === 'rehberlik' || sourceType === 'sinif_rehber') && (
+          <Form.Item name="source_branch" label={sourceType === 'sinif_rehber' ? 'Sınıfı' : 'Branşı'}>
             <Input />
           </Form.Item>
         )}

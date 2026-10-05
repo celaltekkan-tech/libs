@@ -502,11 +502,15 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
   },
   '/calendar': {
     title: 'Kurum Takvimi',
-    summary: 'İş takibi ve ileride eklenecek diğer programların (ör. sınav) tarihlerini tek takvimde gösterir.',
+    summary: 'İş takibi vadeleri ve MEB çalışma takvimi ayrı sekmelerde gösterilir.',
     topics: [
       {
+        title: 'Sekmeler',
+        body: 'İş Takibi okulun görev vadelerini, MEB Çalışma Takvimi ise 2026-2027 resmi eğitim takvimini gösterir.',
+      },
+      {
         title: 'Kaynak filtreleri',
-        body: 'Üstteki kutularla hangi kaynakların gösterileceğini seçin. Yalnızca yetkiniz olan kaynaklar listelenir.',
+        body: 'İş Takibi sekmesinde üstteki kutularla hangi kaynakların gösterileceğini seçin. Yalnızca yetkiniz olan kaynaklar listelenir.',
       },
       {
         title: 'Gün detayı',

@@ -10,12 +10,14 @@ import {
   Modal,
   Select,
   Space,
+  Tabs,
   Tag,
   Typography,
 } from 'antd'
 import type { CalendarProps } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { AppLayout } from '../components/AppLayout'
+import { MebWorkCalendar } from '../components/MebWorkCalendar'
 import { getErrorMessage } from '../api/client'
 import { listCalendarEvents, listCalendarSources } from '../api/calendar'
 import {
@@ -170,8 +172,15 @@ export function CalendarPage() {
 
   return (
     <AppLayout title="Kurum Takvimi">
+      <Tabs
+        items={[
+          {
+            key: 'work',
+            label: 'İş Takibi',
+            children: (
+              <>
       <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
-        İş takibi vadeleri ve ileride eklenecek diğer programlar (ör. sınav) bu takvimde toplanır.
+        İş takibi vadeleri bu takvimde toplanır.
       </Typography.Paragraph>
 
       <Space style={{ width: '100%', justifyContent: 'space-between', marginBottom: 12 }} wrap>
@@ -292,6 +301,16 @@ export function CalendarPage() {
           />
         )}
       </Modal>
+              </>
+            ),
+          },
+          {
+            key: 'meb',
+            label: 'MEB Çalışma Takvimi',
+            children: <MebWorkCalendar />,
+          },
+        ]}
+      />
     </AppLayout>
   )
 }
