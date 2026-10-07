@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Modal,
@@ -26,6 +26,8 @@ interface Props {
   disabled?: boolean;
   searchable?: boolean;
   emptyText?: string;
+  /** Artınca liste açılır ve arama kutusu odaklanır. */
+  openToken?: number;
   onSelect: (option: SelectOption) => void;
 }
 
@@ -38,13 +40,29 @@ export function SelectField({
   disabled,
   searchable = true,
   emptyText = 'Kayıt yok',
+  openToken = 0,
   onSelect,
 }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const searchRef = useRef<TextInput>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+
+  useEffect(() => {
+    if (!openToken || disabled || loading) return;
+    setQuery('');
+    setOpen(true);
+    // Yalnızca yeni açma isteğinde çalışsın; yükleme bitince kendiliğinden tekrar açılmasın.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openToken]);
+
+  useEffect(() => {
+    if (!open || !searchable) return;
+    const timer = setTimeout(() => searchRef.current?.focus(), 350);
+    return () => clearTimeout(timer);
+  }, [open, searchable]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase('tr-TR');
@@ -78,12 +96,14 @@ export function SelectField({
           </View>
           {searchable && (
             <TextInput
+              ref={searchRef}
               style={styles.search}
               placeholder="Ara"
               placeholderTextColor={colors.textMuted}
               value={query}
               onChangeText={setQuery}
               autoCorrect={false}
+              autoCapitalize="none"
             />
           )}
           <FlatList

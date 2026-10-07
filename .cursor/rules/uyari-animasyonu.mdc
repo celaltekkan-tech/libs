@@ -1,0 +1,18 @@
+---
+description: Uyarı, kullanıcının işlem yapacağı bölümü kenarlıkla yakıp söndürsün; ekran dışındaysa oraya gidilsin
+alwaysApply: true
+---
+
+# Uyarı animasyonu
+
+Kullanıcıya bir yeri doldurmasını veya seçmesini söyleyen her uyarıda ilgili bölümün kenarlığı birkaç kez yanıp sönsün. Bölüm ekranın dışındaysa animasyon başlamadan önce oraya kaydırılsın. Bunu yeni modüllerde de uygula; kullanıcıya hatırlatmasını bekleme.
+
+`message.warning` yerine `frontend/src/utils/attention.ts` içindeki `warnAttention` kullan. Hedef elemana `data-attention` yaz. Kaydırma ve üç kez yanıp sönme bu yardımcıdadır; ayrıca animasyon yazma.
+
+```tsx
+warnAttention(message, 'Önce sınav tarihi oluşturun', 'exam-periods')
+
+<div data-attention="exam-periods">...</div>
+```
+
+Tıklanacak bir yeri olmayan sonuç uyarıları (kayıt oldu ama dosya inemedi, toplu silmede bir kısmı kaldı) düz `message.warning` olarak kalsın.

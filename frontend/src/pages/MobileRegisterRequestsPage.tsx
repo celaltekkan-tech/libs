@@ -23,7 +23,7 @@ const EASY_WORDS = ['elma', 'okul', 'kedi', 'masa', 'sari', 'mavi', 'topu', 'evi
 
 function suggestEasyPassword() {
   const word = EASY_WORDS[Math.floor(Math.random() * EASY_WORDS.length)]
-  const digits = String(10 + Math.floor(Math.random() * 90))
+  const digits = String(1000 + Math.floor(Math.random() * 9000))
   return `${word}${digits}`
 }
 
@@ -365,10 +365,10 @@ export function MobileRegisterRequestsPage() {
           <Form.Item
             name="password"
             label="Şifre"
-            extra="En az 6 karakter, 1 harf ve 1 rakam."
+            extra="En az 8 karakter, 1 harf ve 1 rakam."
             rules={[
               { required: true, message: 'Şifre zorunludur' },
-              { min: 6, message: 'En az 6 karakter' },
+              { min: 8, message: 'En az 8 karakter' },
               {
                 validator: async (_, value) => {
                   const text = String(value || '')

@@ -48,8 +48,8 @@ function placeholderEmail(nationalId) {
 
 function assertEasyPassword(value) {
   const password = String(value || '');
-  if (password.length < 6 || password.length > 32) {
-    throw fail(400, 'PASSWORD_WEAK', 'Şifre en az 6 karakter olmalı');
+  if (password.length < 8 || password.length > 32) {
+    throw fail(400, 'PASSWORD_WEAK', 'Şifre en az 8 karakter olmalı');
   }
   if (!/[A-Za-zÇĞİÖŞÜçğıöşü]/.test(password) || !/\d/.test(password)) {
     throw fail(400, 'PASSWORD_WEAK', 'Şifrede en az 1 harf ve 1 rakam olmalı');
@@ -58,10 +58,10 @@ function assertEasyPassword(value) {
 }
 
 function suggestEasyPassword() {
-  const words = ['elma', 'okul', 'kedi', 'masa', 'sari', 'mavi', 'topu', 'evim', 'cayi', 'sut1'];
+  const words = ['elma', 'okul', 'kedi', 'masa', 'sari', 'mavi', 'topu', 'evim', 'cayi'];
   const word = words[crypto.randomInt(0, words.length)];
-  const digits = String(crypto.randomInt(10, 100));
-  return `${word}${digits}`.slice(0, 8);
+  const digits = String(crypto.randomInt(1000, 10000));
+  return `${word}${digits}`;
 }
 
 async function assertSchoolLicensed(school) {
