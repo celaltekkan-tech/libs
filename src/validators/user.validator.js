@@ -33,9 +33,9 @@ const updateUserSchema = Joi.object({
   .min(1);
 
 const approveMobileRegisterSchema = Joi.object({
-  password: Joi.string().trim().min(6).max(32).required().messages({
+  password: Joi.string().trim().min(8).max(32).required().messages({
     'string.empty': 'Şifre zorunludur',
-    'string.min': 'Şifre en az 6 karakter olmalı',
+    'string.min': 'Şifre en az 8 karakter olmalı',
   }),
   confirm_mismatch: Joi.boolean(),
   teacher_id: Joi.number().integer().positive().allow(null),

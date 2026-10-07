@@ -437,7 +437,7 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
         title: 'Onay',
         steps: [
           'Bekleyen isteği açın.',
-          'Önerilen kolay şifreyi kullanın veya kendiniz yazın (en az 6 karakter, 1 harf 1 rakam).',
+          'Önerilen kolay şifreyi kullanın veya kendiniz yazın (en az 8 karakter, 1 harf 1 rakam).',
           'Onaylayın. Öğretmen T.C. kimlik numarası ve bu şifreyle girer. Öğretmen kaydındaki telefon ve e-posta da güncellenir.',
         ],
       },

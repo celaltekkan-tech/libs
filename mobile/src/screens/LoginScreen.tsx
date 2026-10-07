@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -19,6 +20,7 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { fetchCaptcha } from '../api/auth';
 import { getErrorMessage } from '../api/client';
+import { PasswordField } from '../components/PasswordField';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { getAppVersionLabel } from '../update/appVersion';
 import type { AuthStackParamList } from '../navigation/types';
@@ -58,6 +60,7 @@ export function LoginScreen({ navigation }: Props) {
   const [reconnecting, setReconnecting] = useState(false);
   const [reconnectNote, setReconnectNote] = useState<string | null>(null);
   const captchaEase = useRef(0);
+  const captchaInputRef = useRef<TextInput>(null);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showReconnectNote = (text: string) => {
@@ -188,14 +191,7 @@ export function LoginScreen({ navigation }: Props) {
         value={email}
         onChangeText={(value) => setEmail(value.replace(/\D/g, '').slice(0, 11))}
       />
-      <TextInput
-        style={styles.input}
-        placeholder="Şifre"
-        placeholderTextColor={colors.textMuted}
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
+      <PasswordField placeholder="Şifre" value={password} onChangeText={setPassword} />
 
       <View style={styles.captchaRow}>
         <View style={[styles.captchaImage, { backgroundColor: colors.inputBackground, borderColor: colors.border }]}>
@@ -214,13 +210,22 @@ export function LoginScreen({ navigation }: Props) {
           <Text style={styles.refreshText}>{captchaLoading ? '…' : 'Yenile'}</Text>
         </TouchableOpacity>
         <TextInput
+          ref={captchaInputRef}
           style={[styles.input, styles.captchaInput]}
           placeholder="Görseldeki kod"
           placeholderTextColor={colors.textMuted}
           autoCapitalize="characters"
           autoCorrect={false}
+          maxLength={5}
           value={captchaCode}
-          onChangeText={setCaptchaCode}
+          onChangeText={(value) => {
+            const next = value.slice(0, 5);
+            setCaptchaCode(next);
+            if (next.length >= 5) {
+              captchaInputRef.current?.blur();
+              Keyboard.dismiss();
+            }
+          }}
         />
       </View>
 

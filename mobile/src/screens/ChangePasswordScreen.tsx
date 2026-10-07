@@ -5,9 +5,9 @@ import {
   Platform,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
 } from 'react-native';
+import { PasswordField } from '../components/PasswordField';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -63,27 +63,21 @@ export function ChangePasswordScreen({ navigation }: Props) {
       <Text style={styles.hint}>
         İlk girişte şifreniz sicil numaranızdır. Yeni şifre en az 8 karakter olmalıdır.
       </Text>
-      <TextInput
-        style={styles.input}
+      <PasswordField
         placeholder="Mevcut şifre"
-        placeholderTextColor={colors.textMuted}
-        secureTextEntry
+        textContentType="password"
         value={currentPassword}
         onChangeText={setCurrentPassword}
       />
-      <TextInput
-        style={styles.input}
+      <PasswordField
         placeholder="Yeni şifre"
-        placeholderTextColor={colors.textMuted}
-        secureTextEntry
+        textContentType="newPassword"
         value={newPassword}
         onChangeText={setNewPassword}
       />
-      <TextInput
-        style={styles.input}
+      <PasswordField
         placeholder="Yeni şifre (tekrar)"
-        placeholderTextColor={colors.textMuted}
-        secureTextEntry
+        textContentType="newPassword"
         value={confirmPassword}
         onChangeText={setConfirmPassword}
       />
@@ -100,17 +94,6 @@ function makeStyles(colors: ThemeColors) {
   return StyleSheet.create({
     container: { flex: 1, padding: 24, backgroundColor: colors.background },
     hint: { color: colors.textSecondary, marginBottom: 20, fontSize: 14 },
-    input: {
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.inputBackground,
-      color: colors.text,
-      borderRadius: 8,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
-      marginBottom: 12,
-      fontSize: 16,
-    },
     button: {
       backgroundColor: colors.primary,
       borderRadius: 8,

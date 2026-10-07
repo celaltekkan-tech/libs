@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -49,12 +49,23 @@ export function RegisterScreen({ navigation }: Props) {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [openProvince, setOpenProvince] = useState(0);
+  const [openDistrict, setOpenDistrict] = useState(0);
+  const [openSchool, setOpenSchool] = useState(0);
+  const provinceFocused = useRef(false);
+  const districtFocusArmed = useRef(false);
+  const schoolFocusArmed = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     void listRegisterProvinces()
       .then((rows) => {
-        if (!cancelled) setProvinces(rows);
+        if (cancelled) return;
+        setProvinces(rows);
+        if (!provinceFocused.current && rows.length > 0) {
+          provinceFocused.current = true;
+          setOpenProvince((token) => token + 1);
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(getErrorMessage(err));
@@ -69,11 +80,26 @@ export function RegisterScreen({ navigation }: Props) {
       setDistricts([]);
       return;
     }
+    let cancelled = false;
     setLoadingGeo(true);
     void listRegisterDistricts(province.id)
-      .then(setDistricts)
-      .catch((err) => setError(getErrorMessage(err)))
-      .finally(() => setLoadingGeo(false));
+      .then((rows) => {
+        if (!cancelled) setDistricts(rows);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(getErrorMessage(err));
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoadingGeo(false);
+        if (districtFocusArmed.current) {
+          districtFocusArmed.current = false;
+          setOpenDistrict((token) => token + 1);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [province]);
 
   useEffect(() => {
@@ -81,11 +107,26 @@ export function RegisterScreen({ navigation }: Props) {
       setSchools([]);
       return;
     }
+    let cancelled = false;
     setLoadingGeo(true);
     void listRegisterSchools(province.id, district.id)
-      .then(setSchools)
-      .catch((err) => setError(getErrorMessage(err)))
-      .finally(() => setLoadingGeo(false));
+      .then((rows) => {
+        if (!cancelled) setSchools(rows);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(getErrorMessage(err));
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoadingGeo(false);
+        if (schoolFocusArmed.current) {
+          schoolFocusArmed.current = false;
+          setOpenSchool((token) => token + 1);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [province, district]);
 
   const onSchoolNext = () => {
@@ -148,11 +189,16 @@ export function RegisterScreen({ navigation }: Props) {
               placeholder="İl seçin"
               value={province}
               options={provinces}
+              openToken={openProvince}
               onSelect={(row) => {
                 setProvince(row);
                 setDistrict(null);
                 setSchool(null);
+                setDistricts([]);
+                setSchools([]);
                 setError(null);
+                districtFocusArmed.current = true;
+                schoolFocusArmed.current = false;
               }}
             />
             <SelectField
@@ -162,10 +208,13 @@ export function RegisterScreen({ navigation }: Props) {
               options={districts}
               disabled={!province}
               loading={loadingGeo && Boolean(province) && !district}
+              openToken={openDistrict}
               onSelect={(row) => {
                 setDistrict(row);
                 setSchool(null);
+                setSchools([]);
                 setError(null);
+                schoolFocusArmed.current = true;
               }}
             />
             <SelectField
@@ -176,6 +225,7 @@ export function RegisterScreen({ navigation }: Props) {
               disabled={!district}
               loading={loadingGeo && Boolean(district)}
               emptyText="Bu ilçede lisanslı okul bulunamadı"
+              openToken={openSchool}
               onSelect={(row) => {
                 setSchool(row);
                 setError(null);

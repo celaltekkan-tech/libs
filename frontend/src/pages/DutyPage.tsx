@@ -563,8 +563,8 @@ export function DutyPage() {
   const confirmClearWeek = () => {
     if (assignments.length === 0) return
     modal.confirm({
-      title: 'Tüm atamaları sil',
-      content: `${weekDays[0].format('DD.MM.YYYY')} – ${weekDays[weekDays.length - 1].format('DD.MM.YYYY')} arasındaki tüm nöbet atamaları silinecek.`,
+      title: 'Aktif haftayı sil',
+      content: `${weekDays[0].format('DD.MM.YYYY')} – ${weekDays[weekDays.length - 1].format('DD.MM.YYYY')} haftasındaki nöbet atamaları silinecek. Diğer haftalar durur.`,
       okText: 'Sil',
       okButtonProps: { danger: true },
       cancelText: 'Vazgeç',
@@ -765,7 +765,7 @@ export function DutyPage() {
         )}
         {canDelete && (
           <Button danger disabled={assignments.length === 0 || submitting} onClick={confirmClearWeek}>
-            Tüm atamaları sil
+            Aktif haftayı sil
           </Button>
         )}
       </Space>
