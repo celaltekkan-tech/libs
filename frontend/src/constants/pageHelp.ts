@@ -302,7 +302,7 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       {
         title: 'Adımlar',
         steps: [
-          'Okul saatlerinde başlangıç saatini ve ders dakikasını girin. Her teneffüsü ayrı yazın; Tüm teneffüslere ata, 1. teneffüsteki süreyi diğerlerine kopyalar. Cumartesi ve pazar işaretli değilse zaman tablosunda görünmez ve açık/kapalı saate katılmaz.',
+          'Okul saatlerinde başlangıç saatini ve ders dakikasını girin. Her teneffüsü ayrı yazın; Tüm teneffüslere ata, 1. teneffüsteki süreyi diğerlerine kopyalar. Bir gün farklıysa Gün ekle ile o günün her teneffüsünü ayrı yazın. Cumartesi ve pazar işaretli değilse zaman tablosunda görünmez ve açık/kapalı saate katılmaz.',
           'Kültür dersi ile meslek/atölye dersinin günde en fazla kaç saat olacağını ayrı ayrı yazın. Atölye dersini ders havuzunda Meslek olarak işaretleyin; blok boşsa o sınıra göre tek parça konur.',
           'Ortak atölye varsa İstekler sekmesinde Aynı güne gelmesin ile o derslerin okul genelinde aynı güne düşmemesini söyleyin.',
           'Ders havuzunda ders ekleyin. Aynı sınıf için birden fazla saat yazabilirsiniz (örneğin 12. sınıfta Türk dili 3 veya 5 saat). Bu, her şubeye otomatik ders eklemez.',
@@ -411,11 +411,16 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
     topics: [
       {
         title: 'Olay kaydı',
-        steps: ['Yeni olay ekleyin.', 'Öğrenci, tarih ve açıklamayı girin.', 'Durumu güncelleyip kaydedin.'],
+        steps: [
+          'Yeni olay ekleyin.',
+          'Öğrenci, tarih ve açıklamayı girin.',
+          'Durumu güncelleyip kaydedin.',
+          'Aynı olaya ait kayıtları işaretleyip Olayları birleştir ile tek olayda toplayın. En eski tarihli kayıt durur.',
+        ],
       },
       {
         title: 'Öğretmen bildirimleri',
-        body: 'Öğretmen Bildirimleri sekmesinde mobil uygulamadan gelen kayıtlar listelenir. Ad, öğrenci no, öğretmen ve sebeple arayabilir; sınıf, öğretmen ve sebep filtrelerini kullanabilirsiniz.',
+        body: 'Öğretmen Bildirimleri sekmesinde mobil uygulamadan gelen kayıtlar, sebep istatistiğiyle birlikte listelenir. Aynı öğrenci aynı sebeple yeniden işleme alınacaksa uyarı çıkar. Birden fazla bildirimi işaretleyip Olayları birleştir ile tek disiplin olayına çevirebilirsiniz.',
       },
     ],
   },

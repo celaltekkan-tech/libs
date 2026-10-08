@@ -5,10 +5,15 @@ import dayjs from 'dayjs'
 import { updateTimetableProject } from '../../api/timetable'
 import { getErrorMessage } from '../../api/client'
 import { DAY_OPTIONS } from '../../types/scheduleEntry'
-import { DEFAULT_BELL, WEIGHT_LABELS, type BellSchedule, type SameClassSubjectsMode, type TimetableWeights } from '../../types/timetable'
+import { DEFAULT_BELL, WEIGHT_LABELS, type BellSchedule, type DayBreak, type SameClassSubjectsMode, type TimetableWeights } from '../../types/timetable'
 import { EffortPicker } from './EffortPicker'
 import { ImportanceSlider } from './ImportanceSlider'
 import type { TimetableCtx } from './shared'
+
+interface DayBreakGroup {
+  day: number
+  minutes: number[]
+}
 
 interface FormValues {
   name: string
@@ -21,7 +26,7 @@ interface FormValues {
   max_vocational_daily: number
   block_across_lunch: boolean
   weights: TimetableWeights
-  bell: BellSchedule
+  bell: BellSchedule & { day_groups?: DayBreakGroup[] }
   gap_seconds: number
   split_double: boolean
   merge_singles: boolean
@@ -42,6 +47,29 @@ function breakList(periods: number, saved: number[] | undefined, fallback: numbe
     const value = saved?.[index]
     return value == null || Number.isNaN(Number(value)) ? fallback : Number(value)
   })
+}
+
+function shownBreaks(periods: number, saved: number[] | undefined, fallback: number, lunchAfter: number | null): number[] {
+  return breakList(periods, saved, fallback).map((value, index) => (lunchAfter === index + 1 ? Math.max(value, 30) : value))
+}
+
+function dayGroups(periods: number, saved: DayBreak[] | undefined, fallbackBreaks: number[], lunchAfter: number | null): DayBreakGroup[] {
+  const byDay = new Map<number, Map<number, number>>()
+  for (const item of saved || []) {
+    if (!byDay.has(item.day)) byDay.set(item.day, new Map())
+    byDay.get(item.day)?.set(item.after_period, item.minutes)
+  }
+  return [...byDay.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([day, slots]) => ({
+      day,
+      minutes: shownBreaks(periods, undefined, 0, null).map((_, index) => {
+        const explicit = slots.get(index + 1)
+        if (explicit != null) return explicit
+        const base = fallbackBreaks[index] ?? 10
+        return lunchAfter === index + 1 ? Math.max(base, 30) : base
+      }),
+    }))
 }
 
 const WEIGHT_HELP: Record<keyof TimetableWeights, string> = {
@@ -119,7 +147,16 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
           project.settings.bell?.breaks,
           project.settings.bell?.break_minutes ?? DEFAULT_BELL.break_minutes,
         ),
-        day_breaks: project.settings.bell?.day_breaks || [],
+        day_groups: dayGroups(
+          project.periods_per_day,
+          project.settings.bell?.day_breaks,
+          breakList(
+            project.periods_per_day,
+            project.settings.bell?.breaks,
+            project.settings.bell?.break_minutes ?? DEFAULT_BELL.break_minutes,
+          ),
+          project.lunch_after,
+        ),
       },
     })
   }, [project, form])
@@ -127,9 +164,18 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
   useEffect(() => {
     const count = Math.max(0, periods - 1)
     const current = (form.getFieldValue(['bell', 'breaks']) || []) as number[]
-    if (current.length === count) return
     const fallback = form.getFieldValue(['bell', 'break_minutes']) ?? DEFAULT_BELL.break_minutes
-    form.setFieldValue(['bell', 'breaks'], breakList(periods, current, fallback))
+    if (current.length !== count) {
+      form.setFieldValue(['bell', 'breaks'], breakList(periods, current, fallback))
+    }
+    const groups = (form.getFieldValue(['bell', 'day_groups']) || []) as DayBreakGroup[]
+    const resized = groups.map((group) => ({
+      day: group.day,
+      minutes: breakList(periods, group.minutes, fallback),
+    }))
+    if (resized.some((group, index) => group.minutes.length !== (groups[index]?.minutes || []).length)) {
+      form.setFieldValue(['bell', 'day_groups'], resized)
+    }
   }, [periods, form])
 
   const onSave = async (values: FormValues) => {
@@ -165,10 +211,17 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
             methods: values.algorithms?.length === 1 && values.algorithms[0] === 'cpsat' ? 'single' : 'all',
           },
           bell: {
-            ...values.bell,
+            start_time: values.bell?.start_time || DEFAULT_BELL.start_time,
+            lesson_minutes: values.bell?.lesson_minutes ?? DEFAULT_BELL.lesson_minutes,
             break_minutes: values.bell?.breaks?.[0] ?? values.bell?.break_minutes ?? DEFAULT_BELL.break_minutes,
             breaks: breakList(values.periods_per_day, values.bell?.breaks, values.bell?.break_minutes ?? DEFAULT_BELL.break_minutes),
-            day_breaks: (values.bell?.day_breaks || []).filter((item) => item && item.day && item.after_period),
+            day_breaks: (values.bell?.day_groups || []).flatMap((group) =>
+              (group?.minutes || []).map((minutes, index) => ({
+                day: group.day,
+                after_period: index + 1,
+                minutes: Number(minutes),
+              })),
+            ).filter((item) => item.day && item.after_period && Number.isFinite(item.minutes)),
           },
         },
       })
@@ -239,31 +292,59 @@ export function ProjectSettingsTab({ ctx }: { ctx: TimetableCtx }) {
               ))}
             </Space>
             <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-              Bazı günler değişebilir. Örneğin cuma namazı için 4. dersten sonra teneffüsü uzatın.
+              Bir günün bütün teneffüsleri okul genelinden farklıysa o günü ekleyin ve her arayı ayrı yazın. Örneğin cuma namazı için 4. teneffüsü uzatın.
             </Typography.Paragraph>
             <Form.Item label="Güne özel teneffüs">
-              <Form.List name={['bell', 'day_breaks']}>
+              <Form.List name={['bell', 'day_groups']}>
                 {(fields, { add, remove }) => (
-                  <Space direction="vertical">
+                  <Space direction="vertical" style={{ width: '100%' }}>
                     {fields.map((field) => (
                       <Space key={field.key} wrap align="baseline">
-                        <Form.Item name={[field.name, 'day']} rules={[{ required: true, message: 'Gün' }]} style={{ marginBottom: 0 }}>
-                          <Select style={{ width: 140 }} options={DAY_OPTIONS} placeholder="Gün" />
-                        </Form.Item>
                         <Form.Item
-                          name={[field.name, 'after_period']}
-                          rules={[{ required: true, message: 'Ders' }]}
+                          name={[field.name, 'day']}
+                          rules={[
+                            { required: true, message: 'Gün' },
+                            {
+                              validator: async (_, value) => {
+                                const groups = (form.getFieldValue(['bell', 'day_groups']) || []) as DayBreakGroup[]
+                                if (groups.filter((group) => group?.day === value).length > 1) {
+                                  throw new Error('Bu gün zaten var')
+                                }
+                              },
+                            },
+                          ]}
                           style={{ marginBottom: 0 }}
                         >
-                          <InputNumber min={1} max={12} addonAfter=". dersten sonra" />
+                          <Select style={{ width: 140 }} options={DAY_OPTIONS} placeholder="Gün" />
                         </Form.Item>
-                        <Form.Item name={[field.name, 'minutes']} rules={[{ required: true, message: 'Dakika' }]} style={{ marginBottom: 0 }}>
-                          <InputNumber min={0} max={120} addonAfter="dk" />
-                        </Form.Item>
+                        {Array.from({ length: Math.max(0, periods - 1) }, (_, index) => (
+                          <Form.Item
+                            key={index}
+                            name={[field.name, 'minutes', index]}
+                            label={lunchAfter === index + 1 ? `${index + 1}. ara (öğle)` : `${index + 1}. teneffüs`}
+                            style={{ marginBottom: 0 }}
+                          >
+                            <InputNumber min={0} max={120} addonAfter="dk" />
+                          </Form.Item>
+                        ))}
                         <MinusCircleOutlined onClick={() => remove(field.name)} />
                       </Space>
                     ))}
-                    <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({ day: 5, after_period: 4, minutes: 40 })}>
+                    <Button
+                      type="dashed"
+                      icon={<PlusOutlined />}
+                      onClick={() => {
+                        const periodsNow = Number(form.getFieldValue('periods_per_day') || periods)
+                        const fallback = form.getFieldValue(['bell', 'break_minutes']) ?? DEFAULT_BELL.break_minutes
+                        const lunch = form.getFieldValue('lunch_after') ?? null
+                        const used = new Set(((form.getFieldValue(['bell', 'day_groups']) || []) as DayBreakGroup[]).map((group) => group?.day))
+                        const day = DAY_OPTIONS.find((option) => !used.has(option.value))?.value ?? 5
+                        add({
+                          day,
+                          minutes: shownBreaks(periodsNow, form.getFieldValue(['bell', 'breaks']), fallback, lunch),
+                        })
+                      }}
+                    >
                       Gün ekle
                     </Button>
                   </Space>

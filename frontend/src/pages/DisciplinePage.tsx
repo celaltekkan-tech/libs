@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { App, Button, Card, Col, Empty, Input, List, Row, Select, Space, Statistic, Tabs, Tag, Typography } from 'antd'
-import { DeleteOutlined, DownloadOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownloadOutlined, MergeCellsOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { SortableTable } from '../components/SortableTable'
 import { ClearFiltersButton } from '../components/ClearFiltersButton'
@@ -9,7 +9,6 @@ import { FilterBar } from '../components/FilterBar'
 import { AppLayout } from '../components/AppLayout'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { DisciplineIncidentWizardModal } from '../components/DisciplineIncidentWizardModal'
-import type { DisciplineIncidentPrefill } from '../components/DisciplineIncidentWizardModal'
 import { DisciplineIncidentDrawer } from '../components/DisciplineIncidentDrawer'
 import { DisciplineBehaviorPointModal } from '../components/DisciplineBehaviorPointModal'
 import { DisciplineRegulationArticleModal } from '../components/DisciplineRegulationArticleModal'
@@ -23,6 +22,7 @@ import {
   deleteRegulationArticle,
   fetchDisciplineStats,
   listIncidents,
+  mergeIncidents,
   listRegulationArticles,
   listSanctionedStudents,
   summarizeBehaviorPoints,
@@ -51,6 +51,8 @@ import type { Student } from '../types/student'
 import { tablePagination } from '../utils/tablePagination'
 import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { warnAttention } from '../utils/attention'
+import type { DisciplineIncidentPrefill } from '../components/DisciplineIncidentWizardModal'
 
 function currentAcademicYear(): string {
   const now = new Date()
@@ -70,6 +72,39 @@ function matchesQuery(q: string, ...parts: Array<string | null | undefined>): bo
   return parts.some((part) => (part || '').toLocaleLowerCase('tr-TR').includes(q))
 }
 
+function noteReasons(row: TeacherNote): string[] {
+  const tags = (row.tags || []).map((tag) => tag.trim()).filter(Boolean)
+  if (tags.length) return tags
+  const text = row.note?.trim()
+  return text ? [text] : []
+}
+
+function studentName(row: TeacherNote): string {
+  return row.Student ? `${row.Student.first_name} ${row.Student.last_name}` : 'Öğrenci'
+}
+
+function prefillFromNotes(rows: TeacherNote[]): DisciplineIncidentPrefill {
+  const names = [...new Set(rows.map(studentName))]
+  const topics = [...new Set(rows.flatMap(noteReasons))]
+  const topicText = topics.length ? topics.join(', ') : 'Öğretmen bildirimi'
+  const title = (names.length === 1 ? `${names[0]} — ${topicText}` : `Birleşik bildirim — ${topicText}`).slice(0, 240)
+  const lines = rows.map((row) => {
+    const teacher = row.Teacher?.full_name?.trim() || 'Öğretmen'
+    const reasons = noteReasons(row).join(', ') || '—'
+    return `${studentName(row)}: ${teacher} bildirimi (${reasons})`
+  })
+  const dates = rows.map((row) => row.created_at.slice(0, 10)).sort()
+  const teachers = [...new Set(rows.map((row) => row.Teacher?.full_name?.trim()).filter((name): name is string => Boolean(name)))]
+  return {
+    title,
+    incident_date: dates[0],
+    summary: lines.join('\n'),
+    student_ids: [...new Set(rows.map((row) => row.student_id))],
+    complainant_name: teachers.join(', ').slice(0, 250),
+    complaint_ref_date: dates[0],
+  }
+}
+
 export function DisciplinePage() {
   const { message, modal } = App.useApp()
   const { session, hasPermission } = useAuth()
@@ -78,6 +113,7 @@ export function DisciplinePage() {
 
   const canDelete = hasPermission('discipline.delete')
   const canCreate = hasPermission('discipline.create')
+  const canUpdate = hasPermission('discipline.update')
 
   const setTab = (key: string) => {
     if (key === 'incidents') setSearchParams({})
@@ -94,6 +130,8 @@ export function DisciplinePage() {
   const [search, setSearch] = useState('')
   const searchQuery = useDebouncedValue(search)
   const [statusFilter, setStatusFilter] = useState<string | undefined>()
+  const [selectedIncidentIds, setSelectedIncidentIds] = useState<number[]>([])
+  const [mergingIncidents, setMergingIncidents] = useState(false)
 
   const loadIncidents = useCallback(async () => {
     setLoadingIncidents(true)
@@ -325,6 +363,7 @@ export function DisciplinePage() {
   const [teacherNotes, setTeacherNotes] = useState<TeacherNote[]>([])
   const [loadingNotes, setLoadingNotes] = useState(false)
   const [noteSearch, setNoteSearch] = useState('')
+  const [selectedNoteIds, setSelectedNoteIds] = useState<number[]>([])
   const noteSearchQuery = useDebouncedValue(noteSearch)
 
   const loadTeacherNotes = useCallback(async () => {
@@ -350,24 +389,138 @@ export function DisciplinePage() {
     )
   }, [teacherNotes, noteSearchQuery])
 
-  // Öğretmen bildirimini sihirbaza taşıyıp olay kaydına çevirir.
-  const startIncidentFromNote = (row: TeacherNote) => {
-    const studentName = row.Student ? `${row.Student.first_name} ${row.Student.last_name}` : 'Öğrenci'
-    const topics = (row.tags || []).map((tag) => tag.trim()).filter(Boolean)
-    const topicText = topics.length ? topics.join(', ') : row.note?.trim() || 'Öğretmen bildirimi'
-    const reasons = [...topics, row.note].filter(Boolean).join(', ')
-    const noteDate = row.created_at.slice(0, 10)
-    const teacherName = row.Teacher?.full_name?.trim() || ''
-    setWizardPrefill({
-      title: `${studentName} — ${topicText}`,
-      incident_date: noteDate,
-      summary: `${teacherName || 'Öğretmen'} bildirimi: ${reasons || '—'}`,
-      student_id: row.student_id,
-      complainant_name: teacherName,
-      complaint_ref_date: noteDate,
+  const repeatWarnings = useCallback((rows: TeacherNote[]) => {
+    const lines: string[] = []
+    const seen = new Set<string>()
+    for (const row of rows) {
+      const reasons = noteReasons(row)
+      if (!reasons.length) continue
+      for (const incident of incidents) {
+        const involved = (incident.Participants || []).some((participant) => participant.student_id === row.student_id)
+        if (!involved) continue
+        const haystack = `${incident.title} ${incident.summary || ''}`.toLocaleLowerCase('tr-TR')
+        for (const reason of reasons) {
+          const folded = reason.toLocaleLowerCase('tr-TR')
+          if (!haystack.includes(folded)) continue
+          const key = `${row.student_id}|${folded}|${incident.id}`
+          if (seen.has(key)) continue
+          seen.add(key)
+          lines.push(`${studentName(row)} daha önce ${incident.incident_code} kaydında «${reason}» sebebiyle işleme alınmış.`)
+        }
+      }
+    }
+    return lines
+  }, [incidents])
+
+  const openNotesAsIncident = (rows: TeacherNote[]) => {
+    const begin = () => {
+      setWizardPrefill(prefillFromNotes(rows))
+      setWizardOpen(true)
+      setSelectedNoteIds([])
+    }
+    const warnings = repeatWarnings(rows)
+    if (!warnings.length) {
+      begin()
+      return
+    }
+    modal.confirm({
+      title: 'Aynı sebep tekrar',
+      content: (
+        <Space direction="vertical">
+          {warnings.map((line) => (
+            <span key={line}>{line}</span>
+          ))}
+          <span>Yine de disiplin işlemi başlatılsın mı?</span>
+        </Space>
+      ),
+      okText: 'Devam et',
+      cancelText: 'Vazgeç',
+      onOk: begin,
     })
-    setWizardOpen(true)
   }
+
+  const startIncidentFromNote = (row: TeacherNote) => {
+    openNotesAsIncident([row])
+  }
+
+  const mergeSelectedNotes = () => {
+    const rows = teacherNotes.filter((row) => selectedNoteIds.includes(row.id))
+    if (rows.length < 2) {
+      warnAttention(message, 'Birleştirmek için en az iki bildirim seçin', 'discipline-notes')
+      return
+    }
+    const warnings = repeatWarnings(rows)
+    modal.confirm({
+      title: 'Bildirimleri birleştir',
+      content: (
+        <Space direction="vertical">
+          <span>Seçilen bildirimler tek disiplin olayına dönüştürülecek. Öğrenciler olaya eklenecek.</span>
+          {warnings.map((line) => (
+            <span key={line}>{line}</span>
+          ))}
+        </Space>
+      ),
+      okText: 'Birleştir',
+      cancelText: 'Vazgeç',
+      onOk: () => {
+        setWizardPrefill(prefillFromNotes(rows))
+        setWizardOpen(true)
+        setSelectedNoteIds([])
+      },
+    })
+  }
+
+  const mergeSelectedIncidents = () => {
+    if (selectedIncidentIds.length < 2) {
+      warnAttention(message, 'Birleştirmek için en az iki olay seçin', 'discipline-incidents')
+      return
+    }
+    const chosen = incidents.filter((row) => selectedIncidentIds.includes(row.id))
+    modal.confirm({
+      title: 'Olayları birleştir',
+      content: `${chosen.map((row) => row.incident_code).join(', ')} tek olayda toplanacak. En eski tarihli kayıt duracak; diğerlerinin katılımcı, tutanak ve kararları ona taşınıp bu kayıtlar silinecek.`,
+      okText: 'Birleştir',
+      cancelText: 'Vazgeç',
+      onOk: async () => {
+        setMergingIncidents(true)
+        try {
+          const merged = await mergeIncidents(selectedIncidentIds)
+          message.success('Olaylar birleştirildi')
+          setSelectedIncidentIds([])
+          openIncident(merged)
+          await loadIncidents()
+        } catch (err) {
+          message.error(getErrorMessage(err))
+        } finally {
+          setMergingIncidents(false)
+        }
+      },
+    })
+  }
+
+  const repeatedNoteKeys = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const row of teacherNotes) {
+      for (const reason of noteReasons(row)) {
+        const key = `${row.student_id}|${reason.toLocaleLowerCase('tr-TR')}`
+        counts.set(key, (counts.get(key) || 0) + 1)
+      }
+    }
+    return new Set([...counts.entries()].filter(([, count]) => count > 1).map(([key]) => key))
+  }, [teacherNotes])
+
+  const noteIsRepeated = (row: TeacherNote) =>
+    noteReasons(row).some((reason) => repeatedNoteKeys.has(`${row.student_id}|${reason.toLocaleLowerCase('tr-TR')}`))
+
+  const noteReasonStats = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const row of teacherNotes) {
+      for (const reason of noteReasons(row)) counts.set(reason, (counts.get(reason) || 0) + 1)
+    }
+    return [...counts.entries()]
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, 'tr'))
+  }, [teacherNotes])
 
   const onDeleteTeacherNote = (row: TeacherNote) => {
     modal.confirm({
@@ -409,6 +562,11 @@ export function DisciplinePage() {
                       Toplu sil ({filteredIncidents.length})
                     </Button>
                   )}
+                  {canUpdate && (
+                    <Button icon={<MergeCellsOutlined />} loading={mergingIncidents} onClick={mergeSelectedIncidents}>
+                      Olayları birleştir{selectedIncidentIds.length ? ` (${selectedIncidentIds.length})` : ''}
+                    </Button>
+                  )}
                   {canCreate && (
                     <Button
                       type="primary"
@@ -442,15 +600,32 @@ export function DisciplinePage() {
                   />
                 </FilterBar>
 
-                <SortableTable
-                  rowKey="id"
-                  loading={loadingIncidents}
-                  columns={incidentColumns}
-                  dataSource={filteredIncidents}
-                  pagination={tablePagination(20)}
-                  scroll={{ x: 'max-content' }}
-                  onRow={(record) => ({ onClick: () => openIncident(record), style: { cursor: 'pointer' } })}
-                />
+                <div data-attention="discipline-incidents">
+                  <SortableTable
+                    rowKey="id"
+                    loading={loadingIncidents}
+                    columns={incidentColumns}
+                    dataSource={filteredIncidents}
+                    pagination={tablePagination(20)}
+                    scroll={{ x: 'max-content' }}
+                    rowSelection={
+                      canUpdate
+                        ? {
+                            selectedRowKeys: selectedIncidentIds,
+                            onChange: (keys) => setSelectedIncidentIds(keys.map(Number)),
+                          }
+                        : undefined
+                    }
+                    onRow={(record) => ({
+                      onClick: (event) => {
+                        const target = event.target instanceof Element ? event.target : null
+                        if (target?.closest('.ant-table-selection-column,button,a')) return
+                        openIncident(record)
+                      },
+                      style: { cursor: 'pointer' },
+                    })}
+                  />
+                </div>
               </>
             ),
           },
@@ -594,6 +769,30 @@ export function DisciplinePage() {
             label: `Öğretmen Bildirimleri (${teacherNotes.length})`,
             children: (
               <>
+                <Card size="small" title="Bildirim istatistiği" style={{ marginBottom: 16 }} loading={loadingNotes}>
+                  <Row gutter={16} style={{ marginBottom: 16 }}>
+                    <Col xs={24} sm={8}>
+                      <Statistic title="Toplam bildirim" value={teacherNotes.length} />
+                    </Col>
+                    <Col xs={24} sm={8}>
+                      <Statistic title="Farklı öğrenci" value={new Set(teacherNotes.map((row) => row.student_id)).size} />
+                    </Col>
+                    <Col xs={24} sm={8}>
+                      <Statistic title="Aynı sebeple tekrar" value={repeatedNoteKeys.size} />
+                    </Col>
+                  </Row>
+                  <Typography.Text strong>Sebeplere göre</Typography.Text>
+                  <div style={{ marginTop: 8 }}>
+                    <DisciplineMiniBarChart data={noteReasonStats} />
+                  </div>
+                </Card>
+                <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 16 }}>
+                  {canCreate && (
+                    <Button icon={<MergeCellsOutlined />} onClick={mergeSelectedNotes}>
+                      Olayları birleştir{selectedNoteIds.length ? ` (${selectedNoteIds.length})` : ''}
+                    </Button>
+                  )}
+                </Space>
                 <FilterBar>
                   <Input
                     allowClear
@@ -604,12 +803,21 @@ export function DisciplinePage() {
                     style={{ width: 360 }}
                   />
                 </FilterBar>
+                <div data-attention="discipline-notes">
                 <SortableTable
                   rowKey="id"
                   loading={loadingNotes}
                   dataSource={filteredTeacherNotes}
                   pagination={tablePagination(20)}
                   scroll={{ x: 'max-content' }}
+                  rowSelection={
+                    canCreate
+                      ? {
+                          selectedRowKeys: selectedNoteIds,
+                          onChange: (keys) => setSelectedNoteIds(keys.map(Number)),
+                        }
+                      : undefined
+                  }
                   columns={[
                     {
                       title: 'Öğrenci No',
@@ -633,6 +841,7 @@ export function DisciplinePage() {
                             <Tag key={i}>{tag}</Tag>
                           ))}
                           {r.note && <span>{r.note}</span>}
+                          {noteIsRepeated(r) && <Tag color="orange">Aynı sebep tekrar</Tag>}
                         </Space>
                       ),
                     },
@@ -653,6 +862,7 @@ export function DisciplinePage() {
                     },
                   ]}
                 />
+                </div>
               </>
             ),
           },

@@ -46,6 +46,11 @@ export async function deleteIncident(id: number): Promise<void> {
   await client.delete(`/api/discipline/incidents/${id}`)
 }
 
+export async function mergeIncidents(ids: number[]): Promise<DisciplineIncident> {
+  const { data } = await client.post<Envelope<DisciplineIncident>>('/api/discipline/incidents/merge', { ids })
+  return data.data
+}
+
 export async function fetchDisciplineStats(params?: { academic_year?: string }): Promise<DisciplineStats> {
   const { data } = await client.get<Envelope<DisciplineStats>>('/api/discipline/incidents/stats', { params })
   return data.data

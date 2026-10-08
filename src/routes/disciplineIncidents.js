@@ -9,6 +9,7 @@ const {
   addParticipantSchema,
   updateParticipantSchema,
   excelCommitSchema,
+  mergeIncidentsSchema,
 } = require('../validators/disciplineIncident.validator');
 const auth = require('../middlewares/auth');
 const requireModule = require('../middlewares/moduleGuard');
@@ -21,6 +22,7 @@ router.get('/', auth, moduleGuard, permission('discipline.read'), ctrl.list);
 router.get('/stats', auth, moduleGuard, permission('discipline.read'), ctrl.stats);
 router.get('/sanctioned-students', auth, moduleGuard, permission('discipline.read'), ctrl.sanctionedStudents);
 router.post('/', auth, moduleGuard, permission('discipline.create'), validate(createIncidentSchema), ctrl.create);
+router.post('/merge', auth, moduleGuard, permission('discipline.update'), validate(mergeIncidentsSchema), ctrl.merge);
 
 router.get('/:id', auth, moduleGuard, permission('discipline.read'), ctrl.get);
 router.patch('/:id', auth, moduleGuard, permission('discipline.update'), validate(updateIncidentSchema), ctrl.update);

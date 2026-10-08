@@ -49,6 +49,10 @@ const updateParticipantSchema = Joi.object({
   notes: Joi.string().trim().allow('', null).max(2000),
 });
 
+const mergeIncidentsSchema = Joi.object({
+  ids: Joi.array().items(Joi.number().integer().positive()).min(2).max(20).unique().required(),
+});
+
 const excelCommitSchema = Joi.object({
   rows: Joi.array()
     .items(
@@ -71,5 +75,6 @@ module.exports = {
   updateIncidentSchema,
   addParticipantSchema,
   updateParticipantSchema,
+  mergeIncidentsSchema,
   excelCommitSchema,
 };
