@@ -10,10 +10,12 @@ const {
   DisciplineMeetingNotice,
   DisciplineDecision,
   DisciplineNotification,
+  DisciplineBehaviorPoint,
   Student,
   Classroom,
   School,
   User,
+  sequelize,
 } = require('../models');
 const audit = require('../services/auditService');
 const { calendarDate } = require('../utils/calendarDate');
@@ -55,6 +57,39 @@ const studentInclude = {
 };
 
 const participantInclude = { model: DisciplineParticipant, as: 'Participants', include: [studentInclude] };
+
+function clip(value, max) {
+  const text = String(value || '').trim();
+  return text.length > max ? text.slice(0, max) : text;
+}
+
+async function retargetParticipant(sourceId, targetParticipantId, targetIncidentId, transaction) {
+  const where = { participant_id: sourceId };
+  const participantPatch = { participant_id: targetParticipantId };
+  await DisciplineStatement.update({ ...participantPatch, incident_id: targetIncidentId }, { where, transaction });
+  await DisciplineInfoRequest.update({ ...participantPatch, incident_id: targetIncidentId }, { where, transaction });
+  await DisciplineMeetingNotice.update({ ...participantPatch, incident_id: targetIncidentId }, { where, transaction });
+  await DisciplineDecision.update({ ...participantPatch, incident_id: targetIncidentId }, { where, transaction });
+  await DisciplineBehaviorPoint.update(participantPatch, { where, transaction });
+  await DisciplineNotification.update(participantPatch, { where, transaction });
+}
+
+async function shiftIncident(participantId, targetIncidentId, transaction) {
+  const where = { participant_id: participantId };
+  await DisciplineStatement.update({ incident_id: targetIncidentId }, { where, transaction });
+  await DisciplineInfoRequest.update({ incident_id: targetIncidentId }, { where, transaction });
+  await DisciplineMeetingNotice.update({ incident_id: targetIncidentId }, { where, transaction });
+  await DisciplineDecision.update({ incident_id: targetIncidentId }, { where, transaction });
+}
+
+async function shiftRemaining(sourceIncidentId, targetIncidentId, transaction) {
+  const where = { incident_id: sourceIncidentId };
+  const patch = { incident_id: targetIncidentId };
+  await DisciplineStatement.update(patch, { where, transaction });
+  await DisciplineInfoRequest.update(patch, { where, transaction });
+  await DisciplineMeetingNotice.update(patch, { where, transaction });
+  await DisciplineDecision.update(patch, { where, transaction });
+}
 
 module.exports = {
   SANCTION_LABELS,
@@ -203,6 +238,88 @@ module.exports = {
       });
       res.status(201).json({ success: true, data: full });
     } catch (err) {
+      next(err);
+    }
+  },
+
+  async merge(req, res, next) {
+    const transaction = await sequelize.transaction();
+    try {
+      const ids = [...new Set((req.validatedBody || req.body).ids.map((id) => Number(id)))];
+      const tenantId = req.user && req.user.tenant_id;
+      const where = { id: { [Op.in]: ids } };
+      if (tenantId) where.tenant_id = tenantId;
+      const rows = await DisciplineIncident.findAll({ where, transaction, lock: transaction.LOCK.UPDATE });
+      if (rows.length !== ids.length) {
+        await transaction.rollback();
+        return res.status(404).json({ success: false, message: 'Seçilen olayların bir kısmı bulunamadı' });
+      }
+      const schools = new Set(rows.map((row) => row.school_id));
+      if (schools.size > 1) {
+        await transaction.rollback();
+        return res.status(400).json({ success: false, message: 'Birleştirilecek olaylar aynı okulda olmalı' });
+      }
+
+      const ordered = [...rows].sort((a, b) => {
+        const byDate = String(a.incident_date).localeCompare(String(b.incident_date));
+        return byDate || a.id - b.id;
+      });
+      const target = ordered[0];
+      const sources = ordered.slice(1);
+      const titles = [...new Set(rows.map((row) => String(row.title || '').trim()).filter(Boolean))];
+      const summary = ordered
+        .map((row) => {
+          const text = String(row.summary || '').trim();
+          return text ? `${row.incident_code}: ${text}` : `${row.incident_code}: ${row.title}`;
+        })
+        .join('\n');
+      const complainants = [...new Set(rows.map((row) => String(row.complainant_name || '').trim()).filter(Boolean))];
+      await target.update(
+        {
+          title: clip(titles.length <= 1 ? titles[0] || target.title : titles.join(' / '), 255),
+          summary: clip(summary, 4000) || null,
+          location: target.location || sources.find((row) => row.location)?.location || null,
+          complainant_name: clip(complainants.join(', '), 255) || null,
+        },
+        { transaction }
+      );
+
+      for (const source of sources) {
+        const participants = await DisciplineParticipant.findAll({ where: { incident_id: source.id }, transaction });
+        for (const participant of participants) {
+          const existing = await DisciplineParticipant.findOne({
+            where: { incident_id: target.id, student_id: participant.student_id },
+            transaction,
+          });
+          if (!existing) {
+            await participant.update({ incident_id: target.id }, { transaction });
+            await shiftIncident(participant.id, target.id, transaction);
+            continue;
+          }
+          const notes = [existing.notes, participant.notes].map((item) => String(item || '').trim()).filter(Boolean);
+          if (notes.length && notes.join('\n') !== String(existing.notes || '').trim()) {
+            await existing.update({ notes: clip(notes.join('\n'), 2000) }, { transaction });
+          }
+          await retargetParticipant(participant.id, existing.id, target.id, transaction);
+          await participant.destroy({ transaction });
+        }
+        await shiftRemaining(source.id, target.id, transaction);
+        await source.destroy({ transaction });
+      }
+
+      await transaction.commit();
+      const full = await DisciplineIncident.findByPk(target.id, {
+        include: [participantInclude, { model: School, attributes: ['id', 'name'], required: false }],
+      });
+      await audit.log(req, {
+        action: 'update',
+        entityType: 'discipline_incident',
+        entityId: target.id,
+        summary: `Disiplin olayları birleştirildi: ${ordered.map((row) => row.incident_code).join(', ')} → ${target.incident_code}`,
+      });
+      res.json({ success: true, data: full });
+    } catch (err) {
+      if (!transaction.finished) await transaction.rollback();
       next(err);
     }
   },

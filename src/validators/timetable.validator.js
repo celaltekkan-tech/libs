@@ -44,7 +44,7 @@ const bell = Joi.object({
   lesson_minutes: Joi.number().integer().min(20).max(120),
   break_minutes: Joi.number().integer().min(0).max(60),
   breaks: Joi.array().items(Joi.number().integer().min(0).max(120)).max(11),
-  day_breaks: Joi.array().items(dayBreak).max(14),
+  day_breaks: Joi.array().items(dayBreak).max(84),
 });
 const settings = Joi.object({
   time_limit: Joi.number().integer().min(10).max(600),

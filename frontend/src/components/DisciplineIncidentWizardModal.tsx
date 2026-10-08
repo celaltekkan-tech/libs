@@ -24,6 +24,7 @@ export interface DisciplineIncidentPrefill {
   incident_date?: string
   summary?: string
   student_id?: number
+  student_ids?: number[]
   complainant_name?: string
   complaint_ref_date?: string
 }
@@ -96,6 +97,16 @@ export function DisciplineIncidentWizardModal({
       } else {
         const created = await createIncident(values)
         setIncident(created)
+        const ids = [...new Set(prefill?.student_ids?.length ? prefill.student_ids : prefill?.student_id ? [prefill.student_id] : [])]
+        const added: DisciplineParticipant[] = []
+        for (const studentId of ids) {
+          try {
+            added.push(await addParticipant(created.id, { student_id: studentId, role: 'suclanan' }))
+          } catch (err) {
+            message.warning(getErrorMessage(err))
+          }
+        }
+        if (added.length) setParticipants(added)
       }
       setStep(1)
     } catch (err) {
