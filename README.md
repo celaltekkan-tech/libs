@@ -832,9 +832,23 @@ DNS (domain sağlayıcısında):
 - `TXT` `_dmarc.oids.com.tr` → `v=DMARC1; p=none; rua=mailto:info@oids.com.tr`
 - VPS panelinde PTR (ters DNS) mümkünse `mail.oids.com.tr`
 
-Güvenlik duvarında **25, 465, 587, 993** açık olmalı. Birçok barındırıcı 25’i
-kapatır; kapalıysa dışarıdan gelen posta düşmez. TLS için `MAIL_SSL_TYPE` ve
-sertifika bağlama isteğe bağlıdır; iç ağda backend 143/587 kullanır.
+Güvenlik duvarında **25, 143, 465, 587, 993** açık olmalı. Birçok barındırıcı 25’i
+kapatır; kapalıysa dışarıdan gelen posta düşmez.
+
+Dışarıdan istemci (Outlook, telefon) ayarları:
+
+- Sunucu: `mail.oids.com.tr`
+- IMAP: **993**, SSL/TLS (IMAPS)
+- SMTP: **587**, STARTTLS (veya 465 SSL)
+- Kullanıcı adı: `info@oids.com.tr` (tam adres)
+- Şifre: `MAIL_ACCOUNT_PASSWORD`
+
+993 ancak TLS açıkken dinler. İlk kurulumda kendinden imzalı sertifika üretilir;
+istemci “sertifikaya güven” uyarısı verebilir. Let’s Encrypt kullanmak için
+`mail.oids.com.tr` sertifikasını `data/mail/config/ssl/` altına `fullchain.pem`
+ve `privkey.pem` olarak koyup `mail` container’ını yeniden başlatın.
+
+TLS değişince: `docker compose up -d --force-recreate mail-init mail`
 
 ### Landing Sayfası
 

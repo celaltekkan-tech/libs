@@ -121,9 +121,12 @@ services:
       MAIL_ACCOUNT: ${MAIL_ACCOUNT:-info@oids.com.tr}
       MAIL_ACCOUNT_PASSWORD: ${MAIL_ACCOUNT_PASSWORD:-}
       MAIL_DOMAIN: ${MAIL_DOMAIN:-oids.com.tr}
+      MAIL_HOSTNAME: ${MAIL_HOSTNAME:-mail.oids.com.tr}
+      OVERRIDE_HOSTNAME: ${MAIL_HOSTNAME:-mail.oids.com.tr}
     volumes:
       - ./data/mail/config:/tmp/docker-mailserver
       - ./docker/mail-bootstrap.sh:/bootstrap.sh:ro
+      - ./docker/mail-ensure-ssl.sh:/usr/local/bin/mail-ensure-ssl.sh:ro
     entrypoint: ["/bin/bash", "/bootstrap.sh"]
     networks:
       - internal
@@ -138,6 +141,7 @@ services:
         condition: service_completed_successfully
     ports:
       - "25:25"
+      - "143:143"
       - "465:465"
       - "587:587"
       - "993:993"
@@ -150,12 +154,20 @@ services:
       ENABLE_CLAMAV: 0
       ENABLE_FAIL2BAN: 0
       PERMIT_DOCKER: none
-      SSL_TYPE: ${MAIL_SSL_TYPE:-}
+      POSTFIX_INET_PROTOCOLS: ipv4
+      DOVECOT_INET_PROTOCOLS: ipv4
+      TLS_LEVEL: intermediate
+      SSL_TYPE: ${MAIL_SSL_TYPE:-manual}
+      SSL_CERT_PATH: ${MAIL_SSL_CERT_PATH:-/tmp/docker-mailserver/ssl/fullchain.pem}
+      SSL_KEY_PATH: ${MAIL_SSL_KEY_PATH:-/tmp/docker-mailserver/ssl/privkey.pem}
+    command: ["/bin/bash", "/usr/local/bin/mail-start.sh"]
     volumes:
       - ./data/mail/data:/var/mail
       - ./data/mail/state:/var/mail-state
       - ./data/mail/logs:/var/log/mail
       - ./data/mail/config:/tmp/docker-mailserver
+      - ./docker/mail-ensure-ssl.sh:/usr/local/bin/mail-ensure-ssl.sh:ro
+      - ./docker/mail-start.sh:/usr/local/bin/mail-start.sh:ro
     networks:
       - internal
 
