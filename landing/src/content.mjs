@@ -143,10 +143,10 @@ export const MODULES = [
     lead:
       'Ay sonunda maaş değişikliği formu için kimin ayrıldığını, kimin terfi aldığını, kimin raporu 7 günü aştığını aramayın. OIDS bu bilgileri ay boyunca forma kendisi işler.',
     features: [
-      ['A–D bölümleri hazır', 'Her ay için taslak form; bölümler resmî formdaki düzenle aynıdır.'],
-      ['Ayrılışlar otomatik', 'Personel ayrılışı kaydedilince B bölümüne eklenir.'],
-      ['Terfiler otomatik', 'Terfi Takibi’nde uygulanan kademe/derece değişiklikleri forma işlenir.'],
-      ['Raporlar otomatik', 'Takvim yılı içinde 7 günü aşan rapor günleri, raporun düştüğü ayın formuna yazılır.'],
+      ['A–H bölümleri hazır', 'Mevcut personel, ayrılan, başlayan, terfi, diğer değişiklikler, kesintiler, raporlu gün ve sendika bölümleri resmî formdaki düzende.'],
+      ['Ayrılışlar ve başlayanlar', 'Ayrılış yazısı hazırlanırken B bölümüne, yeni personel kaydında C bölümüne satır eklenir.'],
+      ['Terfiler otomatik', 'Dönemde terfisi gelen ve uygulanan kademe/derece değişiklikleri D bölümüne yazılır.'],
+      ['Raporlar otomatik', 'Takvim yılı içinde 7 günü aşan rapor günleri ilgili ayın formunun G bölümüne yazılır.'],
       ['Resmî şablon çıktısı', 'Doldurulmuş Excel veya yazdırılabilir PDF.'],
       ['Norm kadro', 'Branş bazında norm ve mevcut kadroyu karşılaştırın.'],
     ],
@@ -179,16 +179,17 @@ export const MODULES = [
     name: 'Nöbet Programı',
     short: 'Nöbet programı',
     icon: '🛎️',
-    title: 'Öğretmen Nöbet Çizelgesi — Otomatik ve Adil Dağıtım | OIDS',
+    title: 'Öğretmen Nöbet Çizelgesi Hazırlama — Haftalık Nöbet Programı | OIDS',
     description:
-      'Nöbet yerlerini tanımlayın, haftalık nöbet çizelgesini otomatik ve adil dağıtın. Nöbet kuralları ve müdür imzalı Excel/PDF çıktı.',
+      'Nöbet yerlerini tanımlayın, haftalık nöbet çizelgesini hazırlayın, sonraki haftaya yer değiştirerek aktarın. Nöbet kuralları ve müdür imzalı Excel/PDF çıktı.',
     lead:
-      'Nöbet yerlerini bir kez tanımlayın; OIDS haftalık çizelgeyi öğretmenlerin ders programına bakarak dağıtır ve kimin kaç nöbet tuttuğunu adalet raporunda gösterir.',
+      'Nöbet yerlerini bir kez tanımlayın, ilk haftayı yerleştirin; sonraki haftalara tek tıkla, öğretmenler yer değiştirerek aktarılsın. Kimin kaç nöbet tuttuğu listede hep görünür.',
     features: [
-      ['Otomatik dağıtım', 'Haftalık ızgara tek tıkla dolar; dilerseniz elle düzenleyin.'],
-      ['Adalet raporu', 'Kişi başına nöbet sayısını görün, dengesizliği hemen fark edin.'],
+      ['Haftalık nöbet ızgarası', 'Günler ve nöbet yerleri tablosunda öğretmeni yerine koyun; bir kişiye günde tek nöbet verilir.'],
+      ['Sonraki haftaya aktar', 'Hafta tek tıkla sonraki haftaya kopyalanır; isterseniz her öğretmen bir sonraki nöbet yerine kayar.'],
+      ['Nöbet sayısı', 'Öğretmen listesinde her kişinin tuttuğu nöbet sayısı görünür; dengesizliği hemen fark edersiniz.'],
       ['Ders programıyla uyum', 'Yayınlanmış ders programında dersi olan öğretmenler önce önerilir.'],
-      ['Hafta kopyalama ve kilitleme', 'Haftayı kopyalayın, aralık temizleyin, belirli kişileri kilitleyin.'],
+      ['Kilitleme ve temizleme', 'Kişiyi veya nöbet yerini kilitleyin, aktarımda yerinde kalsın; tarih aralığını temizleyin.'],
       ['Yazdırmaya hazır çıktı', 'Nöbet kuralları ve müdür imzasıyla siyah-beyaz kart düzeninde Excel ve PDF.'],
     ],
     related: ['otomatik-ders-programi', 'rapor-takibi', 'ogretmen-ve-personel-yonetimi'],
@@ -295,7 +296,8 @@ export const MODULES = [
     lead:
       'Ortak sınavları takvime yerleştirin, sorumluluk sınavlarını MEBBİS listesinden otomatik planlayın; komisyon ve gözetmen önerisi hazır gelsin.',
     features: [
-      ['Ortak sınav planlama', 'Sınav dönemleri, takvim üzerinde yerleştirme ve otomatik program.'],
+      ['Ortak sınav planlama', 'Dersler ders programından gelir; sınav tarihi aralığında takvime yerleştirme veya otomatik program.'],
+      ['Günlük sınır', 'Bir sınıf seviyesine günde en fazla 4 sınav; zor dersler mümkünse ardışık günlere konmaz.'],
       ['Sorumluluk sınavı', 'MEBBİS “Öğrencilerin Sorumlu Olduğu Dersler” Excel’i içe aktarılır, program otomatik hazırlanır.'],
       ['Komisyon önerisi', 'Müdür ve branşa göre 2 üye; her 30 öğrenciye 1 gözetmen.'],
       ['Yazılı / sözlü ayrımı', 'Yabancı dil derslerinde yazılı ve sözlü sınav farklı günlere konur.'],
@@ -312,15 +314,15 @@ export const MODULES = [
     icon: '🦋',
     title: 'Kelebek Sınav Sistemi — Otomatik Oturma Planı | OIDS',
     description:
-      'Sınav salonlarını kapasitesiyle tanımlayın, kelebek sistemine göre oturma planını otomatik oluşturun, gözetmen atayın ve yoklama alın.',
+      'Sınav salonlarını sıra düzeniyle tanımlayın, kelebek oturma planını otomatik oluşturun, gözetmen atayın ve yoklama alın.',
     lead:
       'Farklı sınıflardaki öğrencileri salonlara karışık yerleştiren kelebek oturma planını elle hazırlamayın; salonları tanımlayın, plan tek tıkla çıksın.',
     features: [
       ['Salon ve kapasite', 'Sınav salonları ve oturma kapasiteleri.'],
       ['Oturumlar', 'Her sınav oturumu ayrı planlanır.'],
-      ['Otomatik oturma planı', 'Öğrenciler salonlara kelebek düzeninde dağıtılır.'],
-      ['Gözetmen ve yoklama', 'Gözetmen ataması ve oturum yoklaması.'],
-      ['Çıktı', 'Salon kapısına asılacak oturma planı listeleri.'],
+      ['Otomatik oturma planı', 'Seçilen sınıfların öğrencileri sırayla harmanlanarak (her sınıftan birer öğrenci) salonlara yerleştirilir.'],
+      ['Gözetmen ve yoklama', 'Her salona gözetmen atayın, oturumda yoklama alın.'],
+      ['Çıktı', 'Salon, sıra no, öğrenci ve sınıf bilgisiyle oturma planı Excel ve PDF.'],
     ],
     related: ['sinav-programi', 'ogrenci-yonetimi', 'okul-ve-sinif-tanimlari'],
   },

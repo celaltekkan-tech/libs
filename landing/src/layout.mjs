@@ -1,5 +1,6 @@
 // Ortak sayfa iskeleti: head (SEO + Open Graph + JSON-LD), header, footer.
 import { SITE } from './site.mjs'
+import { TOOLS } from './tools.mjs'
 
 export const esc = (s) =>
   String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -48,8 +49,9 @@ function header(active) {
       <nav class="main-nav" aria-label="Ana menü">
         ${link('/moduller', 'Modüller')}
         ${link('/mobil-uygulama', 'Mobil Uygulama')}
+        ${link('/araclar', 'Hesaplayıcılar')}
         ${link('/#planlar', 'Planlar')}
-        ${link('/#sss', 'SSS')}
+        ${link('/rehber', 'Rehber')}
         ${link('/#iletisim', 'İletişim')}
       </nav>
       <div class="header-cta">
@@ -85,10 +87,15 @@ function footer(groups) {
         </div>
         ${cols}
         <div class="footer-col">
+          <p class="footer-title">Ücretsiz araçlar</p>
+          <ul>${TOOLS.map((t) => `<li><a href="/araclar/${t.slug}">${esc(t.short)}</a></li>`).join('')}</ul>
+        </div>
+        <div class="footer-col">
           <p class="footer-title">OIDS</p>
           <ul>
             <li><a href="/moduller">Tüm modüller</a></li>
             <li><a href="/mobil-uygulama">Mobil uygulama</a></li>
+            <li><a href="/rehber">Rehberler</a></li>
             <li><a href="/#planlar">Planlar</a></li>
             <li><a href="/#sss">Sıkça sorulan sorular</a></li>
             <li><a href="${SITE.appUrl}">Panele giriş</a></li>
@@ -113,7 +120,7 @@ function footer(groups) {
  * @param {object[]} [p.ld]    JSON-LD nesneleri
  * @param {boolean} [p.noindex]
  */
-export function page({ path, title, description, body, ld = [], noindex = false, active, groups }) {
+export function page({ path, title, description, body, ld = [], noindex = false, active, groups, scripts = [] }) {
   const canonical = SITE.url + (path === '/' ? '/' : path)
   return `<!doctype html>
 <html lang="tr">
@@ -149,7 +156,8 @@ export function page({ path, title, description, body, ld = [], noindex = false,
 ${body}
   </main>
   ${footer(groups)}
-  <script src="/script.js?v=${SITE.buildId}" defer></script>
+  <script src="/script.js?v=${SITE.buildId}" defer></script>${scripts.map((s) => `
+  <script src="${s}?v=${SITE.buildId}" defer></script>`).join("")}
 </body>
 </html>
 `

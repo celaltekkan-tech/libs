@@ -880,6 +880,12 @@ NPM'de eklenecek proxy host:
   **Websockets Support mutlaka açılmalı** (Metro'nun bundle/HMR trafiği
   WebSocket üzerinden gider; kapalıysa dev-client/Expo Go bağlanamaz).
 
+**IP kısıtı:** Container içindeki nginx, Metro'yu yalnızca `.env` içindeki
+`MOBILE_ALLOWED_IPS` listesine açar (varsayılan `78.186.22.15`). Listedeki
+adres dışından `403` döner. NPM arkasında gerçek istemci `X-Forwarded-For`
+ile okunur. IP eklemek için değeri virgülle güncelleyip
+`docker compose up -d --build mobile` yeterlidir.
+
 **Expo Go'da bağlantı adresi önemli:** "Enter URL" alanına `exp://mobile.oids.com.tr`
 yazılırsa istemci portu kendisi `:8081` olarak varsayar ve düz `http://` ile doğrudan
 o porta bağlanmaya çalışır — NPM'in 443'te TLS sonlandırdığı proxy host'u hiç

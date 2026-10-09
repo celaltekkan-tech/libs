@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Öğretmen Nöbet Çizelgesi — Otomatik ve Adil Dağıtım | OIDS</title>
-  <meta name="description" content="Nöbet yerlerini tanımlayın, haftalık nöbet çizelgesini otomatik ve adil dağıtın. Nöbet kuralları ve müdür imzalı Excel/PDF çıktı." />
+  <title>Öğretmen Nöbet Çizelgesi Hazırlama — Haftalık Nöbet Programı | OIDS</title>
+  <meta name="description" content="Nöbet yerlerini tanımlayın, haftalık nöbet çizelgesini hazırlayın, sonraki haftaya yer değiştirerek aktarın. Nöbet kuralları ve müdür imzalı Excel/PDF çıktı." />
   <link rel="canonical" href="https://oids.com.tr/moduller/nobet-programi" />
   <meta name="theme-color" content="#7e14ff" />
   <meta property="og:type" content="website" />
   <meta property="og:locale" content="tr_TR" />
   <meta property="og:site_name" content="Okul İdare Sistemi (OIDS)" />
-  <meta property="og:title" content="Öğretmen Nöbet Çizelgesi — Otomatik ve Adil Dağıtım | OIDS" />
-  <meta property="og:description" content="Nöbet yerlerini tanımlayın, haftalık nöbet çizelgesini otomatik ve adil dağıtın. Nöbet kuralları ve müdür imzalı Excel/PDF çıktı." />
+  <meta property="og:title" content="Öğretmen Nöbet Çizelgesi Hazırlama — Haftalık Nöbet Programı | OIDS" />
+  <meta property="og:description" content="Nöbet yerlerini tanımlayın, haftalık nöbet çizelgesini hazırlayın, sonraki haftaya yer değiştirerek aktarın. Nöbet kuralları ve müdür imzalı Excel/PDF çıktı." />
   <meta property="og:url" content="https://oids.com.tr/moduller/nobet-programi" />
   <meta property="og:image" content="https://oids.com.tr/assets/og-image.png" />
   <meta property="og:image:width" content="1200" />
@@ -23,7 +23,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=b56d7bc9" />
+  <link rel="stylesheet" href="/styles.css?v=1f39d785" />
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Anasayfa","item":"https://oids.com.tr/"},{"@type":"ListItem","position":2,"name":"Modüller","item":"https://oids.com.tr/moduller"},{"@type":"ListItem","position":3,"name":"Nöbet Programı","item":"https://oids.com.tr/moduller/nobet-programi"}]}</script>
 </head>
 <body>
@@ -36,8 +36,9 @@
       <nav class="main-nav" aria-label="Ana menü">
         <a href="/moduller" aria-current="page">Modüller</a>
         <a href="/mobil-uygulama">Mobil Uygulama</a>
+        <a href="/araclar">Hesaplayıcılar</a>
         <a href="/#planlar">Planlar</a>
-        <a href="/#sss">SSS</a>
+        <a href="/rehber">Rehber</a>
         <a href="/#iletisim">İletişim</a>
       </nav>
       <div class="header-cta">
@@ -56,7 +57,7 @@
         <nav class="crumbs" aria-label="Sayfa yolu"><ol><li><a href="/">Anasayfa</a></li><li><a href="/moduller">Modüller</a></li><li aria-current="page">Nöbet Programı</li></ol></nav>
         <p class="eyebrow">Personel İşleri</p>
         <h1><span class="h1-icon" aria-hidden="true">🛎️</span>Nöbet Programı</h1>
-        <p class="lead">Nöbet yerlerini bir kez tanımlayın; OIDS haftalık çizelgeyi öğretmenlerin ders programına bakarak dağıtır ve kimin kaç nöbet tuttuğunu adalet raporunda gösterir.</p>
+        <p class="lead">Nöbet yerlerini bir kez tanımlayın, ilk haftayı yerleştirin; sonraki haftalara tek tıkla, öğretmenler yer değiştirerek aktarılsın. Kimin kaç nöbet tuttuğu listede hep görünür.</p>
         <div class="hero-actions">
           <a class="btn btn-primary btn-lg" href="#iletisim">Demo İsteyin</a>
           <a class="btn btn-login btn-lg" href="https://uyg.oids.com.tr"><span>Panele Giriş Yap</span><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M7.5 3.75H5A1.25 1.25 0 0 0 3.75 5v10A1.25 1.25 0 0 0 5 16.25h2.5M13.125 6.875 16.25 10l-3.125 3.125M16.25 10H8.125" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
@@ -68,14 +69,16 @@
       <div class="wrap">
         <h2 class="section-title">Neler yapabilirsiniz?</h2>
         <div class="feature-list">
-          <article class="feature-item"><h3>Otomatik dağıtım</h3><p>Haftalık ızgara tek tıkla dolar; dilerseniz elle düzenleyin.</p></article>
-          <article class="feature-item"><h3>Adalet raporu</h3><p>Kişi başına nöbet sayısını görün, dengesizliği hemen fark edin.</p></article>
+          <article class="feature-item"><h3>Haftalık nöbet ızgarası</h3><p>Günler ve nöbet yerleri tablosunda öğretmeni yerine koyun; bir kişiye günde tek nöbet verilir.</p></article>
+          <article class="feature-item"><h3>Sonraki haftaya aktar</h3><p>Hafta tek tıkla sonraki haftaya kopyalanır; isterseniz her öğretmen bir sonraki nöbet yerine kayar.</p></article>
+          <article class="feature-item"><h3>Nöbet sayısı</h3><p>Öğretmen listesinde her kişinin tuttuğu nöbet sayısı görünür; dengesizliği hemen fark edersiniz.</p></article>
           <article class="feature-item"><h3>Ders programıyla uyum</h3><p>Yayınlanmış ders programında dersi olan öğretmenler önce önerilir.</p></article>
-          <article class="feature-item"><h3>Hafta kopyalama ve kilitleme</h3><p>Haftayı kopyalayın, aralık temizleyin, belirli kişileri kilitleyin.</p></article>
+          <article class="feature-item"><h3>Kilitleme ve temizleme</h3><p>Kişiyi veya nöbet yerini kilitleyin, aktarımda yerinde kalsın; tarih aralığını temizleyin.</p></article>
           <article class="feature-item"><h3>Yazdırmaya hazır çıktı</h3><p>Nöbet kuralları ve müdür imzasıyla siyah-beyaz kart düzeninde Excel ve PDF.</p></article>
         </div>
       </div>
     </section>
+
 
     <section class="section section-alt">
       <div class="wrap">
@@ -85,6 +88,7 @@
           <a href="/moduller/rapor-takibi"><span>🩺</span>Rapor (Sağlık İzni) Takibi</a>
           <a href="/moduller/ogretmen-ve-personel-yonetimi"><span>👩‍🏫</span>Öğretmen ve Personel Yönetimi</a>
         </div>
+        <p class="related-guides">İlgili rehberler: <a href="/rehber/nobet-cizelgesi-hazirlama">Öğretmen nöbet çizelgesi nasıl hazırlanır?</a></p>
         <p class="also">Personel İşleri altında ayrıca: <a href="/moduller/terfi-takibi">Terfi takibi</a> · <a href="/moduller/maas-degisikligi-bildirim-formu">Maaş formu ve norm kadro</a> · <a href="/moduller/rapor-takibi">Rapor takibi</a> · <a href="/moduller/ek-ders-puantaji">Ek ders puantajı</a> · <a href="/moduller/isci-typ-puantaj">İşçi / TYP puantaj</a> · <a href="/moduller/ogretmen-evrak-arsivi">Evrak arşivi</a></p>
       </div>
     </section>
@@ -130,10 +134,15 @@
           <ul><li><a href="/moduller/yetkilendirme-ve-guvenlik">Yetki ve güvenlik</a></li><li><a href="/moduller/is-takibi-ve-kurum-takvimi">İş takibi ve takvim</a></li><li><a href="/moduller/e-okul-eklentisi">e-Okul eklentisi</a></li><li><a href="/moduller/yedekleme">Yedekleme</a></li></ul>
         </div>
         <div class="footer-col">
+          <p class="footer-title">Ücretsiz araçlar</p>
+          <ul><li><a href="/araclar/rapor-kesintisi-hesaplama">Rapor kesintisi</a></li><li><a href="/araclar/ek-ders-hesaplama">Ek ders saati</a></li><li><a href="/araclar/kademe-terfi-hesaplama">Kademe / derece terfi</a></li></ul>
+        </div>
+        <div class="footer-col">
           <p class="footer-title">OIDS</p>
           <ul>
             <li><a href="/moduller">Tüm modüller</a></li>
             <li><a href="/mobil-uygulama">Mobil uygulama</a></li>
+            <li><a href="/rehber">Rehberler</a></li>
             <li><a href="/#planlar">Planlar</a></li>
             <li><a href="/#sss">Sıkça sorulan sorular</a></li>
             <li><a href="https://uyg.oids.com.tr">Panele giriş</a></li>
@@ -147,6 +156,6 @@
       </div>
     </div>
   </footer>
-  <script src="/script.js?v=b56d7bc9" defer></script>
+  <script src="/script.js?v=1f39d785" defer></script>
 </body>
 </html>

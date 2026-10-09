@@ -6,6 +6,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { FAQ, GROUPS, MOBILE, MODULES } from './content.mjs'
 import { SITE } from './site.mjs'
+import { TOOLS } from './tools.mjs'
+import { GUIDES } from './guides.mjs'
 import { breadcrumbLd, breadcrumbNav, esc, loginButton, page } from './layout.mjs'
 
 const SRC = dirname(fileURLToPath(import.meta.url))
@@ -16,6 +18,7 @@ const TODAY = new Date().toISOString().slice(0, 10)
 SITE.buildId = createHash('sha1')
   .update(readFileSync(join(OUT, 'styles.css')))
   .update(readFileSync(join(OUT, 'script.js')))
+  .update(readFileSync(join(OUT, 'tools.js')))
   .digest('hex')
   .slice(0, 8)
 
@@ -113,9 +116,9 @@ const SPOTLIGHTS = [
     text: 'Bir öğretmen ayrıldığında, terfi aldığında ya da raporu yıllık 7 günü aştığında OIDS bunu ilgili ayın Maaş Değişikliği Bildirim Formu’na kendisi yazar. Ay sonunda resmî şablonda Excel veya PDF alırsınız.',
     points: ['Rapor günlerinde 7 gün kuralı otomatik', 'Terfi formları resmî şablondan', 'Görevlendirme, başlama, ayrılış yazıları Word olarak'],
     visual: `<div class="flow" aria-hidden="true">
-            <div class="flow-src"><span>🩺 Rapor &gt; 7 gün</span><span>📈 Kademe terfisi</span><span>🚪 Personel ayrılışı</span></div>
+            <div class="flow-src"><span>🩺 Rapor &gt; 7 gün</span><span>📈 Kademe terfisi</span><span>🚪 Ayrılış / başlayış</span></div>
             <div class="flow-arrow">→</div>
-            <div class="flow-doc"><strong>Maaş Değişikliği Bildirim Formu</strong><i>A</i><i>B</i><i>C</i><i>D</i><em>Excel · PDF</em></div>
+            <div class="flow-doc"><strong>Maaş Değişikliği Bildirim Formu</strong><i>B</i><i>C</i><i>D</i><i>G</i><em>Excel · PDF</em></div>
           </div>`,
   },
   {
@@ -132,7 +135,7 @@ const SPOTLIGHTS = [
     slug: 'sinav-programi',
     eyebrow: 'Programlar',
     title: 'Ortak sınav, sorumluluk sınavı ve kelebek sistemi',
-    text: 'MEBBİS’ten aldığınız sorumlu ders listesini yükleyin; sınav takvimi, komisyon ve gözetmen önerisi otomatik çıksın. Kelebek oturma planını salonlara tek tıkla dağıtın.',
+    text: 'MEBBİS’ten aldığınız sorumlu ders listesini yükleyin; sınav takvimi otomatik çıksın, komisyon üyeleri ve gözetmenler branşa göre önerilsin. Kelebek oturma planını salonlara tek tıkla dağıtın.',
     points: ['Aynı gün iki sınav uyarısı', 'Her 30 öğrenciye 1 gözetmen önerisi', 'Excel, PDF ve JPEG çıktı'],
     visual: `<div class="seats" aria-hidden="true">${Array.from({ length: 24 }, (_, i) => `<span class="s${(i * 7) % 4}"></span>`).join('')}</div>
           <p class="seats-legend" aria-hidden="true"><i class="s0"></i>9-A <i class="s1"></i>10-C <i class="s2"></i>11-B <i class="s3"></i>12-D</p>`,
@@ -356,7 +359,7 @@ add({
         <ol class="steps">
           <li><span>1</span><h3>Okulunuzu tanımlayın</h3><p>MEB kataloğundan okulunuzu seçin; sınıfları e-Okul’dan, öğretmenleri MEBBİS’ten, öğrencileri e-Okul Excel’inden aktarın.</p></li>
           <li><span>2</span><h3>Yetkileri dağıtın</h3><p>Müdür yardımcısı, rehber öğretmen ve memur için menü bazında yetki verin; öğretmenler mobil uygulamadan kayıt isteği göndersin.</p></li>
-          <li><span>3</span><h3>Programları üretin</h3><p>Ders programını ve nöbet çizelgesini otomatik hazırlayın; ek ders, rapor ve maaş formu kendiliğinden beslensin.</p></li>
+          <li><span>3</span><h3>Programları üretin</h3><p>Ders programını otomatik hazırlayın, nöbet çizelgesini haftadan haftaya aktarın; ek ders, rapor ve maaş formu kendiliğinden beslensin.</p></li>
         </ol>
       </div>
     </section>
@@ -421,6 +424,25 @@ add({
         <div class="addon-row">
           <div class="addon"><strong>📨 SMS paketleri</strong><span>3.000 veya 10.000 kontör. Veli duyurusu, iş hatırlatması ve SMS ile giriş bu kotadan kullanılır.</span></div>
           <div class="addon"><strong>✨ Yapay Zekâ paketi</strong><span>Ders programında Türkçe kısıt yazma, ürün içi soru-cevap asistanı ve çözücü desteği.</span></div>
+        </div>
+      </div>
+    </section>
+    <section class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="eyebrow">Ücretsiz araçlar</p>
+          <h2>Ay sonu hesapları için hesaplayıcılar</h2>
+          <p class="section-lead">Rapor kesintisi, ek ders saatleri ve terfi takvimi; kayıt olmadan, OIDS’in kullandığı kurallarla.</p>
+        </div>
+        <div class="feature-index">
+          ${TOOLS.map(
+            (t) => `<a class="feature-tile" href="/araclar/${t.slug}">
+            <span class="ft-icon">${t.icon}</span>
+            <h3>${esc(t.name)}</h3>
+            <p>${esc(t.lead)}</p>
+            <span class="ft-more">Hesapla →</span>
+          </a>`,
+          ).join('\n          ')}
         </div>
       </div>
     </section>
@@ -536,16 +558,321 @@ for (const m of MODULES) {
       </div>
     </section>
 ${m.faq ? faqBlock(m.faq) : ''}
+${TOOLS.filter((t) => t.module === m.slug)
+  .map(
+    (t) => `    <section class="section-slim">
+      <div class="wrap">
+        <a class="tool-banner" href="/araclar/${t.slug}"><span>${t.icon}</span><div><strong>Ücretsiz araç: ${esc(t.name)}</strong><small>${esc(t.lead)}</small></div><em>Hesapla →</em></a>
+      </div>
+    </section>`,
+  )
+  .join('\n')}
     <section class="section section-alt">
       <div class="wrap">
         <h2 class="section-title">Birlikte çalıştığı modüller</h2>
         <div class="related">
           ${m.related.map(relatedLink).map((r) => `<a href="${r.href}"><span>${r.icon}</span>${esc(r.name)}</a>`).join('\n          ')}
         </div>
+        ${(() => {
+          const gs = GUIDES.filter((x) => (x.modules || []).includes(m.slug))
+          return gs.length ? `<p class="related-guides">İlgili rehberler: ${gs.map((x) => `<a href="/rehber/${x.slug}">${esc(x.h1)}</a>`).join(' · ')}</p>` : ''
+        })()}
         ${siblings.length ? `<p class="also">${esc(g.title)} altında ayrıca: ${siblings.map((s) => `<a href="/moduller/${s.slug}">${esc(s.short)}</a>`).join(' · ')}</p>` : ''}
       </div>
     </section>
 ${ctaBlock(`${m.name} okulunuzda nasıl çalışır?`, 'Kısa bir demo ile bu modülü kendi okulunuzun verisiyle birlikte inceleyelim.')}`,
+    }),
+  })
+}
+
+// ───────────────────────────── Ücretsiz hesaplayıcılar
+const toolCards = () =>
+  TOOLS.map(
+    (t) => `<a class="feature-tile" href="/araclar/${t.slug}">
+            <span class="ft-icon">${t.icon}</span>
+            <h3>${esc(t.name)}</h3>
+            <p>${esc(t.lead)}</p>
+            <span class="ft-more">Hesapla →</span>
+          </a>`,
+  ).join('\n          ')
+
+{
+  const crumbs = [
+    { name: 'Anasayfa', path: '/' },
+    { name: 'Hesaplayıcılar', path: '/araclar' },
+  ]
+  add({
+    path: '/araclar',
+    file: 'araclar.html',
+    priority: '0.9',
+    html: page({
+      ...common,
+      path: '/araclar',
+      active: '/araclar',
+      title: 'Okul İdaresi İçin Ücretsiz Hesaplayıcılar — Rapor, Ek Ders, Terfi | OIDS',
+      description:
+        'Ücretsiz hesaplayıcılar: rapor kesintisi (yıllık 7 gün), ek ders saatleri (KBS kodları) ve kademe/derece terfi tarihleri. Kayıt gerekmez.',
+      ld: [breadcrumbLd(crumbs)],
+      body: `
+    <section class="page-hero">
+      <div class="wrap">
+        ${breadcrumbNav(crumbs)}
+        <p class="eyebrow">Ücretsiz araçlar</p>
+        <h1>Okul idaresi için hesaplayıcılar</h1>
+        <p class="lead">Müdür yardımcılarının ay sonunda elle yaptığı hesaplar; kayıt olmadan, tarayıcınızda. Hesap kuralları OIDS’in kullandığı kurallarla aynıdır.</p>
+      </div>
+    </section>
+    <section class="section">
+      <div class="wrap">
+        <div class="feature-index">
+          ${toolCards()}
+        </div>
+      </div>
+    </section>
+${ctaBlock('Bu hesapları her ay elle yapmayın', 'OIDS raporları, terfileri ve ek dersleri kendisi takip eder; maaş formu ve puantaj hazır çıkar.')}`,
+    }),
+  })
+}
+
+for (const t of TOOLS) {
+  const path = `/araclar/${t.slug}`
+  const crumbs = [
+    { name: 'Anasayfa', path: '/' },
+    { name: 'Hesaplayıcılar', path: '/araclar' },
+    { name: t.name, path },
+  ]
+  const mod = bySlug[t.module]
+  const others = TOOLS.filter((x) => x.slug !== t.slug)
+  add({
+    path,
+    file: `araclar/${t.slug}.html`,
+    priority: '0.8',
+    html: page({
+      ...common,
+      path,
+      active: '/araclar',
+      title: t.title,
+      description: t.description,
+      scripts: ['/tools.js'],
+      ld: [
+        breadcrumbLd(crumbs),
+        faqLd(t.faq),
+        {
+          '@context': 'https://schema.org',
+          '@type': 'WebApplication',
+          name: t.name,
+          url: SITE.url + path,
+          applicationCategory: 'UtilitiesApplication',
+          operatingSystem: 'Web',
+          inLanguage: 'tr',
+          isAccessibleForFree: true,
+          description: t.description,
+          publisher: { '@type': 'Organization', name: SITE.name },
+        },
+      ],
+      body: `
+    <section class="page-hero">
+      <div class="wrap">
+        ${breadcrumbNav(crumbs)}
+        <p class="eyebrow">Ücretsiz hesaplayıcı</p>
+        <h1><span class="h1-icon" aria-hidden="true">${t.icon}</span>${esc(t.name)}</h1>
+        <p class="lead">${esc(t.lead)}</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap calc-layout">
+        <form class="calc" data-tool="${t.slug === 'rapor-kesintisi-hesaplama' ? 'rapor' : t.slug === 'ek-ders-hesaplama' ? 'ekders' : 'terfi'}" onsubmit="return false">
+          ${t.form}
+          <div class="calc-result" aria-live="polite"><noscript>Hesaplayıcı için JavaScript gerekir.</noscript></div>
+        </form>
+        <aside class="calc-aside">
+          <p class="eyebrow">OIDS ile otomatik</p>
+          <p>${esc(t.automation)}</p>
+          <a class="text-link" href="/moduller/${mod.slug}">${esc(mod.name)} modülü →</a>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section section-alt">
+      <div class="wrap narrow">
+        <h2 class="section-title">${esc(t.howTitle)}</h2>
+        <ol class="how-list">
+          ${t.how.map((h) => `<li>${esc(h)}</li>`).join('\n          ')}
+        </ol>
+        <p class="disclaimer">Sonuçlar bilgilendirme amaçlıdır; resmî işlemlerde güncel mevzuatı ve kurumunuzun uygulamasını esas alın.</p>
+      </div>
+    </section>
+${faqBlock(t.faq)}
+    <section class="section section-alt">
+      <div class="wrap">
+        <h2 class="section-title">Diğer hesaplayıcılar</h2>
+        <div class="related">
+          ${others.map((o) => `<a href="/araclar/${o.slug}"><span>${o.icon}</span>${esc(o.name)}</a>`).join('\n          ')}
+        </div>
+      </div>
+    </section>
+${ctaBlock('Bu hesabı her ay elle yapmayın', t.automation)}`,
+    }),
+  })
+}
+
+// ───────────────────────────── Rehberler
+const slugify = (s) =>
+  s
+    .toLocaleLowerCase('tr-TR')
+    .replace(/[çğıöşü]/g, (c) => ({ ç: 'c', ğ: 'g', ı: 'i', ö: 'o', ş: 's', ü: 'u' })[c])
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+const trLongDate = (iso) => {
+  const [y, m, d] = iso.split('-').map(Number)
+  return `${d} ${['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'][m - 1]} ${y}`
+}
+const toolBySlug = Object.fromEntries(TOOLS.map((t) => [t.slug, t]))
+const guideCards = (list) =>
+  list
+    .map(
+      (g) => `<a class="feature-tile guide-tile" href="/rehber/${g.slug}">
+            <span class="guide-meta">${g.minutes} dk okuma</span>
+            <h3>${esc(g.h1)}</h3>
+            <p>${esc(g.lead)}</p>
+            <span class="ft-more">Oku →</span>
+          </a>`,
+    )
+    .join('\n          ')
+
+{
+  const crumbs = [
+    { name: 'Anasayfa', path: '/' },
+    { name: 'Rehber', path: '/rehber' },
+  ]
+  add({
+    path: '/rehber',
+    file: 'rehber.html',
+    priority: '0.9',
+    html: page({
+      ...common,
+      path: '/rehber',
+      active: '/rehber',
+      title: 'Okul İdaresi Rehberi — Maaş Formu, Ek Ders, Rapor, Sınav ve Nöbet | OIDS',
+      description:
+        'Müdür ve müdür yardımcıları için pratik rehberler: rapor 7 gün kuralı, ek ders KBS kodları, kademe/derece terfisi, maaş değişikliği formu, sınav ve nöbet planlama.',
+      ld: [
+        breadcrumbLd(crumbs),
+        {
+          '@context': 'https://schema.org',
+          '@type': 'ItemList',
+          itemListElement: GUIDES.map((g, i) => ({ '@type': 'ListItem', position: i + 1, name: g.h1, url: `${SITE.url}/rehber/${g.slug}` })),
+        },
+      ],
+      body: `
+    <section class="page-hero">
+      <div class="wrap">
+        ${breadcrumbNav(crumbs)}
+        <p class="eyebrow">Rehber</p>
+        <h1>Okul idaresi için pratik rehberler</h1>
+        <p class="lead">Ay sonu formları, ek ders, rapor, terfi, sınav ve nöbet; sık yapılan işlerin kuralları örneklerle. Her rehberdeki kural, OIDS’in uyguladığı kuralla aynıdır.</p>
+      </div>
+    </section>
+    <section class="section">
+      <div class="wrap">
+        <div class="feature-index">
+          ${guideCards(GUIDES)}
+        </div>
+      </div>
+    </section>
+${ctaBlock()}`,
+    }),
+  })
+}
+
+for (const g of GUIDES) {
+  const path = `/rehber/${g.slug}`
+  const crumbs = [
+    { name: 'Anasayfa', path: '/' },
+    { name: 'Rehber', path: '/rehber' },
+    { name: g.h1, path },
+  ]
+  const updated = g.updated || g.published
+  const sections = g.sections.map(([h, body]) => ({ id: slugify(h), h, body }))
+  const tools = (g.tools || []).map((s) => toolBySlug[s]).filter(Boolean)
+  const mods = (g.modules || []).map((s) => bySlug[s]).filter(Boolean)
+  const more = GUIDES.filter((x) => x.slug !== g.slug).slice(0, 3)
+  const toolBox = tools
+    .map(
+      (t) => `<a class="tool-banner" href="/araclar/${t.slug}"><span>${t.icon}</span><div><strong>Hesaplayın: ${esc(t.name)}</strong><small>Ücretsiz, kayıt gerekmez.</small></div><em>Hesapla →</em></a>`,
+    )
+    .join('')
+  add({
+    path,
+    file: `rehber/${g.slug}.html`,
+    priority: '0.7',
+    html: page({
+      ...common,
+      path,
+      active: '/rehber',
+      title: g.title,
+      description: g.description,
+      ld: [
+        breadcrumbLd(crumbs),
+        {
+          '@context': 'https://schema.org',
+          '@type': 'Article',
+          headline: g.h1,
+          description: g.description,
+          inLanguage: 'tr',
+          datePublished: g.published,
+          dateModified: updated,
+          mainEntityOfPage: SITE.url + path,
+          image: `${SITE.url}/assets/og-image.png`,
+          author: { '@type': 'Organization', name: SITE.name, url: SITE.url + '/' },
+          publisher: { '@type': 'Organization', name: SITE.name, logo: { '@type': 'ImageObject', url: `${SITE.url}/assets/logo.png` } },
+        },
+        ...(g.faq?.length ? [faqLd(g.faq)] : []),
+      ],
+      body: `
+    <section class="page-hero">
+      <div class="wrap narrow-wide">
+        ${breadcrumbNav(crumbs)}
+        <p class="eyebrow">Rehber · ${g.minutes} dk okuma</p>
+        <h1>${esc(g.h1)}</h1>
+        <p class="lead">${esc(g.lead)}</p>
+        <p class="article-meta">OIDS ekibi · <time datetime="${updated}">${trLongDate(updated)}</time></p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap article-layout">
+        <aside class="toc" aria-label="İçindekiler">
+          <p class="toc-title">İçindekiler</p>
+          <ol>${sections.map((s) => `<li><a href="#${s.id}">${esc(s.h)}</a></li>`).join('')}${g.faq?.length ? '<li><a href="#sss">Sık sorulanlar</a></li>' : ''}</ol>
+        </aside>
+        <article class="article">
+          ${sections
+            .map(
+              (s, i) => `<h2 id="${s.id}">${esc(s.h)}</h2>
+          ${s.body}${i === 1 && toolBox ? `\n          ${toolBox}` : ''}`,
+            )
+            .join('\n          ')}
+          <div class="article-cta">
+            <p class="eyebrow">OIDS ile otomatik</p>
+            <p>${mods.map((m) => `<a href="/moduller/${m.slug}">${esc(m.name)}</a>`).join(' ve ')} modülleri bu işi sizin yerinize takip eder; formlar ve listeler hazır çıkar.</p>
+            <a class="btn btn-primary" href="#iletisim">Demo İsteyin</a>
+          </div>
+          <p class="disclaimer">Bu rehber bilgilendirme amaçlıdır; resmî işlemlerde güncel mevzuatı ve kurumunuzun uygulamasını esas alın.</p>
+        </article>
+      </div>
+    </section>
+${g.faq?.length ? faqBlock(g.faq) : ''}
+    <section class="section section-alt">
+      <div class="wrap">
+        <h2 class="section-title">Diğer rehberler</h2>
+        <div class="feature-index">
+          ${guideCards(more)}
+        </div>
+      </div>
+    </section>
+${ctaBlock()}`,
     }),
   })
 }
@@ -695,7 +1022,7 @@ const prevHtml = new Map(pages.map((p) => [p.file, existsSync(join(OUT, p.file))
 // Önbellek kırıcı ve telif yılı içerik değişikliği sayılmaz.
 const strip = (h) => h && h.replace(/\?v=[0-9a-f]{8}/g, '').replace(/<span id="year">\d+<\/span>/, '')
 
-rmSync(join(OUT, 'moduller'), { recursive: true, force: true })
+for (const dir of ['moduller', 'araclar', 'rehber']) rmSync(join(OUT, dir), { recursive: true, force: true })
 for (const p of pages) {
   const f = join(OUT, p.file)
   mkdirSync(dirname(f), { recursive: true })

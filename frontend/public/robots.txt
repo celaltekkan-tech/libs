@@ -1,0 +1,5 @@
+# Panel arama motorlarında listelenmez: sayfalar noindex başlığı taşır.
+# Taramayı engellemiyoruz; engellenirse Google noindex başlığını göremez.
+# Tanıtım sitesi: https://oids.com.tr
+User-agent: *
+Disallow:
