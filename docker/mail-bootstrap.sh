@@ -8,6 +8,10 @@ CONFIG="/tmp/docker-mailserver"
 
 mkdir -p "$CONFIG"
 
+if [[ -f /usr/local/bin/mail-ensure-ssl.sh ]]; then
+  bash /usr/local/bin/mail-ensure-ssl.sh
+fi
+
 if [[ -z "$PASSWORD" ]]; then
   echo "MAIL_ACCOUNT_PASSWORD boş; ${ACCOUNT} hesabı şimdi oluşturulmadı."
   exit 0
