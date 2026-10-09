@@ -263,7 +263,7 @@ export const MODULES = [
     icon: '🤖',
     title: 'Otomatik Ders Programı Hazırlama Yazılımı — Yapay Zekâ Destekli | OIDS',
     description:
-      'Ders programını optimizasyon motoruyla otomatik hazırlayın: 13 kısıt türü, yapay zekâyla Türkçe kısıt, Bilsan/e-Okul içe aktarma ve e-Okul’a aktarım.',
+      'Ders programını optimizasyon motoruyla otomatik hazırlayın: 13 kısıt türü, yapay zekâyla Türkçe kısıt, diğer sistemlerden ve e-Okul’dan içe aktarma, e-Okul’a aktarım.',
     lead:
       'Zil saatlerini, ders havuzunu ve öğretmen atamalarını girin; OIDS’in optimizasyon motoru çakışmasız ders programını dakikalar içinde hazırlasın. Kısıtları dilerseniz Türkçe cümleyle yazın.',
     features: [
@@ -272,14 +272,14 @@ export const MODULES = [
       ['13 kısıt türü', 'Her kısıt zorunlu ya da tercih olarak, önem puanıyla tanımlanır. Çelişen zorunlu kurallar raporlanır.'],
       ['Türkçe yazın, kısıta dönüşsün', '“Ayşe Hanım cuma öğleden sonra ders vermesin” gibi cümleler yapay zekâyla yapılandırılmış kısıta çevrilir; siz onaylarsınız. Yapay zekâya TC kimlik no veya telefon gönderilmez.'],
       ['Hazır ders havuzları', 'MEB haftalık ders çizelgelerinden hazırlanmış havuzları okulunuza alın; ortak dersler şubelere otomatik eşitlenir.'],
-      ['İçe aktarma', 'Bilsan öğretmen programı PDF’leri, e-Okul şube programı PDF’leri ve Excel.'],
+      ['İçe aktarma', 'Diğer sistemlerde hazırlanmış öğretmen programı PDF’leri, e-Okul şube programı PDF’leri ve Excel.'],
       ['Sürükle-bırak düzenleme', 'Çözümden sonra elle ince ayar, kısmi silme ve yayınlama.'],
       ['Excel çıktılar', 'Şube, öğretmen, öğrenci, derslik, ayrıntılı ve tek sayfada “çarşaf” program.'],
       ['e-Okul’a aktarım', 'OIDS tarayıcı eklentisi yayınlanan programı e-Okul ders programı ekranına doldurur.'],
     ],
     faq: [
       ['Ders programı ne kadar sürede hazırlanır?', 'Veriler girildikten sonra çözüm genellikle dakikalar içinde tamamlanır; süre okulun büyüklüğüne ve kısıt sayısına bağlıdır.'],
-      ['Bilsan’da hazırladığım programı alabilir miyim?', 'Evet. Bilsan öğretmen programı PDF’lerini ve e-Okul şube programı PDF’lerini içe aktarabilirsiniz.'],
+      ['Başka bir programda hazırladığım ders programını alabilir miyim?', 'Evet. Diğer sistemlerden alınan öğretmen programı PDF’lerini ve e-Okul şube programı PDF’lerini içe aktarabilirsiniz.'],
       ['Yapay zekâ zorunlu mu?', 'Hayır. Çözücü yapay zekâ olmadan çalışır. Yapay Zekâ ek paketi; Türkçe kısıt yazma, ürün içi soru-cevap ve çözücünün sonuç bulamadığı durumda yerleştirme desteği ekler.'],
     ],
     related: ['e-okul-eklentisi', 'nobet-programi', 'ek-ders-puantaji'],
