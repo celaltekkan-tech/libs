@@ -309,7 +309,7 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
           'Ders ve öğretmen adımında hangi şubede kimin gireceğini seçin.',
           'İsteklerde örneğin "Ayşe Hoca cuma gelemiyor" yazın.',
           'Okul saatlerinde dağıtım süresini, karnıyarık süresini, blok kurallarını ve kıyaslanacak algoritmaları yazın. Program bitince hangi algoritmanın cezası daha düşükse o yazılır.',
-          'Programı oluşturun, ders programında sürükleyerek düzeltin ve yayınlayın. Hazır program varsa Ders programı sekmesinden PDF veya Excel içe aktarabilirsiniz. Bilsan öğretmen programı ve e-Okul şube programı PDF’leri okunur.',
+          'Programı oluşturun, ders programında sürükleyerek düzeltin ve yayınlayın. Hazır program varsa Ders programı sekmesinden PDF veya Excel içe aktarabilirsiniz. Diğer sistemlerden alınan öğretmen programı ve e-Okul şube programı PDF’leri okunur.',
           'e-Okul ders programı sayfasında eklentiden sınıfları alabilirsiniz. Anadolu lisesinde şube 9/A kalır. AMP ve ATP ayrı yazılan meslek lisesinde şube AMP-A diye açılır; ikisi de 9/A sanılmaz.',
           'Ders programı sekmesinden tek bir dersi, görünen şube/öğretmen/mekanı ya da tüm taslağı silebilirsiniz. Yayındaki resmi program da şube, öğretmen veya okulun tamamı olarak silinebilir; ders atamaları durur.',
           'Ders programı sekmesindeki Excel menüsünden şube, öğretmen, öğrenci veya mekân programını indirin.',

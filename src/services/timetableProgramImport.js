@@ -42,7 +42,7 @@ const DAY_WORD = {
 };
 
 const FORMAT_LABEL = {
-  'bilsan-pdf': 'Bilsan öğretmen ders programı (PDF)',
+  'bilsan-pdf': 'Öğretmen ders programı (PDF)',
   'eokul-pdf': 'e-Okul şube ders programı (PDF)',
   'excel-grid': 'Haftalık çizelge (Excel)',
   'excel-table': 'Satır listesi (Excel)',
@@ -497,7 +497,7 @@ function parseBilsanFromPages(pages) {
     slots.push(...page.slots);
   }
   if (!recognized) {
-    throw httpError(400, 'Bu PDF, Bilsan öğretmen ders programı olarak okunamadı');
+    throw httpError(400, 'Bu PDF, öğretmen ders programı olarak okunamadı');
   }
   if (!slots.length) throw httpError(400, 'PDF içinde yerleşmiş ders bulunamadı');
   return { format: 'bilsan-pdf', slots, teachers: teachers.size };
