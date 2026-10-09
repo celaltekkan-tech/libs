@@ -3,16 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sayfa bulunamadı — OIDS</title>
-  <meta name="description" content="Aradığınız sayfa bulunamadı." />
-  <meta name="robots" content="noindex, follow" />
+  <title>Okul İdaresi İçin Ücretsiz Hesaplayıcılar — Rapor, Ek Ders, Terfi | OIDS</title>
+  <meta name="description" content="Ücretsiz hesaplayıcılar: rapor kesintisi (yıllık 7 gün), ek ders saatleri (KBS kodları) ve kademe/derece terfi tarihleri. Kayıt gerekmez." />
+  <link rel="canonical" href="https://oids.com.tr/araclar" />
   <meta name="theme-color" content="#7e14ff" />
   <meta property="og:type" content="website" />
   <meta property="og:locale" content="tr_TR" />
   <meta property="og:site_name" content="Okul İdare Sistemi (OIDS)" />
-  <meta property="og:title" content="Sayfa bulunamadı — OIDS" />
-  <meta property="og:description" content="Aradığınız sayfa bulunamadı." />
-  <meta property="og:url" content="https://oids.com.tr/404" />
+  <meta property="og:title" content="Okul İdaresi İçin Ücretsiz Hesaplayıcılar — Rapor, Ek Ders, Terfi | OIDS" />
+  <meta property="og:description" content="Ücretsiz hesaplayıcılar: rapor kesintisi (yıllık 7 gün), ek ders saatleri (KBS kodları) ve kademe/derece terfi tarihleri. Kayıt gerekmez." />
+  <meta property="og:url" content="https://oids.com.tr/araclar" />
   <meta property="og:image" content="https://oids.com.tr/assets/og-image.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
@@ -24,7 +24,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/styles.css?v=f9ccfed4" />
-  
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Anasayfa","item":"https://oids.com.tr/"},{"@type":"ListItem","position":2,"name":"Hesaplayıcılar","item":"https://oids.com.tr/araclar"}]}</script>
 </head>
 <body>
   <header class="site-header">
@@ -36,7 +36,7 @@
       <nav class="main-nav" aria-label="Ana menü">
         <a href="/moduller">Modüller</a>
         <a href="/mobil-uygulama">Mobil Uygulama</a>
-        <a href="/araclar">Hesaplayıcılar</a>
+        <a href="/araclar" aria-current="page">Hesaplayıcılar</a>
         <a href="/#planlar">Planlar</a>
         <a href="/#sss">SSS</a>
         <a href="/#iletisim">İletişim</a>
@@ -52,14 +52,48 @@
   </header>
   <main id="top">
 
-    <section class="page-hero not-found">
+    <section class="page-hero">
       <div class="wrap">
-        <p class="eyebrow">404</p>
-        <h1>Aradığınız sayfa bulunamadı</h1>
-        <p class="lead">Adres değişmiş veya kaldırılmış olabilir.</p>
-        <div class="hero-actions">
-          <a class="btn btn-primary btn-lg" href="/">Anasayfaya dön</a>
-          <a class="btn btn-outline btn-lg" href="/moduller">Modüller</a>
+        <nav class="crumbs" aria-label="Sayfa yolu"><ol><li><a href="/">Anasayfa</a></li><li aria-current="page">Hesaplayıcılar</li></ol></nav>
+        <p class="eyebrow">Ücretsiz araçlar</p>
+        <h1>Okul idaresi için hesaplayıcılar</h1>
+        <p class="lead">Müdür yardımcılarının ay sonunda elle yaptığı hesaplar; kayıt olmadan, tarayıcınızda. Hesap kuralları OIDS’in kullandığı kurallarla aynıdır.</p>
+      </div>
+    </section>
+    <section class="section">
+      <div class="wrap">
+        <div class="feature-index">
+          <a class="feature-tile" href="/araclar/rapor-kesintisi-hesaplama">
+            <span class="ft-icon">🩺</span>
+            <h3>Rapor Kesintisi Hesaplama</h3>
+            <p>Yıl içindeki raporları girin; kaç günün kesintisiz olduğunu, kaç günün maaşa yansıyacağını ve hangi ayın Maaş Değişikliği Bildirim Formu’nda bildirileceğini görün.</p>
+            <span class="ft-more">Hesapla →</span>
+          </a>
+          <a class="feature-tile" href="/araclar/ek-ders-hesaplama">
+            <span class="ft-icon">💰</span>
+            <h3>Ek Ders Saati Hesaplama (KBS Kodları)</h3>
+            <p>Haftalık ders yükünü girin; ilk 15 saat maaş karşılığı, hazırlık (YEP), sosyal kişilik hizmeti ve nöbet saatleriyle birlikte KBS’ye girilecek aylık ek ders saatlerini görün.</p>
+            <span class="ft-more">Hesapla →</span>
+          </a>
+          <a class="feature-tile" href="/araclar/kademe-terfi-hesaplama">
+            <span class="ft-icon">📈</span>
+            <h3>Kademe ve Derece Terfi Hesaplama</h3>
+            <p>Mevcut derece/kademenizi ve son terfi tarihinizi girin; önümüzdeki yıllarda hangi tarihte hangi kademeye geçeceğinizi ve terfinin hangi ayın maaş formunda bildirileceğini görün.</p>
+            <span class="ft-more">Hesapla →</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section id="iletisim" class="section section-cta">
+      <div class="wrap cta-inner">
+        <div>
+          <h2>Bu hesapları her ay elle yapmayın</h2>
+          <p>OIDS raporları, terfileri ve ek dersleri kendisi takip eder; maaş formu ve puantaj hazır çıkar.</p>
+        </div>
+        <div class="cta-actions">
+          <a class="btn btn-primary btn-lg btn-on-dark" href="mailto:info@oids.com.tr?subject=OIDS%20demo%20talebi">info@oids.com.tr</a>
+          <a class="btn btn-ghost-light btn-lg" href="https://uyg.oids.com.tr"><span>Panele Giriş Yap</span><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M7.5 3.75H5A1.25 1.25 0 0 0 3.75 5v10A1.25 1.25 0 0 0 5 16.25h2.5M13.125 6.875 16.25 10l-3.125 3.125M16.25 10H8.125" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
         </div>
       </div>
     </section>

@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { FAQ, GROUPS, MOBILE, MODULES } from './content.mjs'
 import { SITE } from './site.mjs'
+import { TOOLS } from './tools.mjs'
 import { breadcrumbLd, breadcrumbNav, esc, loginButton, page } from './layout.mjs'
 
 const SRC = dirname(fileURLToPath(import.meta.url))
@@ -16,6 +17,7 @@ const TODAY = new Date().toISOString().slice(0, 10)
 SITE.buildId = createHash('sha1')
   .update(readFileSync(join(OUT, 'styles.css')))
   .update(readFileSync(join(OUT, 'script.js')))
+  .update(readFileSync(join(OUT, 'tools.js')))
   .digest('hex')
   .slice(0, 8)
 
@@ -424,6 +426,25 @@ add({
         </div>
       </div>
     </section>
+    <section class="section">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="eyebrow">Ücretsiz araçlar</p>
+          <h2>Ay sonu hesapları için hesaplayıcılar</h2>
+          <p class="section-lead">Rapor kesintisi, ek ders saatleri ve terfi takvimi; kayıt olmadan, OIDS’in kullandığı kurallarla.</p>
+        </div>
+        <div class="feature-index">
+          ${TOOLS.map(
+            (t) => `<a class="feature-tile" href="/araclar/${t.slug}">
+            <span class="ft-icon">${t.icon}</span>
+            <h3>${esc(t.name)}</h3>
+            <p>${esc(t.lead)}</p>
+            <span class="ft-more">Hesapla →</span>
+          </a>`,
+          ).join('\n          ')}
+        </div>
+      </div>
+    </section>
 ${faqBlock(FAQ)}
 ${ctaBlock()}`,
   }),
@@ -536,6 +557,15 @@ for (const m of MODULES) {
       </div>
     </section>
 ${m.faq ? faqBlock(m.faq) : ''}
+${TOOLS.filter((t) => t.module === m.slug)
+  .map(
+    (t) => `    <section class="section-slim">
+      <div class="wrap">
+        <a class="tool-banner" href="/araclar/${t.slug}"><span>${t.icon}</span><div><strong>Ücretsiz araç: ${esc(t.name)}</strong><small>${esc(t.lead)}</small></div><em>Hesapla →</em></a>
+      </div>
+    </section>`,
+  )
+  .join('\n')}
     <section class="section section-alt">
       <div class="wrap">
         <h2 class="section-title">Birlikte çalıştığı modüller</h2>
@@ -546,6 +576,138 @@ ${m.faq ? faqBlock(m.faq) : ''}
       </div>
     </section>
 ${ctaBlock(`${m.name} okulunuzda nasıl çalışır?`, 'Kısa bir demo ile bu modülü kendi okulunuzun verisiyle birlikte inceleyelim.')}`,
+    }),
+  })
+}
+
+// ───────────────────────────── Ücretsiz hesaplayıcılar
+const toolCards = () =>
+  TOOLS.map(
+    (t) => `<a class="feature-tile" href="/araclar/${t.slug}">
+            <span class="ft-icon">${t.icon}</span>
+            <h3>${esc(t.name)}</h3>
+            <p>${esc(t.lead)}</p>
+            <span class="ft-more">Hesapla →</span>
+          </a>`,
+  ).join('\n          ')
+
+{
+  const crumbs = [
+    { name: 'Anasayfa', path: '/' },
+    { name: 'Hesaplayıcılar', path: '/araclar' },
+  ]
+  add({
+    path: '/araclar',
+    file: 'araclar.html',
+    priority: '0.9',
+    html: page({
+      ...common,
+      path: '/araclar',
+      active: '/araclar',
+      title: 'Okul İdaresi İçin Ücretsiz Hesaplayıcılar — Rapor, Ek Ders, Terfi | OIDS',
+      description:
+        'Ücretsiz hesaplayıcılar: rapor kesintisi (yıllık 7 gün), ek ders saatleri (KBS kodları) ve kademe/derece terfi tarihleri. Kayıt gerekmez.',
+      ld: [breadcrumbLd(crumbs)],
+      body: `
+    <section class="page-hero">
+      <div class="wrap">
+        ${breadcrumbNav(crumbs)}
+        <p class="eyebrow">Ücretsiz araçlar</p>
+        <h1>Okul idaresi için hesaplayıcılar</h1>
+        <p class="lead">Müdür yardımcılarının ay sonunda elle yaptığı hesaplar; kayıt olmadan, tarayıcınızda. Hesap kuralları OIDS’in kullandığı kurallarla aynıdır.</p>
+      </div>
+    </section>
+    <section class="section">
+      <div class="wrap">
+        <div class="feature-index">
+          ${toolCards()}
+        </div>
+      </div>
+    </section>
+${ctaBlock('Bu hesapları her ay elle yapmayın', 'OIDS raporları, terfileri ve ek dersleri kendisi takip eder; maaş formu ve puantaj hazır çıkar.')}`,
+    }),
+  })
+}
+
+for (const t of TOOLS) {
+  const path = `/araclar/${t.slug}`
+  const crumbs = [
+    { name: 'Anasayfa', path: '/' },
+    { name: 'Hesaplayıcılar', path: '/araclar' },
+    { name: t.name, path },
+  ]
+  const mod = bySlug[t.module]
+  const others = TOOLS.filter((x) => x.slug !== t.slug)
+  add({
+    path,
+    file: `araclar/${t.slug}.html`,
+    priority: '0.8',
+    html: page({
+      ...common,
+      path,
+      active: '/araclar',
+      title: t.title,
+      description: t.description,
+      scripts: ['/tools.js'],
+      ld: [
+        breadcrumbLd(crumbs),
+        faqLd(t.faq),
+        {
+          '@context': 'https://schema.org',
+          '@type': 'WebApplication',
+          name: t.name,
+          url: SITE.url + path,
+          applicationCategory: 'UtilitiesApplication',
+          operatingSystem: 'Web',
+          inLanguage: 'tr',
+          isAccessibleForFree: true,
+          description: t.description,
+          publisher: { '@type': 'Organization', name: SITE.name },
+        },
+      ],
+      body: `
+    <section class="page-hero">
+      <div class="wrap">
+        ${breadcrumbNav(crumbs)}
+        <p class="eyebrow">Ücretsiz hesaplayıcı</p>
+        <h1><span class="h1-icon" aria-hidden="true">${t.icon}</span>${esc(t.name)}</h1>
+        <p class="lead">${esc(t.lead)}</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap calc-layout">
+        <form class="calc" data-tool="${t.slug === 'rapor-kesintisi-hesaplama' ? 'rapor' : t.slug === 'ek-ders-hesaplama' ? 'ekders' : 'terfi'}" onsubmit="return false">
+          ${t.form}
+          <div class="calc-result" aria-live="polite"><noscript>Hesaplayıcı için JavaScript gerekir.</noscript></div>
+        </form>
+        <aside class="calc-aside">
+          <p class="eyebrow">OIDS ile otomatik</p>
+          <p>${esc(t.automation)}</p>
+          <a class="text-link" href="/moduller/${mod.slug}">${esc(mod.name)} modülü →</a>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section section-alt">
+      <div class="wrap narrow">
+        <h2 class="section-title">${esc(t.howTitle)}</h2>
+        <ol class="how-list">
+          ${t.how.map((h) => `<li>${esc(h)}</li>`).join('\n          ')}
+        </ol>
+        <p class="disclaimer">Sonuçlar bilgilendirme amaçlıdır; resmî işlemlerde güncel mevzuatı ve kurumunuzun uygulamasını esas alın.</p>
+      </div>
+    </section>
+${faqBlock(t.faq)}
+    <section class="section section-alt">
+      <div class="wrap">
+        <h2 class="section-title">Diğer hesaplayıcılar</h2>
+        <div class="related">
+          ${others.map((o) => `<a href="/araclar/${o.slug}"><span>${o.icon}</span>${esc(o.name)}</a>`).join('\n          ')}
+        </div>
+      </div>
+    </section>
+${ctaBlock('Bu hesabı her ay elle yapmayın', t.automation)}`,
     }),
   })
 }
@@ -695,7 +857,7 @@ const prevHtml = new Map(pages.map((p) => [p.file, existsSync(join(OUT, p.file))
 // Önbellek kırıcı ve telif yılı içerik değişikliği sayılmaz.
 const strip = (h) => h && h.replace(/\?v=[0-9a-f]{8}/g, '').replace(/<span id="year">\d+<\/span>/, '')
 
-rmSync(join(OUT, 'moduller'), { recursive: true, force: true })
+for (const dir of ['moduller', 'araclar']) rmSync(join(OUT, dir), { recursive: true, force: true })
 for (const p of pages) {
   const f = join(OUT, p.file)
   mkdirSync(dirname(f), { recursive: true })
