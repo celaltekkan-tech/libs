@@ -688,6 +688,24 @@ const PAGE_HELP: Record<string, PageHelpContent> = {
       },
     ],
   },
+  '/platform/mailbox': {
+    title: 'Posta',
+    summary: 'info@oids.com.tr kutusunu platform yöneticisi olarak okur, yanıtlar ve yeni ileti gönderirsiniz.',
+    topics: [
+      {
+        title: 'Gelen kutusu',
+        steps: [
+          'Soldan klasör seçin (Gelen, Gönderilen, Spam, Çöp).',
+          'Ortadaki listeden iletiyi açın; okununca işaretlenir.',
+          'Yanıtla ile alıcı ve konu dolar; Sil çöpe taşır.',
+        ],
+      },
+      {
+        title: 'Yeni ileti',
+        steps: ['Yeni ileti deyin.', 'Alıcı, konu ve metni yazıp gönderin.', 'Gönderilen kopyası Gönderilen klasörüne düşer.'],
+      },
+    ],
+  },
   '/platform/sms-test': {
     title: 'SMS Test',
     summary: 'Aktif SMS sağlayıcısının ayarlarını görür ve test mesajı gönderirsiniz (platform yöneticisi). Test gönderimleri lisans kotasından düşmez.',

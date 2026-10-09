@@ -32,6 +32,18 @@ services:
       BACKUP_DIR: /app/backups
       # .env içindeki 127.0.0.1 değerini ezer; API çözücüye iç ağdan gider.
       SOLVER_URL: http://solver:8000
+      SMTP_HOST: mail
+      SMTP_PORT: 587
+      SMTP_SECURE: "false"
+      SMTP_TLS_REJECT: "false"
+      SMTP_USER: ${MAIL_ACCOUNT:-info@oids.com.tr}
+      SMTP_PASS: ${MAIL_ACCOUNT_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-OIDS <info@oids.com.tr>}
+      MAIL_ACCOUNT: ${MAIL_ACCOUNT:-info@oids.com.tr}
+      MAIL_ACCOUNT_PASSWORD: ${MAIL_ACCOUNT_PASSWORD:-}
+      IMAP_HOST: mail
+      IMAP_PORT: 143
+      IMAP_SECURE: "false"
     volumes:
       - ./uploads:/app/uploads
       - ${BACKUP_HOST_DIR:-./backups}:/app/backups
@@ -98,6 +110,54 @@ services:
       EXPO_PACKAGER_PROXY_URL: ${EXPO_PACKAGER_PROXY_URL:-https://mobile.oids.com.tr}
     networks:
       - proxy
+
+  # info@oids.com.tr — SMTP/IMAP. Arayüz ayrı webmail değil, panel /platform/mailbox.
+  mail-init:
+    image: ghcr.io/docker-mailserver/docker-mailserver:15.1
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      MAIL_ACCOUNT: ${MAIL_ACCOUNT:-info@oids.com.tr}
+      MAIL_ACCOUNT_PASSWORD: ${MAIL_ACCOUNT_PASSWORD:-}
+      MAIL_DOMAIN: ${MAIL_DOMAIN:-oids.com.tr}
+    volumes:
+      - ./data/mail/config:/tmp/docker-mailserver
+      - ./docker/mail-bootstrap.sh:/bootstrap.sh:ro
+    entrypoint: ["/bin/bash", "/bootstrap.sh"]
+    networks:
+      - internal
+
+  mail:
+    image: ghcr.io/docker-mailserver/docker-mailserver:15.1
+    hostname: ${MAIL_HOSTNAME:-mail.oids.com.tr}
+    restart: unless-stopped
+    stop_grace_period: 1m
+    depends_on:
+      mail-init:
+        condition: service_completed_successfully
+    ports:
+      - "25:25"
+      - "465:465"
+      - "587:587"
+      - "993:993"
+    environment:
+      TZ: Europe/Istanbul
+      OVERRIDE_HOSTNAME: ${MAIL_HOSTNAME:-mail.oids.com.tr}
+      POSTMASTER_ADDRESS: ${MAIL_ACCOUNT:-info@oids.com.tr}
+      ENABLE_IMAP: 1
+      ENABLE_POP3: 0
+      ENABLE_CLAMAV: 0
+      ENABLE_FAIL2BAN: 0
+      PERMIT_DOCKER: none
+      SSL_TYPE: ${MAIL_SSL_TYPE:-}
+    volumes:
+      - ./data/mail/data:/var/mail
+      - ./data/mail/state:/var/mail-state
+      - ./data/mail/logs:/var/log/mail
+      - ./data/mail/config:/tmp/docker-mailserver
+    networks:
+      - internal
 
 networks:
   internal:
