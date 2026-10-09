@@ -51,7 +51,7 @@ function header(active) {
         ${link('/mobil-uygulama', 'Mobil Uygulama')}
         ${link('/araclar', 'Hesaplayıcılar')}
         ${link('/#planlar', 'Planlar')}
-        ${link('/#sss', 'SSS')}
+        ${link('/rehber', 'Rehber')}
         ${link('/#iletisim', 'İletişim')}
       </nav>
       <div class="header-cta">
@@ -95,6 +95,7 @@ function footer(groups) {
           <ul>
             <li><a href="/moduller">Tüm modüller</a></li>
             <li><a href="/mobil-uygulama">Mobil uygulama</a></li>
+            <li><a href="/rehber">Rehberler</a></li>
             <li><a href="/#planlar">Planlar</a></li>
             <li><a href="/#sss">Sıkça sorulan sorular</a></li>
             <li><a href="${SITE.appUrl}">Panele giriş</a></li>
