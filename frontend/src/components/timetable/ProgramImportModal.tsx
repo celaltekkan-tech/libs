@@ -128,7 +128,7 @@ export function ProgramImportModal({
       destroyOnHidden
     >
       <Typography.Paragraph type="secondary">
-        Bilsan öğretmen ders programı PDF’i, e-Okul şube ders programı PDF’i, günlerin sütun olduğu bir Excel çizelgesi
+        Diğer sistemlerden alınan öğretmen ders programı PDF’i, e-Okul şube ders programı PDF’i, günlerin sütun olduğu bir Excel çizelgesi
         veya her satırda sınıf, ders, öğretmen, gün ve ders saati bulunan bir Excel liste kabul edilir. Eşleşen dersler
         kilitli olarak yerleşir.
       </Typography.Paragraph>

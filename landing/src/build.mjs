@@ -97,7 +97,7 @@ const SPOTLIGHTS = [
     eyebrow: 'Programlar',
     title: 'Ders programı dakikalar içinde, çakışmasız',
     text: 'Google OR-Tools tabanlı optimizasyon motoru 13 farklı kısıt türünü birlikte çözer. “Matematik dersleri ilk saatlere gelmesin” gibi kuralları Türkçe yazın, yapay zekâ kısıta çevirsin. Bitince e-Okul’a eklentiyle aktarın.',
-    points: ['Bilsan ve e-Okul PDF’lerinden içe aktarma', 'Şube, öğretmen, derslik ve çarşaf Excel çıktıları', 'Sürükle-bırak ince ayar'],
+    points: ['Diğer sistemlerin ve e-Okul’un PDF’lerinden içe aktarma', 'Şube, öğretmen, derslik ve çarşaf Excel çıktıları', 'Sürükle-bırak ince ayar'],
     visual: `<div class="mini-grid" aria-hidden="true">
             <div class="mg-h"></div><div class="mg-h">Pzt</div><div class="mg-h">Sal</div><div class="mg-h">Çar</div><div class="mg-h">Per</div><div class="mg-h">Cum</div>
             <div class="mg-t">1</div><div class="c1">MAT</div><div class="c2">TDE</div><div class="c3">FİZ</div><div class="c1">MAT</div><div class="c4">İNG</div>
@@ -145,7 +145,7 @@ const SPOTLIGHTS = [
 const INTEGRATIONS = [
   ['e-Okul', 'Öğrenci ve fotoğraflı liste Excel’i, şube programı PDF’i; sınıf listesi ve ders programı eklentiyle'],
   ['MEBBİS', 'Personel listesi ve sorumlu ders listesi Excel’i'],
-  ['Bilsan', 'Öğretmen ders programı PDF’leri'],
+  ['Diğer sistemler', 'Başka programlarda hazırlanmış öğretmen ders programı PDF’leri'],
   ['MEB çizelgeleri', 'Haftalık ders çizelgelerinden hazır ders havuzları'],
   ['KBS', 'Ek ders puantajında 101–123 kodları'],
   ['İŞKUR', 'TYP puantajı EK-2 formu'],
