@@ -314,7 +314,15 @@ export function BackupsPage() {
           {lastRun && (
             <Alert
               style={{ marginTop: 16 }}
-              type={settings?.last_run_status === 'error' ? 'error' : settings?.last_run_status === 'running' ? 'info' : 'success'}
+              type={
+                /Google Drive yüklenemedi|jetonu düşmüş|expired or revoked/i.test(settings?.last_run_message || '')
+                  ? 'warning'
+                  : settings?.last_run_status === 'error'
+                    ? 'error'
+                    : settings?.last_run_status === 'running'
+                      ? 'info'
+                      : 'success'
+              }
               showIcon
               message={
                 <Space>

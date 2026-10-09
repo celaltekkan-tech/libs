@@ -10,11 +10,15 @@ const { Transform } = require('stream');
 const { pipeline } = require('stream/promises');
 const { StringDecoder } = require('string_decoder');
 const cron = require('node-cron');
+const { Op } = require('sequelize');
 const { BackupSetting, BackupLog, sequelize } = require('../models');
 const { encryptFile } = require('./backupCrypto');
-const { describeDriveConfig, uploadEncryptedBackup } = require('./googleDriveBackup');
+const { describeDriveConfig, uploadEncryptedBackup, verifyDriveAuth } = require('./googleDriveBackup');
 
 const TIMEZONE = 'Europe/Istanbul';
+const ISTANBUL_OFFSET = '+03:00';
+// Günlük zamanlayıcı geç uyanırsa (Docker’da saat kayması) yedek atlanmasın.
+const MISSED_TOLERANCE_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_SCHEDULE = '03:30';
 const SAFE_FILENAME = /^[A-Za-z0-9_.-]+\.sql\.gz$/;
 const DUMP_TIMEOUT_MS = Number(process.env.BACKUP_TIMEOUT_MS) || 10 * 60 * 1000;
@@ -1148,6 +1152,51 @@ async function listLogs({ limit = 200, action, status } = {}) {
   });
 }
 
+function istanbulScheduleDate(hhmm, now = new Date()) {
+  const [hour, minute] = normalizeScheduleTime(hhmm).split(':').map(Number);
+  const day = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+  const hh = String(hour).padStart(2, '0');
+  const mm = String(minute).padStart(2, '0');
+  return new Date(`${day}T${hh}:${mm}:00${ISTANBUL_OFFSET}`);
+}
+
+async function runScheduledBackup(reason) {
+  try {
+    const result = await runBackup('scheduled');
+    console.log(`[backup] completed ${result.filename} (${reason})`);
+  } catch (err) {
+    if (err.code === 'BACKUP_IN_PROGRESS') {
+      console.warn('[backup] skipped, already running');
+      return;
+    }
+    console.error('[backup] job failed:', err.message);
+  }
+}
+
+async function catchUpMissedScheduledBackup() {
+  const settings = await getOrCreateSettings();
+  const todayDue = istanbulScheduleDate(settings.schedule_time);
+  const due = Date.now() < todayDue.getTime() + 2 * 60 * 1000
+    ? new Date(todayDue.getTime() - 24 * 60 * 60 * 1000)
+    : todayDue;
+  const already = await BackupLog.findOne({
+    where: {
+      action: 'backup',
+      trigger: 'scheduled',
+      status: 'success',
+      created_at: { [Op.gte]: due },
+    },
+  });
+  if (already) return;
+  console.warn('[backup] zamanlanmış yedek kaçmış, şimdi alınıyor');
+  await runScheduledBackup('catch-up');
+}
+
 async function rescheduleBackupCron() {
   if (scheduledTask) {
     scheduledTask.stop();
@@ -1164,20 +1213,13 @@ async function rescheduleBackupCron() {
   }
   scheduledTask = cron.schedule(
     expr,
-    async () => {
-      try {
-        const result = await runBackup('scheduled');
-        console.log(`[backup] completed ${result.filename}`);
-      } catch (err) {
-        if (err.code === 'BACKUP_IN_PROGRESS') {
-          console.warn('[backup] skipped, already running');
-          return;
-        }
-        console.error('[backup] job failed:', err.message);
-      }
-    },
-    { timezone: TIMEZONE }
+    () => runScheduledBackup('cron'),
+    { timezone: TIMEZONE, missedExecutionTolerance: MISSED_TOLERANCE_MS }
   );
+  scheduledTask.on('execution:missed', () => {
+    console.warn('[backup] zamanlayıcı saati kaçırdı, yedek şimdi alınıyor');
+    void runScheduledBackup('missed');
+  });
   console.log(
     `DB backup cron scheduled: every day ${normalizeScheduleTime(settings.schedule_time)} (${TIMEZONE}) dir=${path.resolve(settings.backup_dir || defaultBackupDir())}`
   );
@@ -1206,6 +1248,10 @@ async function startBackupCron() {
   const drive = describeDriveConfig();
   if (drive.mode === 'ready') {
     console.log('[backup] şifreli Google Drive kopyası açık');
+    void verifyDriveAuth().catch(async (err) => {
+      console.error('[backup]', err.message);
+      await writeLog({ action: 'drive', trigger: 'system', status: 'error', message: err.message }).catch(() => {});
+    });
   } else if (drive.mode === 'incomplete') {
     console.warn(`[backup] Google Drive kopyası kapalı, eksik: ${drive.missing.join(', ')}`);
   }
@@ -1215,6 +1261,7 @@ async function startBackupCron() {
   }
   try {
     await rescheduleBackupCron();
+    void catchUpMissedScheduledBackup();
   } catch (err) {
     console.error('[backup] cron could not start:', err.message);
     await writeLog({ action: 'config', trigger: 'system', status: 'error', message: `Zamanlayıcı başlatılamadı: ${err.message}` });

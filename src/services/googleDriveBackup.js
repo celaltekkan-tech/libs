@@ -166,6 +166,14 @@ function googleMessage(status, json) {
   return `Google Drive HTTP ${status}`;
 }
 
+function explainGoogleError(message) {
+  const text = String(message || '');
+  if (/expired or revoked|invalid_grant/i.test(text)) {
+    return 'Google Drive jetonu düşmüş veya iptal edilmiş. Sunucudaki GOOGLE_DRIVE_REFRESH_TOKEN yenilenmeli. Google Cloud uygulaması Test durumundaysa jeton 7 günde bir düşer; uygulamayı yayınlamak bunu keser.';
+  }
+  return text;
+}
+
 async function postForm(url, fields) {
   const body = new URLSearchParams(fields).toString();
   const res = await httpsBuffer({
@@ -186,6 +194,14 @@ async function postForm(url, fields) {
 }
 
 async function getAccessToken(auth) {
+  try {
+    return await requestAccessToken(auth);
+  } catch (err) {
+    throw new Error(explainGoogleError(err.message));
+  }
+}
+
+async function requestAccessToken(auth) {
   if (auth === 'oauth') {
     const json = await postForm(TOKEN_URL, {
       client_id: process.env.GOOGLE_DRIVE_CLIENT_ID,
@@ -338,7 +354,15 @@ async function uploadEncryptedBackup({ filePath, remoteName, folderId, auth, ret
   return { pruned, pruneError };
 }
 
+async function verifyDriveAuth() {
+  const cfg = describeDriveConfig();
+  if (cfg.mode !== 'ready') return { ok: false, message: null };
+  await getAccessToken(cfg.auth);
+  return { ok: true, message: null };
+}
+
 module.exports = {
   describeDriveConfig,
   uploadEncryptedBackup,
+  verifyDriveAuth,
 };
