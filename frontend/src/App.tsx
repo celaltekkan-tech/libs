@@ -18,6 +18,7 @@ import { PlatformMobileRegisterRequestsPage } from './pages/platform/PlatformMob
 import { LicensesPage } from './pages/platform/LicensesPage'
 import { BackupsPage } from './pages/platform/BackupsPage'
 import { SmsTestPage } from './pages/platform/SmsTestPage'
+import { MailboxPage } from './pages/platform/MailboxPage'
 import { LessonPoolsPage } from './pages/platform/LessonPoolsPage'
 import { PlatformRolesPage } from './pages/platform/PlatformRolesPage'
 import { SchoolsPage } from './pages/SchoolsPage'
@@ -168,6 +169,7 @@ function ThemedApp() {
                   <Route path="/platform/mobile-register-requests" element={<PlatformMobileRegisterRequestsPage />} />
                   <Route path="/platform/backups" element={<BackupsPage />} />
                   <Route path="/platform/sms-test" element={<SmsTestPage />} />
+                  <Route path="/platform/mailbox" element={<MailboxPage />} />
                   <Route path="/platform/lesson-pools" element={<LessonPoolsPage />} />
                 </Route>
               </Route>

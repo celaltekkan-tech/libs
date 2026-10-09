@@ -14,7 +14,7 @@ function truncate(str, max = 500) {
 }
 
 function isConfigured() {
-  return Boolean(process.env.SMTP_HOST && process.env.SMTP_FROM);
+  return Boolean(process.env.SMTP_HOST && (process.env.SMTP_FROM || process.env.MAIL_ACCOUNT));
 }
 
 /**
@@ -41,6 +41,8 @@ async function sendEmail({ to, subject, text, html, attachments }) {
   const port = Number(process.env.SMTP_PORT) || 587;
   const secure = String(process.env.SMTP_SECURE || '').toLowerCase() === 'true' || port === 465;
 
+  const rejectUnauthorized = String(process.env.SMTP_TLS_REJECT || 'true').toLowerCase() !== 'false';
+
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port,
@@ -49,11 +51,12 @@ async function sendEmail({ to, subject, text, html, attachments }) {
       process.env.SMTP_USER && process.env.SMTP_PASS
         ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
         : undefined,
+    tls: { rejectUnauthorized },
   });
 
   try {
     const info = await transporter.sendMail({
-      from: process.env.SMTP_FROM,
+      from: process.env.SMTP_FROM || process.env.MAIL_ACCOUNT,
       to: String(to).trim(),
       subject: String(subject).trim(),
       text: text || undefined,

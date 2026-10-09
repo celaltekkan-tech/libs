@@ -416,10 +416,13 @@ denenmeye devam eder.
 | Değişken | Açıklama |
 |---|---|
 | `SMTP_HOST` | SMTP sunucusu (zorunlu) |
-| `SMTP_FROM` | Gönderen adresi (zorunlu) |
+| `SMTP_FROM` | Gönderen adresi (`MAIL_ACCOUNT` yoksa zorunlu) |
 | `SMTP_PORT` | Varsayılan `587` |
 | `SMTP_SECURE` | `true` veya port `465` ise TLS |
+| `SMTP_TLS_REJECT` | `false` ise iç ağdaki self-signed sertifika kabul edilir |
 | `SMTP_USER` / `SMTP_PASS` | Kimlik doğrulama (opsiyonel) |
+| `IMAP_HOST` / `IMAP_PORT` | Paneldeki Posta sayfası için IMAP |
+| `MAIL_ACCOUNT` / `MAIL_ACCOUNT_PASSWORD` | `info@oids.com.tr` hesabı |
 
 `notify_channels` içinde `email` seçiliyken SMTP yapılandırması eksikse gönderim hata log’una yazılır.
 
@@ -763,9 +766,10 @@ Tenant (Kiracı)
 
 ## Docker ile Çalıştırma (Production)
 
-Proje; veritabanı (`db`), backend (`backend`), yönetici paneli (`frontend`),
-tanıtım/landing sayfası (`landing`) ve mobil Expo geliştirme sunucusu (`mobile`)
-olmak üzere beş ayrı container olarak çalışacak şekilde yapılandırılmıştır.
+Proje; veritabanı (`db`), backend (`backend`), ders programı çözücüsü (`solver`),
+yönetici paneli (`frontend`), tanıtım/landing sayfası (`landing`), mobil Expo
+sunucusu (`mobile`) ve `info@oids.com.tr` posta sunucusu (`mail`) olarak
+container’larda çalışır.
 
 **Kullanılan kurulum: ayrı subdomain'ler** (`uyg.oids.com.tr` → frontend, `api.oids.com.tr`
 → backend). MEB ağı `app.` alt alan adını engellediği için panel `uyg` üzerindedir.
@@ -804,10 +808,33 @@ Notlar:
   `backend` ve `frontend` NPM'in network'üne katılır ama kendi başlarına host'a port
   açmazlar; dışarıdan erişim yalnızca NPM üzerinden mümkündür.
 - Veriler Docker'ın kendi iç volume'lerinde değil, doğrudan host makinede tutulur:
-  Postgres verisi `./data/postgres`, yüklenen dosyalar `./uploads` klasöründedir.
+  Postgres verisi `./data/postgres`, yüklenen dosyalar `./uploads`, posta
+  kutusu `./data/mail` klasöründedir.
   `docker compose down`, `up -d --build`, container silme/yeniden oluşturma gibi
   işlemler bu klasörlere dokunmaz; veri kaybı yaşamamak için tek şart bu klasörleri
   **silmemek** ve düzenli yedeklemektir (`data/postgres` ve `uploads`).
+
+### E-posta (`info@oids.com.tr`)
+
+Ayrı bir webmail yok. `mail` container’ı (docker-mailserver) SMTP/IMAP çalıştırır;
+kutuyu platform yöneticisi **Posta** (`/platform/mailbox`) sayfasından okur ve
+gönderir. Backend, Docker’da SMTP/IMAP için `mail` servisine bağlanır.
+
+`.env` içinde `MAIL_ACCOUNT_PASSWORD` doldurulmalı (güçlü, rastgele). İlk
+`docker compose up` sırasında `mail-init` hesabı ve DKIM anahtarını üretir.
+
+DNS (domain sağlayıcısında):
+
+- `A` `mail.oids.com.tr` → sunucu IP
+- `MX` `oids.com.tr` → `mail.oids.com.tr` (öncelik 10)
+- `TXT` `oids.com.tr` → `v=spf1 mx a:mail.oids.com.tr ~all`
+- `TXT` `mail._domainkey.oids.com.tr` → `data/mail/config` altındaki DKIM kaydı
+- `TXT` `_dmarc.oids.com.tr` → `v=DMARC1; p=none; rua=mailto:info@oids.com.tr`
+- VPS panelinde PTR (ters DNS) mümkünse `mail.oids.com.tr`
+
+Güvenlik duvarında **25, 465, 587, 993** açık olmalı. Birçok barındırıcı 25’i
+kapatır; kapalıysa dışarıdan gelen posta düşmez. TLS için `MAIL_SSL_TYPE` ve
+sertifika bağlama isteğe bağlıdır; iç ağda backend 143/587 kullanır.
 
 ### Landing Sayfası
 
