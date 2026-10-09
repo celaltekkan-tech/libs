@@ -976,6 +976,8 @@ node scripts/google-drive-auth.js
 
 Çıkan `GOOGLE_DRIVE_REFRESH_TOKEN` değerini `.env`’e ekleyip uygulamayı yeniden başlatın. Yedekleme sayfasında “Google Drive kopyası açık” uyarısı görünür.
 
+Google Cloud’da OAuth uygulaması **Test** durumundaysa refresh token 7 günde bir düşer ve panelde “Token has been expired or revoked” görünür. Yerel yedek yine alınır; Drive kopyası gitmez. Bunu kesmek için uygulamayı yayınlayın. Jeton düşünce `node scripts/google-drive-auth.js` ile yenisini alıp sunucudaki `.env` dosyasına yazın ve backend’i yeniden başlatın. Günlük saat kaçarsa (kapalı sunucu veya kayan zamanlayıcı) açılışta o günün yedeği kendiliğinden alınır.
+
 Drive’dan indirilen dosyayı çözmek için:
 
 ```bash
