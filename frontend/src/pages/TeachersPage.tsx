@@ -7,6 +7,7 @@ import {
   EditOutlined,
   FileTextOutlined,
   ImportOutlined,
+  DownOutlined,
   PlusOutlined,
   SearchOutlined,
   SwapOutlined,
@@ -696,22 +697,22 @@ export function TeachersPage() {
               </Button>
             )}
             {canCreate && (
-              <Space direction="vertical" size={4} align="end">
-                <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate('kadrolu')}>
-                  Yeni Öğretmen
+              <Dropdown
+                trigger={['click']}
+                placement="bottomRight"
+                menu={{
+                  items: [
+                    { key: 'kadrolu', label: 'Kadrolu' },
+                    { key: 'sozlesmeli', label: 'Sözleşmeli' },
+                    { key: 'ucretli', label: 'Ücretli' },
+                  ],
+                  onClick: ({ key }) => openCreate(key as EmploymentKind),
+                }}
+              >
+                <Button type="primary" icon={<PlusOutlined />}>
+                  Yeni Öğretmen <DownOutlined />
                 </Button>
-                <Space size={4}>
-                  <Button size="small" onClick={() => openCreate('kadrolu')}>
-                    Kadrolu
-                  </Button>
-                  <Button size="small" onClick={() => openCreate('sozlesmeli')}>
-                    Sözleşmeli
-                  </Button>
-                  <Button size="small" onClick={() => openCreate('ucretli')}>
-                    Ücretli
-                  </Button>
-                </Space>
-              </Space>
+              </Dropdown>
             )}
           </Space>
         </Space>

@@ -39,3 +39,13 @@ button:disabled { opacity: 0.6; cursor: default; }
 #status.ok { color: #1f6b4a; }
 #steps { margin: 12px 0 0; padding-left: 18px; color: #52616e; }
 #steps li { margin: 2px 0; }
+#update {
+  margin-top: 10px;
+  padding: 8px 10px 10px;
+  border-radius: 8px;
+  background: #fff6e8;
+  border: 1px solid #f0c36d;
+}
+#update p { margin: 0; }
+#update .hint { margin-top: 6px; }
+#update button { background: #b45309; }
