@@ -5,7 +5,9 @@ import { DeleteOutlined, DownloadOutlined, MergeCellsOutlined, PlusOutlined, Sea
 import type { ColumnsType } from 'antd/es/table'
 import { SortableTable } from '../components/SortableTable'
 import { ClearFiltersButton } from '../components/ClearFiltersButton'
+import { DynamicListFilters, isActiveFilterValue, matchesListFilter, type ListFilterValue } from '../components/DynamicListFilters'
 import { FilterBar } from '../components/FilterBar'
+import { FilterFieldsPicker, type FilterFieldOption } from '../components/FilterFieldsPicker'
 import { AppLayout } from '../components/AppLayout'
 import { TypedPhraseConfirmModal } from '../components/TypedPhraseConfirmModal'
 import { DisciplineIncidentWizardModal } from '../components/DisciplineIncidentWizardModal'
@@ -30,8 +32,9 @@ import {
 import { listStudents } from '../api/students'
 import { downloadRegulation } from '../api/regulations'
 import { getErrorMessage } from '../api/client'
-import { downloadBlob } from '../utils/download'
-import { deleteTeacherNote, listTeacherNotes } from '../api/teacherNotes'
+import { downloadBlob, exportFilename, type ExportFormat } from '../utils/download'
+import { uniqueSelectOptions } from '../utils/uniqueSelectOptions'
+import { deleteTeacherNote, exportTeacherNotes, listTeacherNotes } from '../api/teacherNotes'
 import { compareValues, nestedPersonNameSorter, SORT_AZ } from '../utils/tableSort'
 import {
   INCIDENT_STATUS_LABELS,
@@ -51,6 +54,7 @@ import type { Student } from '../types/student'
 import { tablePagination } from '../utils/tablePagination'
 import { useBulkTypedDelete } from '../hooks/useBulkTypedDelete'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { useVisibleFilterFields } from '../hooks/useVisibleFilterFields'
 import { warnAttention } from '../utils/attention'
 import type { DisciplineIncidentPrefill } from '../components/DisciplineIncidentWizardModal'
 
@@ -81,6 +85,29 @@ function noteReasons(row: TeacherNote): string[] {
 
 function studentName(row: TeacherNote): string {
   return row.Student ? `${row.Student.first_name} ${row.Student.last_name}` : 'Öğrenci'
+}
+
+const NOTE_FILTER_FIELDS = ['classroom', 'teacher', 'reason', 'date'] as const
+type NoteFilterField = (typeof NOTE_FILTER_FIELDS)[number]
+const NOTE_FILTER_DEFAULTS: NoteFilterField[] = ['classroom', 'teacher', 'reason']
+const NOTE_FILTER_OPTIONS: FilterFieldOption<NoteFilterField>[] = [
+  { key: 'classroom', label: 'Sınıf' },
+  { key: 'teacher', label: 'Bildiren öğretmen' },
+  { key: 'reason', label: 'Sebep' },
+  { key: 'date', label: 'Tarih', kind: 'dateRange' },
+]
+
+function noteFieldValue(row: TeacherNote, key: Exclude<NoteFilterField, 'reason'>): string {
+  if (key === 'classroom') return classroomLabel(row.Student)
+  if (key === 'teacher') return row.Teacher?.full_name?.trim() || ''
+  return String(row.created_at || '').slice(0, 10)
+}
+
+function noteMatchesReason(row: TeacherNote, selected: ListFilterValue): boolean {
+  if (!isActiveFilterValue(selected)) return true
+  const reasons = noteReasons(row)
+  if (Array.isArray(selected)) return selected.some((item) => reasons.includes(String(item)))
+  return reasons.includes(String(selected))
 }
 
 function prefillFromNotes(rows: TeacherNote[]): DisciplineIncidentPrefill {
@@ -362,8 +389,17 @@ export function DisciplinePage() {
   // ---- Öğretmen Bildirimleri ----
   const [teacherNotes, setTeacherNotes] = useState<TeacherNote[]>([])
   const [loadingNotes, setLoadingNotes] = useState(false)
+  const [exportingNotes, setExportingNotes] = useState(false)
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('xlsx')
   const [noteSearch, setNoteSearch] = useState('')
   const [selectedNoteIds, setSelectedNoteIds] = useState<number[]>([])
+  const [noteFilterValues, setNoteFilterValues] = useState<Partial<Record<NoteFilterField, ListFilterValue>>>({})
+  const { visible: visibleNoteFilters, setVisible: setVisibleNoteFilters, isVisible: isNoteFilterVisible } = useVisibleFilterFields(
+    'discipline-notes',
+    session?.user.id,
+    NOTE_FILTER_FIELDS,
+    NOTE_FILTER_DEFAULTS,
+  )
   const noteSearchQuery = useDebouncedValue(noteSearch)
 
   const loadTeacherNotes = useCallback(async () => {
@@ -384,10 +420,52 @@ export function DisciplinePage() {
 
   const filteredTeacherNotes = useMemo(() => {
     const q = noteSearchQuery.trim().toLocaleLowerCase('tr-TR')
-    return teacherNotes.filter((row) =>
-      matchesQuery(q, row.Student ? `${row.Student.first_name} ${row.Student.last_name}` : '', row.Student?.student_number, row.Teacher?.full_name, row.note, row.tags.join(' ')),
-    )
-  }, [teacherNotes, noteSearchQuery])
+    return teacherNotes.filter((row) => {
+      if (!matchesQuery(q, row.Student ? `${row.Student.first_name} ${row.Student.last_name}` : '', row.Student?.student_number, row.Teacher?.full_name, row.note, row.tags.join(' '))) {
+        return false
+      }
+      for (const key of NOTE_FILTER_FIELDS) {
+        const selected = noteFilterValues[key]
+        if (!isActiveFilterValue(selected)) continue
+        if (key === 'reason') {
+          if (!noteMatchesReason(row, selected)) return false
+          continue
+        }
+        if (!matchesListFilter(noteFieldValue(row, key), selected)) return false
+      }
+      return true
+    })
+  }, [teacherNotes, noteSearchQuery, noteFilterValues])
+
+  const noteFilterOptionsByKey = useMemo(() => {
+    return {
+      classroom: uniqueSelectOptions(teacherNotes.map((row) => classroomLabel(row.Student))),
+      teacher: uniqueSelectOptions(teacherNotes.map((row) => row.Teacher?.full_name)),
+      reason: uniqueSelectOptions(teacherNotes.flatMap((row) => noteReasons(row))),
+    }
+  }, [teacherNotes])
+
+  const noteFiltersActive = Boolean(noteSearch.trim() || NOTE_FILTER_FIELDS.some((key) => isActiveFilterValue(noteFilterValues[key])))
+
+  const onExportNotes = async () => {
+    if (noteFiltersActive && filteredTeacherNotes.length === 0) {
+      warnAttention(message, 'Seçili filtreye uyan bildirim yok', 'discipline-notes-filters')
+      return
+    }
+    setExportingNotes(true)
+    try {
+      const blob = await exportTeacherNotes({
+        format: exportFormat,
+        ...(noteFiltersActive ? { ids: filteredTeacherNotes.map((row) => row.id) } : {}),
+      })
+      downloadBlob(blob, exportFilename('ogretmen-bildirimleri', exportFormat))
+      message.success('Dışa aktarma indirildi')
+    } catch (err) {
+      message.error(getErrorMessage(err))
+    } finally {
+      setExportingNotes(false)
+    }
+  }
 
   const repeatWarnings = useCallback((rows: TeacherNote[]) => {
     const lines: string[] = []
@@ -786,14 +864,27 @@ export function DisciplinePage() {
                     <DisciplineMiniBarChart data={noteReasonStats} />
                   </div>
                 </Card>
-                <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 16 }}>
+                <Space style={{ width: '100%', justifyContent: 'flex-end', marginBottom: 16 }} wrap>
+                  <Select
+                    value={exportFormat}
+                    onChange={setExportFormat}
+                    options={[
+                      { value: 'xlsx', label: 'Excel' },
+                      { value: 'csv', label: 'CSV' },
+                      { value: 'pdf', label: 'PDF' },
+                    ]}
+                    style={{ width: 100 }}
+                  />
+                  <Button icon={<DownloadOutlined />} loading={exportingNotes} onClick={() => void onExportNotes()}>
+                    Dışa Aktar
+                  </Button>
                   {canCreate && (
                     <Button icon={<MergeCellsOutlined />} onClick={mergeSelectedNotes}>
                       Olayları birleştir{selectedNoteIds.length ? ` (${selectedNoteIds.length})` : ''}
                     </Button>
                   )}
                 </Space>
-                <FilterBar>
+                <FilterBar attention="discipline-notes-filters">
                   <Input
                     allowClear
                     prefix={<SearchOutlined />}
@@ -801,6 +892,35 @@ export function DisciplinePage() {
                     value={noteSearch}
                     onChange={(e) => setNoteSearch(e.target.value)}
                     style={{ width: 360 }}
+                  />
+                  <DynamicListFilters
+                    multiple
+                    fields={NOTE_FILTER_OPTIONS}
+                    isVisible={isNoteFilterVisible}
+                    values={noteFilterValues}
+                    optionsByKey={noteFilterOptionsByKey}
+                    onChange={(key, value) => {
+                      setNoteFilterValues((current) => ({ ...current, [key]: value }))
+                    }}
+                  />
+                  <FilterFieldsPicker
+                    options={NOTE_FILTER_OPTIONS}
+                    value={visibleNoteFilters}
+                    onChange={(next) => {
+                      setVisibleNoteFilters(next)
+                      setNoteFilterValues((current) => {
+                        const kept: Partial<Record<NoteFilterField, ListFilterValue>> = {}
+                        for (const key of next) kept[key] = current[key]
+                        return kept
+                      })
+                    }}
+                  />
+                  <ClearFiltersButton
+                    active={noteFiltersActive}
+                    onClick={() => {
+                      setNoteSearch('')
+                      setNoteFilterValues({})
+                    }}
                   />
                 </FilterBar>
                 <div data-attention="discipline-notes">

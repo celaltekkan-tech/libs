@@ -1,5 +1,6 @@
 import client from './client'
 import type { TeacherNote } from '../types/teacherNote'
+import type { ExportFormat } from '../utils/download'
 
 interface Envelope<T> {
   success: true
@@ -13,4 +14,12 @@ export async function listTeacherNotes(params?: { student_id?: number }): Promis
 
 export async function deleteTeacherNote(id: number): Promise<void> {
   await client.delete(`/api/teacher-notes/${id}`)
+}
+
+export async function exportTeacherNotes(payload: {
+  format: ExportFormat
+  ids?: number[]
+}): Promise<Blob> {
+  const { data } = await client.post('/api/teacher-notes/export', payload, { responseType: 'blob', timeout: 60000 })
+  return data as Blob
 }

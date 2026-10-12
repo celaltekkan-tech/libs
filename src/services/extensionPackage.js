@@ -4,7 +4,16 @@ const fs = require('fs');
 const path = require('path');
 
 const EXTENSION_DIR = path.join(__dirname, '../../extension');
-const ZIP_ROOT = 'oids-eokul';
+const INSTALL_NOTE = [
+  'OIDS e-Okul eklentisini böyle kurun:',
+  '',
+  '1. Bu zip’i ayıklayın (sağ tık > Tümünü ayıkla). Zip dosyasını Chrome’a vermeyin.',
+  '2. Chrome adres çubuğuna chrome://extensions yazın.',
+  '3. Sağ üstten Geliştirici modunu açın.',
+  '4. Paketlenmemiş öğe yükle deyip BU KLASÖRÜ seçin. Klasörün içinde manifest.json görünmeli.',
+  '5. OIDS otomatik ders programı sayfasını yenileyin, sonra programı eklentiye yükleyin.',
+  '',
+].join('\n');
 
 const CRC_TABLE = (() => {
   const table = new Uint32Array(256);
@@ -39,7 +48,7 @@ function listFiles(dir, prefix, out) {
     const full = path.join(dir, name);
     const rel = prefix ? `${prefix}/${name}` : name;
     if (fs.statSync(full).isDirectory()) listFiles(full, rel, out);
-    else out.push({ name: `${ZIP_ROOT}/${rel}`, data: fs.readFileSync(full) });
+    else out.push({ name: rel, data: fs.readFileSync(full) });
   }
   return out;
 }
@@ -58,6 +67,7 @@ function buildExtensionZip() {
     throw err;
   }
   const files = listFiles(EXTENSION_DIR, '', []);
+  files.push({ name: 'KURULUM.txt', data: Buffer.from(INSTALL_NOTE, 'utf8') });
   const { time, day } = dosStamp(new Date());
   const locals = [];
   const centrals = [];

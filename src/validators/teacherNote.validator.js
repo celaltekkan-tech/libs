@@ -15,4 +15,9 @@ const createTeacherNoteSchema = Joi.object({
   })
   .messages({ 'any.custom': 'En az bir sebep seçilmeli veya not yazılmalıdır' });
 
-module.exports = { createTeacherNoteSchema };
+const exportTeacherNoteSchema = Joi.object({
+  format: Joi.string().valid('xlsx', 'csv', 'pdf').required(),
+  ids: Joi.array().items(Joi.number().integer()).max(5000).optional(),
+});
+
+module.exports = { createTeacherNoteSchema, exportTeacherNoteSchema };
