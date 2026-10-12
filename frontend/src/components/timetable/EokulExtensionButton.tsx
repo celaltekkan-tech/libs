@@ -51,7 +51,7 @@ export function EokulExtensionButton({ projectId, hasLessons }: { projectId: num
     try {
       const blob = await downloadEokulExtension()
       downloadBlob(blob, 'oids-eokul-eklentisi.zip')
-      message.success('Eklenti indirildi. Zip içindeki oids-eokul klasörünü Chrome’a yükleyin.')
+      message.success('Eklenti indirildi. Zip’i ayıklayıp çıkan klasörü Chrome’a yükleyin; zip dosyasını seçmeyin.')
     } catch (err) {
       message.error(getErrorMessage(err))
     } finally {
@@ -98,7 +98,7 @@ export function EokulExtensionButton({ projectId, hasLessons }: { projectId: num
               type="info"
               showIcon
               message="Eklenti kurulu değil."
-              description="Chrome, siteden tek tıkla kuruluma izin vermez. Zip’i indirip aşağıdaki adımlarla yükleyin, sonra bu sayfayı yenileyin."
+              description="Chrome zip dosyasını eklenti olarak kabul etmez. Zip’i indirip ayıklayın, çıkan klasörü seçin. Windows .zip uzantısını gizler; Downloads içindeki oids-eokul-eklentisi dosyasını seçmeyin."
             />
           )}
           <Button type="primary" icon={<ChromeOutlined />} loading={downloading} onClick={() => void onDownload()}>
@@ -106,10 +106,10 @@ export function EokulExtensionButton({ projectId, hasLessons }: { projectId: num
           </Button>
           <Typography.Paragraph style={{ marginBottom: 0 }}>
             <ol style={{ margin: 0, paddingLeft: 18 }}>
-              <li>İndirilen zip dosyasını açın. İçinden oids-eokul klasörü çıkar.</li>
+              <li>İndirilen zip’e sağ tıklayıp Tümünü ayıkla deyin. Zip dosyasını Chrome’a vermeyin.</li>
               <li>Chrome’da adres çubuğuna chrome://extensions yazın.</li>
               <li>Sağ üstten Geliştirici modunu açın.</li>
-              <li>Paketlenmemiş öğe yükle deyip oids-eokul klasörünü seçin.</li>
+              <li>Paketlenmemiş öğe yükle deyip ayıklanan klasörü seçin. Klasörün içinde manifest.json ve KURULUM.txt görünmeli.</li>
               <li>Bu sekmeye dönüp sayfayı yenileyin, sonra programı eklentiye yükleyin.</li>
               <li>e-Okul ders programı sayfasında “Sınıfları e-Okul’dan al” şube adlarını okula yazar. AMP ve ATP ayrıysa şube AMP-A olur.</li>
             </ol>

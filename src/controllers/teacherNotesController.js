@@ -1,7 +1,9 @@
 'use strict';
 
+const { Op } = require('sequelize');
 const { TeacherNote, Student, Classroom, User } = require('../models');
 const audit = require('../services/auditService');
+const { sendTableExport } = require('../services/exportService');
 
 // Mobil uygulamada öğretmenin çoklu seçtiği hazır sebepler; öğretmen bunlara
 // ek olarak serbest metin de yazabilir (tags dizisine düz string olarak girer).
@@ -110,6 +112,51 @@ module.exports = {
       });
 
       res.status(201).json({ success: true, data: full });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async exportFile(req, res, next) {
+    try {
+      const tenantId = req.user && req.user.tenant_id;
+      const { format, ids } = req.validatedBody || req.body || {};
+      const where = {};
+      if (tenantId) where.tenant_id = tenantId;
+      if (Array.isArray(ids)) where.id = { [Op.in]: ids.length ? ids : [0] };
+
+      const rows = await TeacherNote.findAll({
+        where,
+        include: includes,
+        order: [['created_at', 'DESC']],
+        limit: 5000,
+      });
+
+      await sendTableExport(res, {
+        format,
+        filename: 'ogretmen-bildirimleri',
+        title: 'Öğretmen Bildirimleri',
+        headers: ['Öğrenci No', 'Adı Soyadı', 'Sınıf', 'Bildiren Öğretmen', 'Sebepler', 'Not', 'Tarih'],
+        rows: rows.map((row) => {
+          const student = row.Student;
+          const classroom = student && student.Classroom
+            ? `${student.Classroom.class_level}/${student.Classroom.section}`
+            : '';
+          const when = row.created_at ? new Date(row.created_at) : null;
+          const dateText = when && !Number.isNaN(when.getTime())
+            ? when.toLocaleString('tr-TR')
+            : '';
+          return [
+            (student && student.student_number) || '',
+            student ? `${student.first_name} ${student.last_name}` : '',
+            classroom,
+            (row.Teacher && row.Teacher.full_name) || '',
+            Array.isArray(row.tags) ? row.tags.join(', ') : '',
+            row.note || '',
+            dateText,
+          ];
+        }),
+      });
     } catch (err) {
       next(err);
     }
