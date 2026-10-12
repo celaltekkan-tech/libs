@@ -19,3 +19,6 @@ docs/
 # Solver (Python) yerel ortamı
 solver/.venv/
 __pycache__/
+
+# İmzalı Chrome eklentisi (yerel paket; depoya konmaz)
+extension-dist/*.crx

@@ -20,6 +20,8 @@ const subjectClassHoursRoutes = require('./routes/subjectClassHours');
 const scheduleRoutes = require('./routes/schedule');
 const timetableRoutes = require('./routes/timetable');
 const timetablePoolTemplateRoutes = require('./routes/timetablePoolTemplates');
+const extensionRoutes = require('./routes/extension');
+const { EXTENSION_ID } = require('./services/extensionPackage');
 const leavesRoutes = require('./routes/leaves');
 const normPositionsRoutes = require('./routes/normPositions');
 const salaryFormRoutes = require('./routes/salaryForm');
@@ -93,6 +95,10 @@ function isOidsHttpsOrigin(origin) {
   }
 }
 
+function isOidsExtensionOrigin(origin) {
+  return origin === `chrome-extension://${EXTENSION_ID}`;
+}
+
 const isDev = (process.env.NODE_ENV || 'development') !== 'production';
 
 // Geliştirmede panel LAN IP üzerinden açıldığında (örn. http://192.168.x.x:5173)
@@ -128,7 +134,13 @@ app.use(
   cors({
     origin(origin, callback) {
       // origin yoksa istek tarayıcı dışından gelmiştir (curl, Postman, testler)
-      if (!origin || allowedOrigins.includes(origin) || isOidsHttpsOrigin(origin) || isPrivateLanDevOrigin(origin)) {
+      if (
+        !origin ||
+        allowedOrigins.includes(origin) ||
+        isOidsHttpsOrigin(origin) ||
+        isOidsExtensionOrigin(origin) ||
+        isPrivateLanDevOrigin(origin)
+      ) {
         return callback(null, true);
       }
       return callback(new Error(`CORS engellendi: ${origin}`));
@@ -223,6 +235,7 @@ app.use('/api/subject-class-hours', subjectClassHoursRoutes);
 app.use('/api/schedule', scheduleRoutes);
 app.use('/api/timetable', timetablePoolTemplateRoutes);
 app.use('/api/timetable', timetableRoutes);
+app.use('/api/extension', extensionRoutes);
 app.use('/api/leaves', leavesRoutes);
 app.use('/api/norm-positions', normPositionsRoutes);
 app.use('/api/salary-form', salaryFormRoutes);

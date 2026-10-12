@@ -255,3 +255,30 @@ clearEmpty.addEventListener('change', () => {
 })
 
 storedProgram().catch(() => {})
+
+const updateEl = document.getElementById('update')
+const updateText = document.getElementById('update-text')
+const updateBtn = document.getElementById('update-btn')
+
+function showUpdate(info) {
+  if (!info?.outdated) {
+    updateEl.hidden = true
+    return
+  }
+  updateText.textContent = info.latest
+    ? `Yeni eklenti sürümü var: ${info.latest} (kurulu ${info.version || ''})`
+    : 'Yeni eklenti sürümü var.'
+  updateEl.hidden = false
+}
+
+updateBtn.addEventListener('click', () => {
+  chrome.storage.local.get('extensionUpdate').then((data) => {
+    const url = data.extensionUpdate?.downloadUrl || `${API}/api/extension/oids-eokul-eklentisi.zip`
+    chrome.tabs.create({ url })
+  })
+})
+
+chrome.runtime.sendMessage({ type: 'oids-update-status' }, (info) => {
+  if (chrome.runtime.lastError) return
+  showUpdate(info)
+})

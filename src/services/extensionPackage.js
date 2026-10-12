@@ -4,6 +4,11 @@ const fs = require('fs');
 const path = require('path');
 
 const EXTENSION_DIR = path.join(__dirname, '../../extension');
+const CRX_PATH = path.join(__dirname, '../../extension-dist/oids-eokul.crx');
+/** manifest.json içindeki anahtardan üretilen sabit kimlik. */
+const EXTENSION_ID = 'pgahffkffoibfbfdfblffjdfcjoabhkf';
+const PRODUCTION_API = 'https://api.oids.com.tr';
+
 const INSTALL_NOTE = [
   'OIDS e-Okul eklentisini böyle kurun:',
   '',
@@ -12,6 +17,8 @@ const INSTALL_NOTE = [
   '3. Sağ üstten Geliştirici modunu açın.',
   '4. Paketlenmemiş öğe yükle deyip BU KLASÖRÜ seçin. Klasörün içinde manifest.json görünmeli.',
   '5. OIDS otomatik ders programı sayfasını yenileyin, sonra programı eklentiye yükleyin.',
+  '',
+  'Güncelleme: Yeni zip’i aynı klasörün üzerine ayıklayın, chrome://extensions sayfasında Yenile’ye basın.',
   '',
 ].join('\n');
 
@@ -130,4 +137,84 @@ function buildExtensionZip() {
   return Buffer.concat([...locals, centralDir, end]);
 }
 
-module.exports = { buildExtensionZip };
+function readManifest() {
+  const file = path.join(EXTENSION_DIR, 'manifest.json');
+  if (!fs.existsSync(file)) {
+    const err = new Error('Eklenti paketi sunucuda bulunamadı');
+    err.status = 500;
+    throw err;
+  }
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+function compareVersions(left, right) {
+  const a = String(left || '')
+    .split('.')
+    .map((part) => Number(part) || 0);
+  const b = String(right || '')
+    .split('.')
+    .map((part) => Number(part) || 0);
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len; i += 1) {
+    const delta = (a[i] || 0) - (b[i] || 0);
+    if (delta) return delta < 0 ? -1 : 1;
+  }
+  return 0;
+}
+
+function publicApiBase(req) {
+  const fromEnv = String(process.env.PUBLIC_API_URL || '').replace(/\/+$/, '');
+  if (fromEnv) return fromEnv;
+  if ((process.env.NODE_ENV || 'development') === 'production') return PRODUCTION_API;
+  if (!req) return PRODUCTION_API;
+  const host = req.get('host');
+  if (!host) return PRODUCTION_API;
+  return `${req.protocol || 'http'}://${host}`;
+}
+
+function getExtensionInfo(req) {
+  const manifest = readManifest();
+  const base = publicApiBase(req);
+  return {
+    id: EXTENSION_ID,
+    name: manifest.name,
+    version: String(manifest.version || ''),
+    min_version: String(manifest.version || ''),
+    download_url: `${base}/api/extension/oids-eokul-eklentisi.zip`,
+    update_url: `${base}/api/extension/updates.xml`,
+    crx_url: fs.existsSync(CRX_PATH) ? `${base}/api/extension/package.crx` : null,
+  };
+}
+
+function buildUpdateXml(req) {
+  const info = getExtensionInfo(req);
+  const codebase = info.crx_url || info.download_url;
+  return [
+    "<?xml version='1.0' encoding='UTF-8'?>",
+    "<gupdate xmlns='http://www.google.com/update2/response' protocol='2.0'>",
+    `  <app appid='${info.id}'>`,
+    `    <updatecheck codebase='${codebase}' version='${info.version}' />`,
+    '  </app>',
+    '</gupdate>',
+    '',
+  ].join('\n');
+}
+
+function readCrx() {
+  if (!fs.existsSync(CRX_PATH)) {
+    const err = new Error('İmzalı eklenti paketi henüz yayınlanmadı');
+    err.status = 404;
+    throw err;
+  }
+  return fs.readFileSync(CRX_PATH);
+}
+
+module.exports = {
+  EXTENSION_ID,
+  buildExtensionZip,
+  buildUpdateXml,
+  compareVersions,
+  getExtensionInfo,
+  readCrx,
+  readManifest,
+};

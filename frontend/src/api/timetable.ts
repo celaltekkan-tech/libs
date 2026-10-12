@@ -271,6 +271,21 @@ export async function downloadEokulExtension(): Promise<Blob> {
   return data
 }
 
+export interface ExtensionVersionInfo {
+  id: string
+  name: string
+  version: string
+  min_version: string
+  download_url: string
+  update_url: string
+  crx_url: string | null
+}
+
+export async function fetchExtensionVersion(): Promise<ExtensionVersionInfo> {
+  const { data } = await client.get<Envelope<ExtensionVersionInfo>>('/api/extension/version')
+  return data.data
+}
+
 export interface ProgramImportGap {
   kind: 'subject' | 'teacher' | 'classroom'
   raw: string
